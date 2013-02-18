@@ -146,7 +146,7 @@ public class PageDebugList extends PageAdminConfiguration {
     	}
     	final IModel<ObjectTypes> choice = sessionChoice;
 
-        List<IColumn<? extends ObjectType>> columns = new ArrayList<IColumn<? extends ObjectType>>();
+        List<IColumn<? extends ObjectType, String>> columns = new ArrayList<IColumn<? extends ObjectType, String>>();
 
         IColumn column = new CheckBoxHeaderColumn<ObjectType>();
         columns.add(column);

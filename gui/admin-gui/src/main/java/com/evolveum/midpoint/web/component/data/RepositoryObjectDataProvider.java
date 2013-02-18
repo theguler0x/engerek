@@ -60,7 +60,7 @@ public class RepositoryObjectDataProvider<T extends ObjectType>
     }
 
     @Override
-    public Iterator<SelectableBean<T>> iterator(int first, int count) {
+    public Iterator<SelectableBean<T>> iterator(long first, long count) {
         LOGGER.trace("begin::iterator() from {} count {}.", new Object[]{first, count});
         getAvailableData().clear();
 

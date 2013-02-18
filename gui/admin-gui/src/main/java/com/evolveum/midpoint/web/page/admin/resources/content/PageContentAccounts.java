@@ -255,7 +255,7 @@ public class PageContentAccounts extends PageAdminResources {
         };
         columns.add(column);
 
-        column = new AbstractColumn<SelectableBean<AccountContentDto>>(
+        column = new AbstractColumn<SelectableBean<AccountContentDto>, String>(
                 createStringResource("pageContentAccounts.identifiers")) {
 
             @Override

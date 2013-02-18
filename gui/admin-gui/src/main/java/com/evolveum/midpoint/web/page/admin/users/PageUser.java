@@ -36,7 +36,9 @@ import org.apache.wicket.ajax.AjaxEventBehavior;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.behavior.AbstractAjaxBehavior;
 import org.apache.wicket.extensions.ajax.markup.html.modal.ModalWindow;
-import org.apache.wicket.markup.html.IHeaderResponse;
+import org.apache.wicket.markup.head.IHeaderResponse;
+import org.apache.wicket.markup.head.JavaScriptHeaderItem;
+import org.apache.wicket.markup.head.OnDomReadyHeaderItem;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.form.CheckBox;
 import org.apache.wicket.markup.html.form.Form;
@@ -913,16 +915,15 @@ public class PageUser extends PageAdminUsers {
 
             @Override
             public void renderHead(Component component, IHeaderResponse response) {
-                response.renderOnDomReadyJavaScript("Wicket.Window.unloadConfirmation = false;");
-                response.renderJavaScript("$(document).ready(function() {\n" +
+                response.render(OnDomReadyHeaderItem.forScript("Wicket.Window.unloadConfirmation = false;"));
+                response.render(JavaScriptHeaderItem.forScript("$(document).ready(function() {\n" +
                         "  $(document).bind('keyup', function(evt) {\n" +
                         "    if (evt.keyCode == 27) {\n" +
                         getCallbackScript() + "\n" +
                         "        evt.preventDefault();\n" +
                         "    }\n" +
                         "  });\n" +
-                        "});", id);
-
+                        "});", id));
             }
 
 			@Override

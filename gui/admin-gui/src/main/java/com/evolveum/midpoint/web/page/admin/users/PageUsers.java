@@ -269,8 +269,9 @@ public class PageUsers extends PageAdminUsers {
         };
     }
 
-    private List<IColumn<SelectableBean<UserType>>> initColumns() {
-        List<IColumn<SelectableBean<UserType>>> columns = new ArrayList<IColumn<SelectableBean<UserType>>>();
+    private List<IColumn<SelectableBean<UserType>, String>> initColumns() {
+        List<IColumn<SelectableBean<UserType>, String>> columns =
+                new ArrayList<IColumn<SelectableBean<UserType>, String>>();
 
         IColumn column = new CheckBoxHeaderColumn<UserType>();
         columns.add(column);
@@ -323,7 +324,7 @@ public class PageUsers extends PageAdminUsers {
                 "value.fullName.orig");
         columns.add(column);
 
-        column = new AbstractColumn<SelectableBean<UserType>>(createStringResource("pageUsers.email")) {
+        column = new AbstractColumn<SelectableBean<UserType>, String>(createStringResource("pageUsers.email")) {
 
             @Override
             public void populateItem(Item<ICellPopulator<SelectableBean<UserType>>> cellItem,
@@ -339,7 +340,7 @@ public class PageUsers extends PageAdminUsers {
     }
 
     private void initTable(OptionContent content) {
-        List<IColumn<SelectableBean<UserType>>> columns = initColumns();
+        List<IColumn<SelectableBean<UserType>, String>> columns = initColumns();
 
         ObjectDataProvider<UserType> provider = new ObjectDataProvider(PageUsers.this, UserType.class);
         provider.setQuery(createQuery());

@@ -48,7 +48,8 @@ import org.apache.wicket.ajax.markup.html.form.AjaxCheckBox;
 import org.apache.wicket.behavior.AttributeAppender;
 import org.apache.wicket.datetime.markup.html.form.DateTextField;
 import org.apache.wicket.extensions.yui.calendar.DatePicker;
-import org.apache.wicket.markup.html.IHeaderResponse;
+import org.apache.wicket.markup.head.CssHeaderItem;
+import org.apache.wicket.markup.head.IHeaderResponse;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.form.TextField;
@@ -108,15 +109,16 @@ public class AssignmentEditorPanel extends BasePanel<AssignmentEditorDto> {
     public void renderHead(IHeaderResponse response) {
         super.renderHead(response);
 
-        response.renderCSSReference(new PackageResourceReference(AssignmentEditorPanel.class, "AssignmentEditorPanel.css"));
+        response.render(CssHeaderItem.forReference(
+                new PackageResourceReference(AssignmentEditorPanel.class, "AssignmentEditorPanel.css")));
     }
 
     private void initPanelLayout() {
-    	final WebMarkupContainer headerPanel = new WebMarkupContainer(ID_HEADER);
+        final WebMarkupContainer headerPanel = new WebMarkupContainer(ID_HEADER);
         headerPanel.add(new AttributeAppender("class", createHeaderClassModel(getModel()), " "));
-    	headerPanel.setOutputMarkupId(true);
-    	add(headerPanel);
-    	
+        headerPanel.setOutputMarkupId(true);
+        add(headerPanel);
+
         AjaxCheckBox selected = new AjaxCheckBox(ID_SELECTED,
                 new PropertyModel<Boolean>(getModel(), AssignmentEditorDto.F_SELECTED)) {
 
@@ -439,7 +441,7 @@ public class AssignmentEditorPanel extends BasePanel<AssignmentEditorDto> {
     }
 
     private ResourceAttributeDefinitionType findOrCreateValueConstruction(PrismPropertyDefinition attrDef,
-                                                                List<ResourceAttributeDefinitionType> attrConstructions) {
+                                                                          List<ResourceAttributeDefinitionType> attrConstructions) {
         for (ResourceAttributeDefinitionType construction : attrConstructions) {
             if (attrDef.getName().equals(construction.getRef())) {
                 return construction;

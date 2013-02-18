@@ -47,7 +47,8 @@ import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.behavior.AttributeAppender;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.DataTable;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.IColumn;
-import org.apache.wicket.markup.html.IHeaderResponse;
+import org.apache.wicket.markup.head.IHeaderResponse;
+import org.apache.wicket.markup.head.OnDomReadyHeaderItem;
 import org.apache.wicket.markup.html.form.DropDownChoice;
 import org.apache.wicket.markup.html.form.Form;
 import org.apache.wicket.markup.html.form.IChoiceRenderer;
@@ -216,7 +217,7 @@ public class PageReports extends PageAdminReports {
 			        target.add(getFeedbackPanel());
 			        target.add(getTable());
 				}
-				
+
 			}
 		};
 		mainForm.add(selectedReport);
@@ -278,7 +279,7 @@ public class PageReports extends PageAdminReports {
 		activationCheck.setStyle("margin: 1px 1px 1px 6px;");
 		item.add(activationCheck);
 		activationCheck.setVisible(false);
-		
+
 		final Image resourceHelp = new Image("resourceHelp", new PackageResourceReference(ImgResources.class,
 				ImgResources.TOOLTIP_INFO));
 		resourceHelp.setOutputMarkupId(true);
@@ -287,7 +288,7 @@ public class PageReports extends PageAdminReports {
 			@Override
 			public void renderHead(Component component, IHeaderResponse response) {
 				String js = "$('#"+ resourceHelp.getMarkupId() +"').tipsy()";
-				response.renderOnDomReadyJavaScript(js);
+				response.render(OnDomReadyHeaderItem.forScript(js));
 				super.renderHead(component, response);
 			}
 
@@ -296,7 +297,7 @@ public class PageReports extends PageAdminReports {
 			}
 		});
 		item.add(resourceHelp);
-		
+
 		DropDownChoice resourceChoice = new DropDownChoice("resourceChoice",
 				new PropertyModel<PrismObject<ResourceType>>(userFilterDto, "resource"),
                 createResourceListModel(), new IChoiceRenderer<PrismObject<ResourceType>>() {
@@ -358,15 +359,15 @@ public class PageReports extends PageAdminReports {
 	}
 
 	private void initTable(OptionContent content, Form mainForm) {
-		List<IColumn<SelectableBean>> columns = initColumns(mainForm);
+		List<IColumn<SelectableBean, String>> columns = initColumns(mainForm);
 		TablePanel table = new TablePanel<SelectableBean>("reportsTable", new RepositoryObjectDataProvider(
 				PageReports.this, UserType.class), columns);
 		table.setOutputMarkupId(true);
 		content.getBodyContainer().add(table);
 	}
 
-	private List<IColumn<SelectableBean>> initColumns(Form mainForm) {
-		List<IColumn<SelectableBean>> columns = new ArrayList<IColumn<SelectableBean>>();
+	private List<IColumn<SelectableBean, String>> initColumns(Form mainForm) {
+		List<IColumn<SelectableBean, String>> columns = new ArrayList<IColumn<SelectableBean, String>>();
 
 		IColumn column = new CheckBoxHeaderColumn();
 		columns.add(column);
@@ -446,13 +447,13 @@ public class PageReports extends PageAdminReports {
 		OptionContent content = (OptionContent) get("mainForm:optionContent");
 		return (TablePanel) content.getBodyContainer().get("reportsTable");
 	}
-	
+
 	private DropDownChoice getResourceChoiceComponent() {
 		OptionPanel panel = (OptionPanel) get("mainForm:option");
 		OptionItem item = (OptionItem) panel.getBodyContainer().get("usersFilter");
 		return (DropDownChoice) item.getBodyContainer().get("resourceChoice");
 	}
-	
+
 	 private RepositoryObjectDataProvider<ObjectType> getTableDataProvider() {
 	        TablePanel tablePanel = getTable();
 	        DataTable table = tablePanel.getDataTable();
@@ -483,23 +484,23 @@ public class PageReports extends PageAdminReports {
 			getSession().error(getString("pageReports.message.noResourceSelected"));
 			throw new RestartResponseException(PageReports.class);
 		}
-		
+
 
 		JasperDesign design;
 		JasperReport report = null;
 		JasperPrint jasperPrint = null;
-		
+
 		byte[] generatedReport = null;
 		Session session = null;
 
 		try {
             ServletContext servletContext = ((WebApplication) getApplication()).getServletContext();
 			// Loading template
-                        
+
 			design = JRXmlLoader.load(servletContext.getRealPath("/reports/reportUserAccounts.jrxml"));
 			report = JasperCompileManager.compileReport(design);
 			Map params = new HashMap();
-			
+
 			UserType user = null;
 			List userNames = new ArrayList();
 			for (Object obj : listObject){
@@ -514,7 +515,7 @@ public class PageReports extends PageAdminReports {
 					}
 				}
 			}
-			
+
 			params.put("LOGO_PATH", servletContext.getRealPath("/reports/logo.jpg"));
 			params.put("USER_NAME", userNames);
 			params.put("RESOURCE_OID", dto.getResource().getOid());
@@ -531,11 +532,11 @@ public class PageReports extends PageAdminReports {
 		} finally{
 			session.close();
 		}
-		
+
 		return generatedReport;
-		
+
 	}
-	
+
 	private List<PrismObject<ObjectType>> getObjects() {
         ObjectQuery query = getTableDataProvider().getQuery();
 
@@ -567,13 +568,13 @@ public class PageReports extends PageAdminReports {
 
         return objects != null ? objects : new ArrayList<PrismObject<ObjectType>>();
     }
-	
+
 	public SessionFactory getSessionFactory() {
 		return sessionFactory;
 	}
-	
+
 	public void setSessionFactory(SessionFactory sessionFactory) {
 		this.sessionFactory = sessionFactory;
 	}
-	
+
 }

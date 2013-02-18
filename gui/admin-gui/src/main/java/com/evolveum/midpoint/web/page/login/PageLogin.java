@@ -61,8 +61,8 @@ public class PageLogin extends PageBase {
                 RequiredTextField<String> username = (RequiredTextField) get("username");
                 PasswordTextField password = (PasswordTextField) get("password");
                 if (session.authenticate(username.getModelObject(), password.getModelObject())) {
-                    continueToOriginalDestination();
-                    // setResponsePage(PageHome.class);
+                    //continueToOriginalDestination();
+                    setResponsePage(PageHome.class);
                 }
             }
         };

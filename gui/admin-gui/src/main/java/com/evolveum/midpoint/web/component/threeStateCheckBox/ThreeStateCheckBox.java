@@ -73,7 +73,6 @@ public class ThreeStateCheckBox extends HiddenField<String> {
         }
     }
 
-
     @Override
     public void renderHead(IHeaderResponse response) {
         super.renderHead(response);
@@ -82,6 +81,9 @@ public class ThreeStateCheckBox extends HiddenField<String> {
                 new PackageResourceReference(ThreeStateCheckBox.class, "ThreeStateCheckBox.js")));
         response.render(CssHeaderItem.forReference(
                 new PackageResourceReference(ThreeStateCheckBox.class, "ThreeStateCheckBox.css")));
-        response.render(OnDomReadyHeaderItem.forScript("initThreeStateCheckBox('" + getMarkupId() + "')"));
+
+        boolean enabled = isEnabled();
+        response.render(OnDomReadyHeaderItem.forScript(
+                "initThreeStateCheckBox('" + getMarkupId() + "', '" + enabled + "')"));
     }
 }

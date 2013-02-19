@@ -174,7 +174,7 @@ public class SqlBaseService {
 
     private boolean exceptionContainsText(Throwable ex, String text) {
         while (ex != null) {
-            if (StringUtils.isNotEmpty(ex.getMessage())) {
+            if (ex.getMessage() != null && ex.getMessage().contains(text)) {
                 return true;
             }
             ex = ex.getCause();
@@ -248,11 +248,10 @@ public class SqlBaseService {
     }
 
     protected void handleGeneralCheckedException(Exception ex, Session session, OperationResult result) {
-        LOGGER.debug("General checked exception occurred.", ex);
+        LOGGER.error("General checked exception occurred.", ex);
 
         boolean fatal = !isExceptionRelatedToSerialization(ex);
         rollbackTransaction(session, ex, result, fatal);
         throw new SystemException(ex.getMessage(), ex);
     }
-
 }

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Copyright (c) 2012 Evolveum
+  ~
+  ~ The contents of this file are subject to the terms
+  ~ of the Common Development and Distribution License
+  ~ (the License). You may not use this file except in
+  ~ compliance with the License.
+  ~
+  ~ You can obtain a copy of the License at
+  ~ http://www.opensource.org/licenses/cddl1 or
+  ~ CDDLv1.0.txt file in the source code distribution.
+  ~ See the License for the specific language governing
+  ~ permission and limitations under the License.
+  ~
+  ~ If applicable, add the following below the CDDL Header,
+  ~ with the fields enclosed by brackets [] replaced by
+  ~ your own identifying information:
+  ~
+  ~ Portions Copyrighted 2012 [name of copyright owner]
+  -->
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:wicket="http://wicket.apache.org">
+<body>
+<wicket:extend>
+    <form wicket:id="mainForm">
+        <h2><wicket:message key="PageSystemConfiguration.title.accountSynchronization"/></h2>
+
+        <h2><wicket:message key="PageSystemConfiguration.title.passwordPolicy"/></h2>
+        Name: NAME, Oid: 00000-0000-000000-00000000
+        <a wicket:id="removePasswordPolicy"/>
+        <a wicket:id="browsePasswordPolicy"/>
+
+        <div style="border-bottom: 1px solid #f2f2f2; padding: 6px 0; min-height:23px;">
+            <label style="margin-right: 5px;">asdf</label>
+        </div>
+        <div style="border-bottom: 1px solid #f2f2f2; padding: 6px 0; min-height:23px;">
+            <label style="margin-right: 5px;">Some label</label>
+            <input type="text" style="border: 1px solid #8D9095; padding: 2px;"/>
+        </div>
+        <div style="border-bottom: 1px solid #f2f2f2; padding: 6px 0; min-height:23px;">
+            <label style="margin-right: 5px;">asdf</label>
+        </div>
+        <div style="border-bottom: 1px solid #f2f2f2; padding: 6px 0; min-height:23px;">
+            <label style="margin-right: 5px;">Some label</label>
+            <input type="text" style="border: 1px solid #8D9095; padding: 2px;"/>
+        </div>
+        <div style="border-bottom: 1px solid #f2f2f2; padding: 6px 0; min-height:23px;">
+            <label style="margin-right: 5px;">Some label</label>
+            <input type="text" style="border: 1px solid #8D9095; padding: 2px;"/>
+        </div>
+        <div style="border-bottom: 1px solid #f2f2f2; padding: 6px 0; min-height:23px;">
+            <label style="margin-right: 5px;">asdf</label>
+            <input type="button" value="asdf"/>
+        </div>
+
+        <h2><wicket:message key="PageSystemConfiguration.title.modelHooks"/></h2>
+
+        <h2><wicket:message key="PageSystemConfiguration.title.userTemplate"/></h2>
+
+        <h2><wicket:message key="PageSystemConfiguration.title.connectorFramework"/></h2>
+
+        <h2><wicket:message key="PageSystemConfiguration.title.orgStructureRoots"/></h2>
+
+        <h2><wicket:message key="PageSystemConfiguration.title.notification"/></h2>
+
+
+        <div class="operatingFormButtons">
+            <a wicket:id="back"/>
+            <a wicket:id="save"/>
+        </div>
+    </form>
+</wicket:extend>
+</body>
+</html>

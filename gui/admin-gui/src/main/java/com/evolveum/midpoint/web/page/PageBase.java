@@ -50,12 +50,14 @@ import org.apache.wicket.devutils.debugbar.DebugBar;
 import org.apache.wicket.feedback.FeedbackMessage;
 import org.apache.wicket.feedback.FeedbackMessages;
 import org.apache.wicket.injection.Injector;
+import org.apache.wicket.markup.head.IHeaderResponse;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.WebPage;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
 import org.apache.wicket.model.StringResourceModel;
+import org.apache.wicket.resource.CoreLibrariesContributor;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 
 import java.util.Iterator;
@@ -84,6 +86,14 @@ public abstract class PageBase extends WebPage {
         validateInjection(taskManager, "Task manager was not injected.");
         initLayout();
 
+    }
+
+    @Override
+    public void renderHead(IHeaderResponse response) {
+        super.renderHead(response);
+
+        //this attaches jquery.js as first header item, which is used in our scripts.
+        CoreLibrariesContributor.contribute(getApplication(), response);
     }
 
     @Override
@@ -188,10 +198,10 @@ public abstract class PageBase extends WebPage {
     protected ModelInteractionService getModelInteractionService() {
         return modelInteractionService;
     }
-    
+
     protected ModelDiagnosticService getModelDiagnosticService() {
-		return modelDiagnosticService;
-	}
+        return modelDiagnosticService;
+    }
 
     public String getString(String resourceKey, Object... objects) {
         return createStringResource(resourceKey, objects).getString();

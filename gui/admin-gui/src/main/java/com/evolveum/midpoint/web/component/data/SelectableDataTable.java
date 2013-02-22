@@ -2,6 +2,7 @@ package com.evolveum.midpoint.web.component.data;
 
 import com.evolveum.midpoint.web.component.util.SelectableBean;
 import com.evolveum.midpoint.web.page.admin.resources.dto.ResourceDto;
+import com.evolveum.midpoint.web.page.admin.server.dto.TaskDto;
 import org.apache.wicket.ajax.AjaxEventBehavior;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.DataTable;
@@ -41,6 +42,11 @@ public class SelectableDataTable<T> extends DataTable<T, String> {
                         boolean enabled = !resource.isSigned();
                         resource.setSelected(enabled);
                         resource.setSigned(enabled);
+                    } else if (object instanceof TaskDto) {
+                        TaskDto task = (TaskDto) object;
+                        boolean enabled = !task.isSigned();
+                        task.setSelected(enabled);
+                        task.setSigned(enabled);
                     }
                     return;
                 }
@@ -52,7 +58,6 @@ public class SelectableDataTable<T> extends DataTable<T, String> {
         });
 
         rowItem.setOutputMarkupId(true);
-
         return rowItem;
     }
 }

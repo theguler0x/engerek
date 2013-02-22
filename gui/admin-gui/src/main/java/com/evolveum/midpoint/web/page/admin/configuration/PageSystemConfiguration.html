@@ -25,12 +25,31 @@
 <wicket:extend>
     <form wicket:id="mainForm">
         <h2><wicket:message key="PageSystemConfiguration.title.accountSynchronization"/></h2>
+        AccountSynchronizationSettingsType
 
         <h2><wicket:message key="PageSystemConfiguration.title.passwordPolicy"/></h2>
+        zero or one reference
+
         Name: NAME, Oid: 00000-0000-000000-00000000
         <a wicket:id="removePasswordPolicy"/>
         <a wicket:id="browsePasswordPolicy"/>
 
+        <h2><wicket:message key="PageSystemConfiguration.title.modelHooks"/></h2>
+        ModelHooksType
+
+        <h2><wicket:message key="PageSystemConfiguration.title.userTemplate"/></h2>
+        zero or one reference
+
+        <h2><wicket:message key="PageSystemConfiguration.title.connectorFramework"/></h2>
+        ConnectorFrameworkType
+
+        <h2><wicket:message key="PageSystemConfiguration.title.orgStructureRoots"/></h2>
+        zero or more references
+
+        <h2><wicket:message key="PageSystemConfiguration.title.notification"/></h2>
+        NotificationConfigurationType
+
+        <hr/>
         <div style="border-bottom: 1px solid #f2f2f2; padding: 6px 0; min-height:23px;">
             <label style="margin-right: 5px;">asdf</label>
         </div>
@@ -53,16 +72,7 @@
             <label style="margin-right: 5px;">asdf</label>
             <input type="button" value="asdf"/>
         </div>
-
-        <h2><wicket:message key="PageSystemConfiguration.title.modelHooks"/></h2>
-
-        <h2><wicket:message key="PageSystemConfiguration.title.userTemplate"/></h2>
-
-        <h2><wicket:message key="PageSystemConfiguration.title.connectorFramework"/></h2>
-
-        <h2><wicket:message key="PageSystemConfiguration.title.orgStructureRoots"/></h2>
-
-        <h2><wicket:message key="PageSystemConfiguration.title.notification"/></h2>
+        <hr/>
 
 
         <div class="operatingFormButtons">

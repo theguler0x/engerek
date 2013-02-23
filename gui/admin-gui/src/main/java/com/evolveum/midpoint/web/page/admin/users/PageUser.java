@@ -48,6 +48,7 @@ import org.apache.wicket.markup.html.panel.Panel;
 import org.apache.wicket.model.AbstractReadOnlyModel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.PropertyModel;
+import org.apache.wicket.model.StringResourceModel;
 import org.apache.wicket.request.resource.PackageResourceReference;
 import org.apache.wicket.util.string.StringValue;
 
@@ -200,6 +201,22 @@ public class PageUser extends PageAdminUsers {
 		};
 		
 		initLayout();
+    }
+
+    @Override
+    protected IModel<String> createPageTitleModel() {
+        return new LoadableModel<String>(false) {
+
+            @Override
+            protected String load() {
+                if (!isEditingUser()) {
+                    return PageUser.super.createPageTitleModel().getObject();
+                }
+
+                String name = userModel.getObject().getDisplayName();
+                return new StringResourceModel("pageUser.title.editing", PageUser.this, null, null, name).getString();
+            }
+        };
     }
     
     private ObjectWrapper loadUserAfterPreview(Collection<ObjectDelta<? extends ObjectType>> deltas, String oid) {

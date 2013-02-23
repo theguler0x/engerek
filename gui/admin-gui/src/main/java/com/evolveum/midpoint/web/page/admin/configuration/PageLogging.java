@@ -252,11 +252,11 @@ public class PageLogging extends PageAdminConfiguration {
                 "appenders") {
 
             @Override
-            protected IModel<String> createLabelModel(final IModel rowModel) {
-                return new LoadableModel<String>() {
+            public IModel<Object> getDataModel(final IModel rowModel) {
+                return new LoadableModel<Object>() {
 
                     @Override
-                    protected String load() {
+                    protected Object load() {
                         LoggerConfiguration config = (LoggerConfiguration) rowModel.getObject();
                         StringBuilder builder = new StringBuilder();
                         for (String appender : config.getAppenders()) {
@@ -372,11 +372,11 @@ public class PageLogging extends PageAdminConfiguration {
                 "appenders") {
 
             @Override
-            protected IModel<String> createLabelModel(final IModel rowModel) {
-                return new LoadableModel<String>() {
+            public IModel<Object> getDataModel(final IModel rowModel) {
+                return new LoadableModel<Object>() {
 
                     @Override
-                    protected String load() {
+                    protected Object load() {
                     	FilterConfiguration config = (FilterConfiguration) rowModel.getObject();
                         StringBuilder builder = new StringBuilder();
                         for (String appender : config.getAppenders()) {

@@ -32,10 +32,12 @@ import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.page.admin.configuration.*;
 import com.evolveum.midpoint.web.page.admin.help.PageAbout;
 import com.evolveum.midpoint.web.page.admin.help.PageSystem;
+import com.evolveum.midpoint.web.page.admin.home.PageDashboard;
 import com.evolveum.midpoint.web.page.admin.home.PageHome;
 import com.evolveum.midpoint.web.page.admin.home.PageMyPasswords;
 import com.evolveum.midpoint.web.page.admin.reports.PageReports;
 import com.evolveum.midpoint.web.page.admin.resources.PageResource;
+import com.evolveum.midpoint.web.page.admin.resources.PageResourceEdit;
 import com.evolveum.midpoint.web.page.admin.resources.PageResources;
 import com.evolveum.midpoint.web.page.admin.resources.content.PageAccount;
 import com.evolveum.midpoint.web.page.admin.resources.content.PageContentAccounts;
@@ -130,7 +132,7 @@ public class MidPointApplication extends AuthenticatedWebApplication {
         mount(new MountedMapper("/admin", PageHome.class, encoder));
         mount(new MountedMapper("/admin/home", PageHome.class, encoder));    //todo remove
         //todo dashboard is not finished yet
-//        mount(new MountedMapper("/admin/dashboard", PageDashboard.class, encoder));
+        mount(new MountedMapper("/admin/dashboard", PageDashboard.class, encoder));
         mount(new MountedMapper("/admin/myPasswords", PageMyPasswords.class, encoder));
 
         // todo mount used for performance tests, will be implemented properly in next release
@@ -150,7 +152,7 @@ public class MidPointApplication extends AuthenticatedWebApplication {
 
         mount(new MountedMapper("/admin/resource", PageResource.class, new OnePageParameterEncoder(PageResource.PARAM_RESOURCE_ID)));
         //todo resource wizard is not finished
-//        mount(new MountedMapper("/admin/resourceEdit", PageResourceEdit.class, new OnePageParameterEncoder(PageResourceEdit.PARAM_RESOURCE_ID)));
+        mount(new MountedMapper("/admin/resourceEdit", PageResourceEdit.class, new OnePageParameterEncoder(PageResourceEdit.PARAM_RESOURCE_ID)));
         mount(new MountedMapper("/admin/resources", PageResources.class, encoder));
         mount(new MountedMapper("/admin/resources/account", PageAccount.class, new OnePageParameterEncoder(PageAccount.PARAM_ACCOUNT_ID)));
         mount(new MountedMapper("/admin/resources/content/accounts", PageContentAccounts.class, new OnePageParameterEncoder(PageContentAccounts.PARAM_RESOURCE_ID)));

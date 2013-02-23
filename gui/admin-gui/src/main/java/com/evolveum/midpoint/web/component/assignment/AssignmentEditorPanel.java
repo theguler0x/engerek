@@ -36,6 +36,7 @@ import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.component.input.ThreeStateCheckPanel;
 import com.evolveum.midpoint.web.component.util.BasePanel;
 import com.evolveum.midpoint.web.component.util.LoadableModel;
+import com.evolveum.midpoint.web.component.util.SimplePanel;
 import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
 import com.evolveum.midpoint.web.page.PageBase;
 import com.evolveum.midpoint.web.resource.img.ImgResources;
@@ -70,7 +71,7 @@ import java.util.*;
 /**
  * @author lazyman
  */
-public class AssignmentEditorPanel extends BasePanel<AssignmentEditorDto> {
+public class AssignmentEditorPanel extends SimplePanel<AssignmentEditorDto> {
 
     private static final Trace LOGGER = TraceManager.getTrace(AssignmentEditorPanel.class);
 

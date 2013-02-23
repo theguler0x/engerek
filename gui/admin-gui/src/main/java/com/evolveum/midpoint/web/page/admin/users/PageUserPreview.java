@@ -198,7 +198,7 @@ public class PageUserPreview extends PageAdmin {
 			@Override
 			public void populateItem(final Item item, String componentId, final IModel rowModel) {
 				
-				Label label = new Label(componentId, createLabelModel(rowModel));
+				Label label = new Label(componentId, getDataModel(rowModel));
 				item.add(label);	
 				
 				SubmitResourceDto resourceDto = (SubmitResourceDto) rowModel.getObject();

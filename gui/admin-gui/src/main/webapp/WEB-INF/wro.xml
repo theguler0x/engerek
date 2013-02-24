@@ -2,5 +2,6 @@
 <groups xmlns="http://www.isdc.ro/wro">
     <group name="all">
         <css>/less/*.less</css>
+        <css>/WEB-INF/classes/**.less</css>
     </group>
 </groups>

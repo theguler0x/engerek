@@ -172,6 +172,7 @@ public class MidPointApplication extends AuthenticatedWebApplication {
         mount(new MountedMapper("/admin/config/logging", PageLogging.class, encoder));
         mount(new MountedMapper("/admin/config/repoTest", PageTestRepository.class, encoder));
         mount(new MountedMapper("/admin/config/system", PageSystemConfiguration.class, encoder));
+        mount(new MountedMapper("/admin/config/test", PageTest.class, encoder));
 
         mount(new MountedMapper("/admin/reports", PageReports.class, encoder));
 

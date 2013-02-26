@@ -48,16 +48,22 @@ import javax.xml.namespace.QName;
  */
 public class PolyString implements Recomputable, Structured, Dumpable, DebugDumpable, Serializable {
 
-	private String orig;
+	private final String orig;
 	private String norm = null;
 	
 	public PolyString(String orig) {
 		super();
+		if (orig == null) {
+			throw new IllegalArgumentException("Cannot create PolyString with null orig");
+		}
 		this.orig = orig;
 	}
 	
 	public PolyString(String orig, String norm) {
 		super();
+		if (orig == null) {
+			throw new IllegalArgumentException("Cannot create PolyString with null orig");
+		}
 		this.orig = orig;
 		this.norm = norm;
 	}

@@ -123,6 +123,9 @@ public class ContainerWrapper<T extends PrismContainer> implements ItemWrapper, 
                     QName objectClass = objectClassProp != null ? objectClassProp.getRealValue() : null;
                     
                     definition = refinedSchema.findAccountDefinitionByObjectClass(objectClass);
+//                    if (LOGGER.isTraceEnabled()) {
+//                    	LOGGER.trace("Refined account def:\n{}", definition.dump());
+//                    }
                 } catch (Exception ex) {
                     throw new SystemException(ex.getMessage(), ex);
                 }
@@ -257,7 +260,7 @@ public class ContainerWrapper<T extends PrismContainer> implements ItemWrapper, 
 
     boolean isPropertyVisible(PropertyWrapper property) {
         PrismPropertyDefinition def = property.getItem().getDefinition();
-        if (!def.canRead()) {
+        if (!def.canRead() || def.isIgnored()) {
             return false;
         }
 

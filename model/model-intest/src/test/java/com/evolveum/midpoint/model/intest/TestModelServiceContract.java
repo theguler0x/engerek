@@ -66,6 +66,7 @@ import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.ReferenceDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.prism.util.PrismAsserts;
 import com.evolveum.midpoint.prism.util.PrismTestUtil;
 import com.evolveum.midpoint.schema.GetOperationOptions;
@@ -76,6 +77,7 @@ import com.evolveum.midpoint.schema.holder.XPathHolder;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.result.OperationResultStatus;
 import com.evolveum.midpoint.schema.util.MiscSchemaUtil;
+import com.evolveum.midpoint.schema.util.ResourceObjectShadowUtil;
 import com.evolveum.midpoint.schema.util.SchemaTestConstants;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.test.DummyAuditService;
@@ -187,6 +189,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         PrismObject<UserType> userJack = modelService.getObject(UserType.class, USER_JACK_OID, null, task, result);
         
         // THEN
+        display("User jack", userJack);
         assertUserJack(userJack);
         
         result.computeStatus();
@@ -208,6 +211,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         PrismObject<UserType> userBarbossa = modelService.getObject(UserType.class, USER_BARBOSSA_OID, null, task, result);
         
         // THEN
+        display("User barbossa", userBarbossa);
         assertUser(userBarbossa, USER_BARBOSSA_OID, "barbossa", "Hector Barbossa", "Hector", "Barbossa");
         
         result.computeStatus();
@@ -300,6 +304,13 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.POSITIVE);
         
+        // Let's do some evil things. Like changing some of the attribute on a resource and see if they will be
+        // fetched after get.
+        // Also set a value for ignored "water" attribute. The system should cope with that.
+        DummyAccount jackDummyAccount = getDummyAccount(null, ACCOUNT_JACK_DUMMY_USERNAME);
+        jackDummyAccount.replaceAttributeValue(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME, "The best pirate captain ever");
+        jackDummyAccount.replaceAttributeValue(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WATER_NAME, "cold");
+        
 		// WHEN
 		PrismObject<AccountShadowType> account = modelService.getObject(AccountShadowType.class, accountOid, null , task, result);
 		
@@ -314,6 +325,12 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         IntegrationTestTools.assertSuccess("getObject result", result);
         
         account.checkConsistence(true, true);
+        
+        IntegrationTestTools.assertAttribute(account, getAttributeQName(resourceDummy, DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME), 
+        		"The best pirate captain ever");
+        // This one should still be here, even if ignored
+        IntegrationTestTools.assertAttribute(account, getAttributeQName(resourceDummy, DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WATER_NAME), 
+        		"cold");
 	}
 
 	@Test
@@ -1561,10 +1578,85 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.asserHasDelta(ChangeType.MODIFY, AccountShadowType.class);
         dummyAuditService.assertExecutionSuccess();
 	}
-	
+    
+    @Test
+    public void test166ModifyUserJackLocationEmpty() throws Exception {
+    	final String TEST_NAME = "test166ModifyUserJackLocationEmpty";
+        displayTestTile(this, TEST_NAME);
+
+        // GIVEN
+        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        OperationResult result = task.getResult();
+        assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
+        dummyAuditService.clear();
+                        
+		// WHEN
+        modifyUserReplace(USER_JACK_OID, UserType.F_LOCALITY, task, result);
+		
+		// THEN
+		result.computeStatus();
+        IntegrationTestTools.assertSuccess("executeChanges result", result);
+        
+		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
+		display("User after change execution", userJack);
+		assertUserJack(userJack, "Magnificent Captain Jack Sparrow", "Jack", "Sparrow", null);
+        accountOid = getSingleUserAccountRef(userJack);
+        
+		// Check shadow
+        PrismObject<AccountShadowType> accountShadow = repositoryService.getObject(AccountShadowType.class, accountOid, result);
+        assertDummyShadowRepo(accountShadow, accountOid, "jack");
+        
+        // Check account
+        PrismObject<AccountShadowType> accountModel = modelService.getObject(AccountShadowType.class, accountOid, null, task, result);
+        assertDummyShadowModel(accountModel, accountOid, "jack", "Magnificent Captain Jack Sparrow");
+        IntegrationTestTools.assertNoAttribute(accountModel, dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
+        
+        // Check account in dummy resource
+        assertDummyAccount("jack", "Magnificent Captain Jack Sparrow", true);
+        
+        // Check audit
+        display("Audit", dummyAuditService);
+        dummyAuditService.assertRecords(2);
+        dummyAuditService.assertSimpleRecordSanity();
+        dummyAuditService.assertAnyRequestDeltas();
+        dummyAuditService.assertExecutionDeltas(2);
+        dummyAuditService.asserHasDelta(ChangeType.MODIFY, UserType.class);
+        dummyAuditService.asserHasDelta(ChangeType.MODIFY, AccountShadowType.class);
+        dummyAuditService.assertExecutionSuccess();
+	}
+
+    @Test
+    public void test167ModifyUserJackLocationNull() throws Exception {
+    	final String TEST_NAME = "test167ModifyUserJackLocationNull";
+        displayTestTile(this, TEST_NAME);
+
+        // GIVEN
+        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        OperationResult result = task.getResult();
+        assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
+        dummyAuditService.clear();
+               
+        try {
+			// WHEN
+	        modifyUserReplace(USER_JACK_OID, UserType.F_LOCALITY, task, result, (PolyString)null);
+	        
+	        AssertJUnit.fail("Unexpected success");
+        } catch (IllegalStateException e) {
+        	// This is expected
+        }
+		// THEN
+		result.computeStatus();
+        IntegrationTestTools.assertFailure(result);
+        
+        // Check audit
+        display("Audit", dummyAuditService);
+        // This should fail even before the request record is created
+        dummyAuditService.assertRecords(0);
+	}
+    
 	@Test
-    public void test166ModifyUserJackRaw() throws Exception {
-        displayTestTile(this, "test166ModifyUserJackRaw");
+    public void test168ModifyUserJackRaw() throws Exception {
+        displayTestTile(this, "test168ModifyUserJackRaw");
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + ".test166ModifyUserJackRaw");
@@ -1585,7 +1677,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
-		assertUserJack(userJack, "Marvelous Captain Jack Sparrow");
+		assertUserJack(userJack, "Marvelous Captain Jack Sparrow", "Jack", "Sparrow", null);
         accountOid = getSingleUserAccountRef(userJack);
         
 		// Check shadow

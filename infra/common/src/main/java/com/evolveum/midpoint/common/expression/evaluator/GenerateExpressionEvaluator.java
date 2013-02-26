@@ -45,6 +45,8 @@ import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
+import com.evolveum.midpoint.prism.xml.XsdTypeMapper;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.util.DOMUtil;
@@ -76,6 +78,7 @@ public class GenerateExpressionEvaluator<V extends PrismValue> implements Expres
 		this.generateEvaluatorType = generateEvaluatorType;
 		this.outputDefinition = outputDefinition;
 		this.protector = protector;
+		this.elementStringPolicy = elementStringPolicy;
 		this.prismContext = prismContext;
 	}
 
@@ -86,10 +89,6 @@ public class GenerateExpressionEvaluator<V extends PrismValue> implements Expres
 	public PrismValueDeltaSetTriple<V> evaluate(ExpressionEvaluationParameters params) throws SchemaException,
 			ExpressionEvaluationException, ObjectNotFoundException {
 				
-        QName outputType = outputDefinition.getTypeName();
-        if (!outputType.equals(DOMUtil.XSD_STRING) && !outputType.equals(SchemaConstants.R_PROTECTED_STRING_TYPE)) {
-        	throw new IllegalArgumentException("Generate value constructor cannot generate values for properties of type " + outputType);
-        }
         
         StringPolicyType stringPolicyType = null;
         
@@ -107,8 +106,13 @@ public class GenerateExpressionEvaluator<V extends PrismValue> implements Expres
 		if (stringPolicyType != null) {
 			if (stringPolicyType.getLimitations().getMinLength() != null) {
 				stringValue = ValuePolicyGenerator.generate(stringPolicyType, DEFAULT_LENGTH, true, params.getResult());
+			} else{
+				stringValue = ValuePolicyGenerator.generate(stringPolicyType, DEFAULT_LENGTH, false, params.getResult());
 			}
-			stringValue = ValuePolicyGenerator.generate(stringPolicyType, DEFAULT_LENGTH, false, params.getResult());
+			params.getResult().computeStatus();
+			if (params.getResult().isError()){
+				throw new ExpressionEvaluationException("Failed to generate value according to policy: " + stringPolicyType.getDescription() +". "+ params.getResult().getMessage());
+			}
 		}
         
         if (stringValue == null){
@@ -117,17 +121,29 @@ public class GenerateExpressionEvaluator<V extends PrismValue> implements Expres
     		stringValue= randomString.nextString();	
         }
         
-        Object value  = stringValue;
-    	
-        
-        if (outputType.equals(SchemaConstants.R_PROTECTED_STRING_TYPE)) {
+        Object value;
+        QName outputType = outputDefinition.getTypeName();
+        if (outputType.equals(DOMUtil.XSD_STRING)) {
+        	value  = stringValue;
+        } else if (outputType.equals(SchemaConstants.R_PROTECTED_STRING_TYPE)) {
         	try {
 				value = protector.encryptString(stringValue);
 			} catch (EncryptionException e) {
 				throw new ExpressionEvaluationException("Crypto error: "+e.getMessage(),e);
 			}
+        } else if (XmlTypeConverter.canConvert(outputType)) {
+        	Class<?> outputJavaType = XsdTypeMapper.toJavaType(outputType);
+        	try {
+        		value = XmlTypeConverter.toJavaValue(stringValue, outputJavaType, true);
+        	} catch (NumberFormatException e) {
+        		throw new SchemaException("Cannot convert generated string '"+stringValue+"' to data type "+outputType+": invalid number format", e);
+        	} catch (IllegalArgumentException e) {
+        		throw new SchemaException("Cannot convert generated string '"+stringValue+"' to data type "+outputType+": "+e.getMessage(), e);
+        	}
+		} else {
+        	throw new IllegalArgumentException("Generate value constructor cannot generate values for properties of type " + outputType);
         }
-        
+                
 		Item<V> output = outputDefinition.instantiate();
 		if (output instanceof PrismProperty) {
 			PrismPropertyValue<Object> pValue = new PrismPropertyValue<Object>(value);

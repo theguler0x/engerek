@@ -35,7 +35,9 @@ import com.evolveum.midpoint.schema.ObjectOperationOption;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.schema.SchemaConstantsGenerated;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.web.page.admin.configuration.dto.DebugObjectItem;
 import com.evolveum.midpoint.xml.ns._public.common.api_types_2.OperationOptionsType;
+import com.evolveum.midpoint.xml.ns._public.common.common_2a.ResourceObjectShadowType;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.wicket.Component;
@@ -46,6 +48,7 @@ import org.apache.wicket.ajax.markup.html.form.AjaxCheckBox;
 import org.apache.wicket.extensions.ajax.markup.html.modal.ModalWindow;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.DataTable;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.IColumn;
+import org.apache.wicket.extensions.markup.html.repeater.data.table.PropertyColumn;
 import org.apache.wicket.markup.html.form.Form;
 import org.apache.wicket.markup.html.form.IChoiceRenderer;
 import org.apache.wicket.markup.html.form.ListChoice;
@@ -105,12 +108,19 @@ public class PageDebugList extends PageAdminConfiguration {
     private static final String OPERATION_SEARCH_OBJECT = DOT_CLASS + "loadObjects";
 	private static final String OPERATION_CREATE_DOWNLOAD_FILE = DOT_CLASS + "createDownloadFile";
 
+    private static final String ID_CONFIRM_DELETE_POPUP = "confirmDeletePopup";
     private static final String ID_MAIN_FORM = "mainForm";
     private static final String ID_ZIP_CHECK = "zipCheck";
+    private static final String ID_OPTION_CONTENT = "optionContent";
+    private static final String ID_OPTION = "option";
+    private static final String ID_SEARCH = "search";
+    private static final String ID_CATEGORY = "category";
+    private static final String ID_TABLE = "table";
+    private static final String ID_CHOICE = "choice";
 
     private boolean deleteSelected; //todo what is this used for?
     private IModel<ObjectTypes> choice = null;
-    private ObjectType object = null; //todo what is this used for?
+    private DebugObjectItem object = null; //todo what is this used for?
 
     public PageDebugList() {
         initLayout();
@@ -118,8 +128,8 @@ public class PageDebugList extends PageAdminConfiguration {
 
     private void initLayout() {
     	//confirm delete
-    	add(new ConfirmationDialog("confirmDeletePopup", createStringResource("pageDebugList.dialog.title.confirmDelete"),
-                createDeleteConfirmString()) {
+    	add(new ConfirmationDialog(ID_CONFIRM_DELETE_POPUP,
+                createStringResource("pageDebugList.dialog.title.confirmDelete"), createDeleteConfirmString()) {
 
             @Override
             public void yesPerformed(AjaxRequestTarget target) {
@@ -131,7 +141,6 @@ public class PageDebugList extends PageAdminConfiguration {
                 } else {
                 	deleteObjectConfirmedPerformed(target);
                 }
-                
             }
         });
     	
@@ -146,56 +155,31 @@ public class PageDebugList extends PageAdminConfiguration {
     	}
     	final IModel<ObjectTypes> choice = sessionChoice;
 
-        List<IColumn<? extends ObjectType, String>> columns = new ArrayList<IColumn<? extends ObjectType, String>>();
-
-        IColumn column = new CheckBoxHeaderColumn<ObjectType>();
-        columns.add(column);
-
-        column = new LinkColumn<SelectableBean<? extends ObjectType>>(createStringResource("pageDebugList.name"), "name", "value.name") {
-
-            @Override
-            public void onClick(AjaxRequestTarget target, IModel<SelectableBean<? extends ObjectType>> rowModel) {
-                ObjectType object = rowModel.getObject().getValue();
-                objectEditPerformed(target, object.getOid());
-            }
-        };
-        columns.add(column);
-
-        column = new ButtonColumn<SelectableBean<? extends ObjectType>>(createStringResource("pageDebugList.operation"),
-                createStringResource("pageDebugList.button.delete")) {
-
-            @Override
-            public void onClick(AjaxRequestTarget target, IModel<SelectableBean<? extends ObjectType>> rowModel) {
-                ObjectType object = rowModel.getObject().getValue();
-                deleteObjectPerformed(target, choice, object);
-            }
-        };
-        columns.add(column);
-
         final Form main = new Form(ID_MAIN_FORM);
         add(main);
         
-        OptionPanel option = new OptionPanel("option", createStringResource("pageDebugList.optionsTitle"), getPage(), false);
+        OptionPanel option = new OptionPanel(ID_OPTION, createStringResource("pageDebugList.optionsTitle"), getPage(), false);
         option.setOutputMarkupId(true);
         main.add(option);
 
-        OptionItem item = new OptionItem("search", createStringResource("pageDebugList.search"));
+        OptionItem item = new OptionItem(ID_SEARCH, createStringResource("pageDebugList.search"));
         option.getBodyContainer().add(item);
         IModel<String> searchNameModel = initSearch(item, choice);
 
-        item = new OptionItem("category", createStringResource("pageDebugList.selectType"));
+        item = new OptionItem(ID_CATEGORY, createStringResource("pageDebugList.selectType"));
         option.getBodyContainer().add(item);
         initCategory(item, choice, searchNameModel);
 
-        OptionContent content = new OptionContent("optionContent");
+        OptionContent content = new OptionContent(ID_OPTION_CONTENT);
         main.add(content);
         
-        Class provider = selectedCategory == null ? SystemConfigurationType.class : selectedCategory.getCompileTimeClass();
-        TablePanel table = new TablePanel("table", new RepositoryObjectDataProvider(PageDebugList.this,
-        		provider), columns);
-        table.setOutputMarkupId(true);
-        content.getBodyContainer().add(table);
+        Class type = selectedCategory == null ? SystemConfigurationType.class : selectedCategory.getCompileTimeClass();
+        addOrReplaceTable(type);
 
+        initButtonBar(main);
+    }
+
+    private void initButtonBar(Form main) {
         AjaxLinkButton delete = new AjaxLinkButton("deleteSelected", ButtonType.NEGATIVE,
                 createStringResource("pageDebugList.button.deleteSelected")) {
 
@@ -205,35 +189,80 @@ public class PageDebugList extends PageAdminConfiguration {
             }
         };
         main.add(delete);
-        
+
         final AjaxDownloadBehaviorFromFile ajaxDownloadBehavior = new AjaxDownloadBehaviorFromFile(true) {
 
             @Override
             protected File initFile() {
-            	return initDownloadFile(choice);
+                return initDownloadFile(choice);
             }
         };
         main.add(ajaxDownloadBehavior);
-        
-        
-		AjaxLinkButton export = new AjaxLinkButton("exportAll",
-				createStringResource("pageDebugList.button.exportAll")) {
 
-			@Override
-			public void onClick(AjaxRequestTarget target) {
+
+        AjaxLinkButton export = new AjaxLinkButton("exportAll",
+                createStringResource("pageDebugList.button.exportAll")) {
+
+            @Override
+            public void onClick(AjaxRequestTarget target) {
                 ajaxDownloadBehavior.initiate(target);
-			}
-		};
+            }
+        };
         main.add(export);
 
-        //todo this method has 150 lines, which is way to much. break it into smaller chunks
         AjaxCheckBox zipCheck = new AjaxCheckBox(ID_ZIP_CHECK, new Model<Boolean>(false)){
 
-			@Override
-			protected void onUpdate(AjaxRequestTarget target) {
-			}
+            @Override
+            protected void onUpdate(AjaxRequestTarget target) {
+            }
         };
         main.add(zipCheck);
+    }
+
+    private void addOrReplaceTable(Class<? extends ObjectType> type) {
+        OptionContent content = (OptionContent) get(createComponentPath(ID_MAIN_FORM, ID_OPTION_CONTENT));
+
+        TablePanel table = new TablePanel(ID_TABLE, new RepositoryObjectDataProvider(this, type), initColumns(type));
+        table.setOutputMarkupId(true);
+        content.getBodyContainer().addOrReplace(table);
+    }
+
+    private List<IColumn> initColumns(Class<? extends ObjectType> type) {
+        List<IColumn> columns = new ArrayList<IColumn>();
+
+        IColumn column = new CheckBoxHeaderColumn<ObjectType>();
+        columns.add(column);
+
+        column = new LinkColumn<DebugObjectItem>(createStringResource("pageDebugList.name"), "name",
+                DebugObjectItem.F_NAME) {
+
+            @Override
+            public void onClick(AjaxRequestTarget target, IModel<DebugObjectItem> rowModel) {
+                DebugObjectItem object = rowModel.getObject();
+                objectEditPerformed(target, object.getOid());
+            }
+        };
+        columns.add(column);
+
+        if (ResourceObjectShadowType.class.isAssignableFrom(type)) {
+            columns.add(new PropertyColumn(createStringResource("pageDebugList.resourceName"),
+                    DebugObjectItem.F_RESOURCE_NAME));
+            columns.add(new PropertyColumn(createStringResource("pageDebugList.resourceType"),
+                    DebugObjectItem.F_RESOURCE_TYPE));
+        }
+
+        column = new ButtonColumn<DebugObjectItem>(createStringResource("pageDebugList.operation"),
+                createStringResource("pageDebugList.button.delete")) {
+
+            @Override
+            public void onClick(AjaxRequestTarget target, IModel<DebugObjectItem> rowModel) {
+                DebugObjectItem object = rowModel.getObject();
+                deleteObjectPerformed(target, choice, object);
+            }
+        };
+        columns.add(column);
+
+        return columns;
     }
 
     //todo remove argument, choice model all over the place (at least two of them, again two variables...)
@@ -276,7 +305,7 @@ public class PageDebugList extends PageAdminConfiguration {
     }
 
     private boolean hasToZip() {
-        AjaxCheckBox zipCheck = (AjaxCheckBox) get(ID_MAIN_FORM + ":" + ID_ZIP_CHECK);
+        AjaxCheckBox zipCheck = (AjaxCheckBox) get(createComponentPath(ID_MAIN_FORM, ID_ZIP_CHECK));
         return zipCheck.getModelObject();
     }
 
@@ -298,7 +327,7 @@ public class PageDebugList extends PageAdminConfiguration {
             public void onSubmit(AjaxRequestTarget target, Form<?> form) {
                 model.setObject(null);
                 target.appendJavaScript("init()");
-                target.add(PageDebugList.this.get(ID_MAIN_FORM + ":option"));
+                target.add(PageDebugList.this.get(createComponentPath(ID_MAIN_FORM , ID_OPTION)));
                 listObjectsPerformed(target, model.getObject(), choice.getObject());
             }
         };
@@ -338,7 +367,7 @@ public class PageDebugList extends PageAdminConfiguration {
         };
 
         IModel<List<ObjectTypes>> choiceModel = createChoiceModel(renderer);
-        final ListChoice listChoice = new ListChoice("choice", choice, choiceModel, renderer, choiceModel.getObject().size()) {
+        final ListChoice listChoice = new ListChoice(ID_CHOICE, choice, choiceModel, renderer, choiceModel.getObject().size()) {
 
             @Override
             protected CharSequence getDefaultChoice(String selectedValue) {
@@ -403,6 +432,7 @@ public class PageDebugList extends PageAdminConfiguration {
 
         if (selected != null) {
             provider.setType(selected.getClassDefinition());
+            addOrReplaceTable(selected.getClassDefinition());
         }
         
         TablePanel table = getListTable();
@@ -415,10 +445,10 @@ public class PageDebugList extends PageAdminConfiguration {
         setResponsePage(PageDebugView.class, parameters);
     }
 
-    private RepositoryObjectDataProvider<ObjectType> getTableDataProvider() {
+    private RepositoryObjectDataProvider getTableDataProvider() {
         TablePanel tablePanel = getListTable();
         DataTable table = tablePanel.getDataTable();
-        return (RepositoryObjectDataProvider<ObjectType>) table.getDataProvider();
+        return (RepositoryObjectDataProvider) table.getDataProvider();
     }
     
     private IModel<String> createDeleteConfirmString() {
@@ -440,7 +470,7 @@ public class PageDebugList extends PageAdminConfiguration {
 							selectedItem.getValue().getName().getOrig()).getString();
 				}
 				
-				return createStringResource("pageDebugList.message.deleteObjectConfirm" ,object.getName().getOrig())
+				return createStringResource("pageDebugList.message.deleteObjectConfirm", object.getName())
 						.getString();
             }
         };
@@ -507,14 +537,14 @@ public class PageDebugList extends PageAdminConfiguration {
             return;
         }
         
-    	ModalWindow dialog = (ModalWindow) get("confirmDeletePopup");
+    	ModalWindow dialog = (ModalWindow) get(ID_CONFIRM_DELETE_POPUP);
     	deleteSelected = true;
     	this.choice = choice;
         dialog.show(target);
     }
 
-    private void deleteObjectPerformed(AjaxRequestTarget target, IModel<ObjectTypes> choice, ObjectType object) {
-    	ModalWindow dialog = (ModalWindow) get("confirmDeletePopup");
+    private void deleteObjectPerformed(AjaxRequestTarget target, IModel<ObjectTypes> choice, DebugObjectItem object) {
+    	ModalWindow dialog = (ModalWindow) get(ID_CONFIRM_DELETE_POPUP);
     	this.choice = choice;
     	this.object = object;
         dialog.show(target);

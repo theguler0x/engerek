@@ -45,6 +45,7 @@ import com.evolveum.midpoint.web.security.MidPointApplication;
 import com.evolveum.midpoint.web.security.SecurityUtils;
 import com.evolveum.midpoint.wf.WfDataAccessor;
 import com.evolveum.midpoint.wf.WorkflowManager;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.wicket.devutils.debugbar.DebugBar;
 import org.apache.wicket.feedback.FeedbackMessage;
@@ -283,6 +284,10 @@ public abstract class PageBase extends WebPage {
                     warn(opResult);
                 }
         }
+    }
+
+    protected String createComponentPath(String... components) {
+        return StringUtils.join(components, ":");
     }
 
     /**

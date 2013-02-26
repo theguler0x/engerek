@@ -29,6 +29,7 @@ import java.util.Map;
 
 import javax.servlet.ServletContext;
 
+import com.evolveum.midpoint.web.page.admin.configuration.dto.DebugObjectItem;
 import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.JasperCompileManager;
 import net.sf.jasperreports.engine.JasperExportManager;
@@ -454,10 +455,10 @@ public class PageReports extends PageAdminReports {
 		return (DropDownChoice) item.getBodyContainer().get("resourceChoice");
 	}
 
-	 private RepositoryObjectDataProvider<ObjectType> getTableDataProvider() {
+	 private RepositoryObjectDataProvider getTableDataProvider() {
 	        TablePanel tablePanel = getTable();
 	        DataTable table = tablePanel.getDataTable();
-	        return (RepositoryObjectDataProvider<ObjectType>) table.getDataProvider();
+	        return (RepositoryObjectDataProvider) table.getDataProvider();
 	    }
 
 	private void searchPerformed(AjaxRequestTarget target) {
@@ -545,7 +546,7 @@ public class PageReports extends PageAdminReports {
             clonedQuery = new ObjectQuery();
             clonedQuery.setFilter(query.getFilter());
         }
-        Class<ObjectType> type = getTableDataProvider().getType();
+        Class type = getTableDataProvider().getType();
         if (type == null) {
             type = ObjectType.class;
         }

@@ -170,6 +170,10 @@ public class ObjectDelta<T extends Objectable> implements Dumpable, DebugDumpabl
 		return prismContext;
 	}
 
+	public void setPrismContext(PrismContext prismContext) {
+		this.prismContext = prismContext;
+	}
+
 	public PrismObject<T> getObjectToAdd() {
         return objectToAdd;
     }
@@ -203,7 +207,7 @@ public class ObjectDelta<T extends Objectable> implements Dumpable, DebugDumpabl
     
 	public boolean containsModification(ItemDelta itemDelta) {
 		for (ItemDelta modification: modifications) {
-			if (modification.equals(itemDelta)) {
+			if (modification.contains(itemDelta)) {
 				return true;
 			}
 		}

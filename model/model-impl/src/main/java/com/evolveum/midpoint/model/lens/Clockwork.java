@@ -115,6 +115,9 @@ public class Clockwork {
 	
 	public <F extends ObjectType, P extends ObjectType> HookOperationMode click(LensContext<F,P> context, Task task, OperationResult result) throws SchemaException, PolicyViolationException, ExpressionEvaluationException, ObjectNotFoundException, ObjectAlreadyExistsException, CommunicationException, ConfigurationException, SecurityViolationException, RewindException {
 		
+		// DO NOT CHECK CONSISTENCY of the context here. The context may not be fresh and consistent yet. Project will fix
+		// that. Check consistency afterwards (and it is also checked inside projector several times).
+		
 		try {
 			
 			// We need to determine focus before auditing. Otherwise we will not know user
@@ -138,6 +141,13 @@ public class Clockwork {
 			}
 			
 			LensUtil.traceContext(LOGGER, "clockwork", state.toString() + " projection (before processing)", true, context, false);
+			if (CompiletimeConfig.CONSISTENCY_CHECKS) {
+				try {
+					context.checkConsistence();
+				} catch (IllegalStateException e) {
+					throw new IllegalStateException(e.getMessage()+" in clockwork, state="+state, e);
+				}
+			}
 			
 	//		LOGGER.info("CLOCKWORK: {}: {}", state, context);
 			

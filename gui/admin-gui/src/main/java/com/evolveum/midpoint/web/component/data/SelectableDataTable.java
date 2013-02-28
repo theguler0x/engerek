@@ -1,8 +1,6 @@
 package com.evolveum.midpoint.web.component.data;
 
-import com.evolveum.midpoint.web.component.util.SelectableBean;
-import com.evolveum.midpoint.web.page.admin.resources.dto.ResourceDto;
-import com.evolveum.midpoint.web.page.admin.server.dto.TaskDto;
+import com.evolveum.midpoint.web.component.util.Selectable;
 import org.apache.wicket.ajax.AjaxEventBehavior;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.DataTable;
@@ -27,33 +25,17 @@ public class SelectableDataTable<T> extends DataTable<T, String> {
 
             @Override
             protected void onEvent(AjaxRequestTarget target) {
-
-                String id = rowItem.getId();
                 T object = rowItem.getModel().getObject();
-
-                SelectableBean selectable = null;
-                if (object instanceof SelectableBean<?>) {
-
-                    selectable = (SelectableBean) object;
-                }
-                if (selectable == null) {
-                    if (object instanceof ResourceDto) {
-                        ResourceDto resource = (ResourceDto) object;
-                        boolean enabled = !resource.isSigned();
-                        resource.setSelected(enabled);
-                        resource.setSigned(enabled);
-                    } else if (object instanceof TaskDto) {
-                        TaskDto task = (TaskDto) object;
-                        boolean enabled = !task.isSigned();
-                        task.setSelected(enabled);
-                        task.setSigned(enabled);
-                    }
+                if (!(object instanceof Selectable)) {
+                    //todo I dont' get it, but what else to do? [lazyman]
                     return;
                 }
-                boolean enabled = !selectable.isSigned();
-                ((SelectableBean) object).setSelected(enabled);
-                ((SelectableBean) object).setSigned(enabled);
 
+                Selectable selectable = (Selectable) object;
+
+                boolean enabled = !selectable.isSigned();
+                selectable.setSelected(enabled);
+                selectable.setSigned(enabled);
             }
         });
 

@@ -19,19 +19,20 @@
 <!-- Portions Copyrighted 2011 [name of copyright owner]     -->
 <!--                                                         -->
 
-<!-- GREEN dummy resource. This is authoritative resource. -->
+<!-- YELLOW dummy resource for testing. It is used in multi-resource tests.
+      If has dependency on default dummy resource. -->
 
-<resource oid="10000000-0000-0000-0000-000000000404"
+<resource oid="10000000-0000-0000-0000-000000000504"
 		  xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-2a"
           xmlns:c="http://midpoint.evolveum.com/xml/ns/public/common/common-2a"
+          xmlns:t="http://prism.evolveum.com/xml/ns/public/types-2"
           xmlns:q="http://prism.evolveum.com/xml/ns/public/query-2"
           xmlns:icfs="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/resource-schema-2"
           xmlns:ri="http://midpoint.evolveum.com/xml/ns/public/resource/instance-2"
-          xmlns:piracy="http://midpoint.evolveum.com/xml/ns/samples/piracy"
           xmlns:xsd="http://www.w3.org/2001/XMLSchema"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-
-	<name>Dummy Resource Green</name>
+								  
+	<name>Dummy Resource Yellow</name>
 	<connectorRef type="c:ConnectorType">
 		<filter>
 			<q:and>
@@ -50,7 +51,7 @@
 	               xmlns:icfc="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/connector-schema-2">
 					   
 		<icfc:configurationProperties>
-			<icfi:instanceId>green</icfi:instanceId> <!-- Default instance. -->
+			<icfi:instanceId>yellow</icfi:instanceId>
 		</icfc:configurationProperties>
 
 	</connectorConfiguration>
@@ -107,6 +108,8 @@
                   <xsd:element name="weapon" type="xsd:string" minOccurs="0" maxOccurs="unbounded"/>
                   <xsd:element name="drink" type="xsd:string" minOccurs="0" maxOccurs="unbounded"/>
                   <xsd:element name="quote" type="xsd:string" minOccurs="0" maxOccurs="unbounded"/>
+                  <xsd:element name="gossip" type="xsd:string" minOccurs="0" maxOccurs="unbounded"/>
+                  <xsd:element name="water" type="xsd:string" minOccurs="0" maxOccurs="1"/>
                </xsd:sequence>
             </xsd:complexType>
          </xsd:schema>
@@ -129,15 +132,14 @@
 				    </source>
 					<expression>
 						<script>
+							<language>http://www.w3.org/TR/xpath/</language>
 							<code>
-								name + iterationToken
+								concat($c:name/t:orig, $c:iterationToken)
 							</code>
 						</script>
 					</expression>
 				</outbound>
 				<inbound>
-					<!-- This avoids "kickback" of a name from account to a user. -->
-					<strength>weak</strength>
 					<target>
 						<path>$c:user/c:name</path>
 					</target>
@@ -155,41 +157,15 @@
 				<access>read</access>
 				<access>update</access>
 				<outbound>
+					<strength>strong</strength>
 					<source>
-						<path>$user/fullName</path>
+						<path>fullName</path>
 					</source>
 				</outbound>
 				<inbound>
-					<strength>strong</strength>
+					<strength>weak</strength>
 					<target>
-						<path>$user/fullName</path>
-					</target>
-				</inbound>
-			</attribute>
-			<attribute>
-				<ref>ri:location</ref>
-				<displayName>Location</displayName>
-				<access>create</access>
-				<access>read</access>
-				<access>update</access>
-				<outbound>
-					<strength>strong</strength>
-					<source>
-						<path>
-							$c:user/c:locality
-						</path>
-					</source>
-				</outbound>
-				<inbound>
-					<strength>strong</strength>
-					<channel>http://midpoint.evolveum.com/xml/ns/public/provisioning/channels-2#import</channel>
-					<expression>
-						<script>
-							<code>'Came from ' + input</code>
-						</script>
-					</expression>
-					<target>
-						<path>description</path>
+						<path>fullName</path>
 					</target>
 				</inbound>
 			</attribute>
@@ -199,140 +175,37 @@
 				<access>create</access>
 				<access>read</access>
 				<access>update</access>
-				<inbound>
+				<outbound>
 					<strength>strong</strength>
-					<expression>
-						<script>
-							<code>'The crew of ' + input</code>
-						</script>
-					</expression>
-					<target>
-						<path>organizationalUnit</path>
-					</target>
-				</inbound>
-			</attribute>
-			<attribute>
-				<ref>ri:loot</ref>
-				<displayName>Loot</displayName>
-				<outbound>
-					<channel>http://pirates.net/avast</channel>
-					<expression>
-						<value>10000</value>
-					</expression>
-				</outbound>
-			</attribute>
-			<attribute>
-				<ref>ri:weapon</ref>
-				<displayName>Weapon</displayName>
-				<outbound>
-					<strength>weak</strength>
 					<source>
-						<path>
-							$user/extension/piracy:weapon
-						</path>
+						<path>$c:user/c:organizationalUnit</path>
 					</source>
 				</outbound>
 			</attribute>
-			<attribute>
-				<ref>ri:drink</ref>
-				<displayName>Drink</displayName>
-				<tolerant>false</tolerant>
-				<outbound>
-					<strength>strong</strength>
-					<expression>
-						<value>rum</value>
-					</expression>
-				</outbound>
-			</attribute>
-			<attribute>
-				<ref>ri:quote</ref>
-				<displayName>Quote</displayName>
-				<tolerant>true</tolerant>
-				<outbound>
-					<strength>strong</strength>
-					<expression>
-						<value>Arr!</value>
-					</expression>
-				</outbound>
-			</attribute>
-			
+			<dependency>
+				<resourceRef oid="10000000-0000-0000-0000-000000000004"/>
+			</dependency>
 			<credentials>
                 <password>
                     <outbound>
-                    	<strength>weak</strength>
+                    	<strength>strong</strength>
                     	<expression>
                         	<asIs/>
                         </expression>
                     </outbound>
-                    <inbound>
-                    	<strength>weak</strength>
-                        <expression>
-                            <generate/>
-                        </expression>
-                    </inbound>
                 </password>
             </credentials>
-            
             <activation>
             	<enabled>
-            		<outbound>
-            			<strength>weak</strength>
+                    <outbound>
+                    	<strength>strong</strength>
                     	<expression>
                         	<asIs/>
                         </expression>
-            		</outbound>
-            		<inbound>
-            			<strength>weak</strength>
-            		</inbound>
+                    </outbound>            	
             	</enabled>
             </activation>
-            
-            <iteration>
-				<maxIterations>5</maxIterations>
-			</iteration>
-            
-            <protected>
-            	<icfs:name>daviejones</icfs:name>
-            </protected>
-            <protected>
-            	<icfs:name>calypso</icfs:name>
-            </protected>
 		</accountType>
-		
 	</schemaHandling>
 	
-	<consistency>
-		<avoidDuplicateValues>true</avoidDuplicateValues>
-	</consistency>
-	
-	<synchronization>
-		<objectSynchronization>
-			<enabled>true</enabled>
-			<correlation>
-				<q:equal>
-					<q:path>c:name</q:path>
-					<valueExpression>
-						<path>$account/attributes/icfs:name</path>
-					</valueExpression>
-				</q:equal>
-			</correlation>
-			<reaction>
-	            <situation>linked</situation>
-	            <action ref="http://midpoint.evolveum.com/xml/ns/public/model/action-2#modifyUser"/>
-	        </reaction>
-	        <reaction>
-	            <situation>deleted</situation>
-	            <action ref="http://midpoint.evolveum.com/xml/ns/public/model/action-2#deleteUser"/>
-	        </reaction>
-	        <reaction>
-	            <situation>unlinked</situation>
-	            <action ref="http://midpoint.evolveum.com/xml/ns/public/model/action-2#linkAccount"/>
-	        </reaction>
-	        <reaction>
-	            <situation>unmatched</situation>
-	            <action ref="http://midpoint.evolveum.com/xml/ns/public/model/action-2#addUser"/>
-	        </reaction>
-        </objectSynchronization>
-	</synchronization>
-
 </resource>

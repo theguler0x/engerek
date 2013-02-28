@@ -287,6 +287,7 @@ public abstract class ItemDelta<V extends PrismValue> implements Itemable, Dumpa
 		if (valuesToReplace != null) {
 			if (!PrismValue.containsRealValue(valuesToReplace, newValue)) {
 				valuesToReplace.add(newValue);
+				newValue.setParent(this);
 			}
 		} else {
 			if (!removeValueToDelete(newValue)) {
@@ -500,6 +501,14 @@ public abstract class ItemDelta<V extends PrismValue> implements Itemable, Dumpa
 		return false;
 	}
 	
+	public boolean addsAnyValue() {
+		return hasAnyValue(valuesToAdd) || hasAnyValue(valuesToReplace); 
+	}
+	
+	private boolean hasAnyValue(Collection<V> set) {
+		return (set != null && !set.isEmpty());
+	}
+
 	public void normalize() {
 		normalize(valuesToAdd);
 		normalize(valuesToDelete);
@@ -902,6 +911,38 @@ public abstract class ItemDelta<V extends PrismValue> implements Itemable, Dumpa
 		Item<V> itemNew = itemOld.clone();
 		applyTo(itemNew);
 		return itemNew;
+	}
+	
+	/**
+	 * Returns true if the other delta is a complete subset of this delta.
+	 * I.e. if all the statements of the other delta are already contained
+	 * in this delta. As a consequence it also returns true if the two
+	 * deltas are equal. 
+	 */
+	public boolean contains(ItemDelta<V> other) {
+		if (!containsSet(this.valuesToAdd, other.valuesToAdd)) {
+			return false;
+		}
+		if (!containsSet(this.valuesToDelete, other.valuesToDelete)) {
+			return false;
+		}
+		if (!containsSet(this.valuesToReplace, other.valuesToReplace)) {
+			return false;
+		}
+		return true;
+	}
+
+	private boolean containsSet(Collection<V> thisSet, Collection<V> otherSet) {
+		if (thisSet == null && otherSet == null) {
+			return true;
+		}
+		if (otherSet == null) {
+			return true;
+		}
+		if (thisSet == null) {
+			return false;
+		}
+		return thisSet.containsAll(otherSet);
 	}
 
 	public abstract ItemDelta<V> clone();

@@ -24,30 +24,153 @@
 <body>
 <wicket:extend>
     <form wicket:id="mainForm">
-        <h2><wicket:message key="PageSystemConfiguration.title.accountSynchronization"/></h2>
-        AccountSynchronizationSettingsType
+        <table>
+            <tr>
+                <td style="width: 50%; vertical-align: top;">
+<!-- BASIC -->
+                    <h2><wicket:message key="PageSystemConfiguration.title.basic"/></h2>
+                    <div class="form">
+                        <div class="formLine">
+                            <label class="formLabel">
+                                <wicket:message key="PageSystemConfiguration.title.passwordPolicy"/>
+                            </label>
+                            <a title="This is password policy description full text bla bla bla">Default password policy</a>
 
-        <h2><wicket:message key="PageSystemConfiguration.title.passwordPolicy"/></h2>
-        zero or one reference
+                            <a href="#">change</a>
+                            <a href="#">remove</a>
+                        </div>
+                        <div class="formLine">
+                            <label class="formLabel">
+                                <wicket:message key="PageSystemConfiguration.title.userTemplate"/>
+                            </label>
+                            <a title="This is sample user template description full text bla bla bla">Sample template</a>
 
-        Name: NAME, Oid: 00000-0000-000000-00000000
-        <a wicket:id="removePasswordPolicy"/>
-        <a wicket:id="browsePasswordPolicy"/>
+                            <a href="#">change</a>
+                            <a href="#">remove</a>
+                        </div>
+                        <div class="formLine">
+                            <label class="formLabel">
+                                <wicket:message key="PageSystemConfiguration.title.orgStructureRoots"/>
+                            </label>
+                            <a title="This is root 1 description full text bla bla bla">Root 1</a>
 
-        <h2><wicket:message key="PageSystemConfiguration.title.modelHooks"/></h2>
-        ModelHooksType
+                            <a href="#">change</a>
+                            <a href="#">add</a>
+                            <a href="#">remove</a>
+                        </div>
+                        <div class="formLine">
+                            <label class="formLabel"></label>
+                            <a title="This is root 2 description full text bla bla bla">Root 2</a>
 
-        <h2><wicket:message key="PageSystemConfiguration.title.userTemplate"/></h2>
-        zero or one reference
-
-        <h2><wicket:message key="PageSystemConfiguration.title.connectorFramework"/></h2>
-        ConnectorFrameworkType
-
-        <h2><wicket:message key="PageSystemConfiguration.title.orgStructureRoots"/></h2>
-        zero or more references
-
-        <h2><wicket:message key="PageSystemConfiguration.title.notification"/></h2>
-        NotificationConfigurationType
+                            <a href="#">change</a>
+                            <a href="#">add</a>
+                            <a href="#">remove</a>
+                        </div>
+                    </div>
+<!-- ACCOUNT SYNCHRONIZATION -->
+                    <h2 class="form"><wicket:message key="PageSystemConfiguration.title.accountSynchronization"/></h2>
+                    <div class="form">
+                        <div class="formLine">
+                            <div class="formLabel">
+                                <label>
+                                    <wicket:message key="PageSystemConfiguration.assignmentPolicyEnforcement"/>
+                                </label>
+                            </div>
+                            <select>
+                                <option>None</option>
+                                <option>Positive</option>
+                                <option>Mark</option>
+                                <option>Legalize</option>
+                                <option>Full</option>
+                            </select>
+                        </div>
+                    </div>
+<!-- MODEL HOOKS -->
+                    <h2 class="form"><wicket:message key="PageSystemConfiguration.title.modelHooks"/></h2>
+                    <div class="form">
+                        todo
+                    </div>
+                </td>
+                <td style="vertical-align: top;">
+<!-- NOTIFICATION -->
+                    <h2><wicket:message key="PageSystemConfiguration.title.notification"/></h2>
+                    <div class="form">
+                        <div class="formLine">
+                            <div class="formLabel">
+                                <label>
+                                    <wicket:message key="PageSystemConfiguration.mail.defaultFrom" />
+                                </label>
+                            </div>
+                            <input type="text"/>
+                        </div>
+                        <div class="formLine">
+                            <div class="formLabel">
+                                <label>
+                                    <wicket:message key="PageSystemConfiguration.mail.debug" />
+                                </label>
+                            </div>
+                            <input type="checkbox"/>
+                        </div>
+<!-- MAIL SERVER -->
+                        <div class="formSection">
+                            <label>
+                                <wicket:message key="PageSystemConfiguration.mail.mailServer"/>
+                            </label>
+                            <a class="tools"><img src="img/cog.png"/></a>
+                        </div>
+                        <div class="formLine">
+                            <div class="formLabel">
+                                <label>
+                                    <wicket:message key="PageSystemConfiguration.mail.host"/>
+                                </label>
+                            </div>
+                            <input type="text"/>
+                        </div>
+                        <div class="formLine">
+                            <div class="formLabel">
+                                <label>
+                                    <wicket:message key="PageSystemConfiguration.mail.port"/>
+                                </label>
+                            </div>
+                            <input type="text"/>
+                        </div>
+                        <div class="formLine">
+                            <div class="formLabel">
+                                <label>
+                                    <wicket:message key="PageSystemConfiguration.mail.username"/>
+                                </label>
+                            </div>
+                            <input type="text"/>
+                        </div>
+                        <div class="formLine">
+                            <div class="formLabel">
+                                <label>
+                                    <wicket:message key="PageSystemConfiguration.mail.password"/>
+                                </label>
+                            </div>
+                            <input type="text"/>
+                        </div>
+                        <div class="formLine">
+                            <div class="formLabel">
+                                <label>
+                                    <wicket:message key="PageSystemConfiguration.mail.transportSecurity"/>
+                                </label>
+                            </div>
+                            <select>
+                                <option>None</option>
+                                <option>StartTLS</option>
+                                <option>SSL</option>
+                            </select>
+                        </div>
+                    </div>
+<!-- CONNECTOR FRAMEWORK -->
+                    <h2 class="form"><wicket:message key="PageSystemConfiguration.title.connectorFramework"/></h2>
+                    <div class="form">
+                        todo
+                    </div>
+                </td>
+            </tr>
+        </table>
 
         <div class="operatingFormButtons">
             <a wicket:id="back"/>

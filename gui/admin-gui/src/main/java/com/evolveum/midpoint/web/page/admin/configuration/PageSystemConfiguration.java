@@ -5,6 +5,9 @@ import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.component.button.AjaxLinkButton;
 import com.evolveum.midpoint.web.component.button.AjaxSubmitLinkButton;
 import com.evolveum.midpoint.web.component.button.ButtonType;
+import com.evolveum.midpoint.web.component.util.LoadableModel;
+import com.evolveum.midpoint.web.page.admin.configuration.dto.SystemConfigurationDto;
+import com.evolveum.midpoint.xml.ns._public.common.common_2a.SystemConfigurationType;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.markup.html.form.Form;
 
@@ -19,11 +22,25 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
     private static final String ID_MAIN_FORM = "mainForm";
     private static final String ID_BACK = "back";
     private static final String ID_SAVE = "save";
-    private static final String ID_REMOVE_PASSWORD_POLICY = "removePasswordPolicy";
-    private static final String ID_BROWSE_PASSWORD_POLICY = "browsePasswordPolicy";
+
+    private LoadableModel<SystemConfigurationDto> model;
 
     public PageSystemConfiguration() {
+        model = new LoadableModel<SystemConfigurationDto>(false) {
+
+            @Override
+            protected SystemConfigurationDto load() {
+                return loadSystemConfiguration();
+            }
+        };
+
         initLayout();
+    }
+
+    private SystemConfigurationDto loadSystemConfiguration() {
+        //todo implement
+
+        return null;
     }
 
     private void initLayout() {
@@ -34,25 +51,6 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
     }
 
     private void initButtons(Form mainForm) {
-        AjaxLinkButton removePasswordPolicy = new AjaxLinkButton(ID_REMOVE_PASSWORD_POLICY,
-                createStringResource("PageSystemConfiguration.button.removePasswordPolicy")) {
-
-            @Override
-            public void onClick(AjaxRequestTarget target) {
-                removePasswordPolicyPerformed(target);
-            }
-        };
-        mainForm.add(removePasswordPolicy);
-        AjaxLinkButton browsePasswordPolicy = new AjaxLinkButton(ID_BROWSE_PASSWORD_POLICY,
-                createStringResource("PageSystemConfiguration.button.browsePasswordPolicy")) {
-
-            @Override
-            public void onClick(AjaxRequestTarget target) {
-                browsePasswordPolicyPerformed(target);
-            }
-        };
-        mainForm.add(browsePasswordPolicy);
-
         AjaxSubmitLinkButton save = new AjaxSubmitLinkButton(ID_SAVE, ButtonType.POSITIVE,
                 createStringResource("PageBase.button.save")) {
 

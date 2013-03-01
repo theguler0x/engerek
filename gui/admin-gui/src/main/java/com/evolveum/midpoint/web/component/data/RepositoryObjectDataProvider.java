@@ -26,6 +26,7 @@ import com.evolveum.midpoint.prism.PrismProperty;
 import com.evolveum.midpoint.prism.PrismReference;
 import com.evolveum.midpoint.prism.PrismReferenceValue;
 import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.prism.query.ObjectPaging;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.schema.GetOperationOptions;
@@ -39,10 +40,7 @@ import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.component.util.SelectableBean;
 import com.evolveum.midpoint.web.page.admin.configuration.dto.DebugObjectItem;
 import com.evolveum.midpoint.web.util.WebMiscUtil;
-import com.evolveum.midpoint.xml.ns._public.common.common_2a.ConnectorType;
-import com.evolveum.midpoint.xml.ns._public.common.common_2a.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_2a.ResourceObjectShadowType;
-import com.evolveum.midpoint.xml.ns._public.common.common_2a.ResourceType;
+import com.evolveum.midpoint.xml.ns._public.common.common_2a.*;
 import org.apache.commons.lang.Validate;
 import org.apache.wicket.Component;
 
@@ -108,26 +106,24 @@ public class RepositoryObjectDataProvider
     private DebugObjectItem createItem(PrismObject object, OperationResult result)
             throws ObjectNotFoundException, SchemaException, SecurityViolationException {
 
-        DebugObjectItem item = new DebugObjectItem(object.getOid(), WebMiscUtil.getName(object));
-        if (!ResourceObjectShadowType.class.isAssignableFrom(object.getCompileTimeClass())) {
-            return item;
-        }
+        DebugObjectItem item = DebugObjectItem.createDebugObjectItem(object);
+        if (ResourceObjectShadowType.class.isAssignableFrom(object.getCompileTimeClass())) {
+            PrismReference ref = object.findReference(new ItemPath(ResourceObjectShadowType.F_RESOURCE_REF));
+            if (ref == null || ref.getValue() == null) {
+                return item;
+            }
 
-        PrismReference ref = object.findReference(new ItemPath(ResourceObjectShadowType.F_RESOURCE_REF));
-        if (ref == null || ref.getValue() == null) {
-            return item;
-        }
+            PrismReferenceValue refValue = ref.getValue();
+            String resourceOid = refValue.getOid();
+            ResourceDescription desc = resourceCache.get(resourceOid);
+            if (desc == null) {
+                desc = loadDescription(resourceOid, result);
+                resourceCache.put(resourceOid, desc);
+            }
 
-        PrismReferenceValue refValue = ref.getValue();
-        String resourceOid = refValue.getOid();
-        ResourceDescription desc = resourceCache.get(resourceOid);
-        if (desc == null) {
-            desc = loadDescription(resourceOid, result);
-            resourceCache.put(resourceOid, desc);
+            item.setResourceName(desc.getName());
+            item.setResourceType(desc.getType());
         }
-
-        item.setResourceName(desc.getName());
-        item.setResourceType(desc.getType());
 
         return item;
     }

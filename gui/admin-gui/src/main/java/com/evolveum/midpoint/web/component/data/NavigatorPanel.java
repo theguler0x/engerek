@@ -93,19 +93,19 @@ public class NavigatorPanel extends AjaxPagingNavigator {
         return link;
     }
 
-    @Override
-    protected AbstractLink newPagingNavigationLink(String id, IPageable pageable, int pageNumber) {
-        AbstractLink link = super.newPagingNavigationLink(id, pageable, pageNumber);
-        link.setOutputMarkupId(true);
-        link.add(createVisibleBehaviour(pageable));
-        return link;
-    }
-
-    @Override
-    protected void onAjaxEvent(AjaxRequestTarget target) {
-        super.onAjaxEvent(target);
-        target.appendJavaScript("init();");
-    }
+	@Override
+	protected AbstractLink newPagingNavigationLink(String id, IPageable pageable, int pageNumber) {
+        AbstractLink  link = super.newPagingNavigationLink(id, pageable, pageNumber);
+		link.setOutputMarkupId(true);
+		link.add(createVisibleBehaviour(pageable));
+    	return link;
+	}
+	
+	@Override
+	protected void onAjaxEvent(AjaxRequestTarget target) {
+		super.onAjaxEvent(target);
+		target.appendJavaScript("initTable();");
+	}
 
     private IModel<String> createModel(final IPageable pageable) {
         return new LoadableModel<String>() {

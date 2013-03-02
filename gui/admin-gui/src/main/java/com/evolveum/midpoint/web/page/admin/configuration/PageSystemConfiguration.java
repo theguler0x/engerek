@@ -6,10 +6,19 @@ import com.evolveum.midpoint.web.component.button.AjaxLinkButton;
 import com.evolveum.midpoint.web.component.button.AjaxSubmitLinkButton;
 import com.evolveum.midpoint.web.component.button.ButtonType;
 import com.evolveum.midpoint.web.component.util.LoadableModel;
+import com.evolveum.midpoint.web.page.admin.configuration.component.LoggingConfigPanel;
+import com.evolveum.midpoint.web.page.admin.configuration.component.SystemConfigPanel;
+import com.evolveum.midpoint.web.page.admin.configuration.component.UserConfigPanel;
 import com.evolveum.midpoint.web.page.admin.configuration.dto.SystemConfigurationDto;
-import com.evolveum.midpoint.xml.ns._public.common.common_2a.SystemConfigurationType;
 import org.apache.wicket.ajax.AjaxRequestTarget;
+import org.apache.wicket.extensions.markup.html.tabs.AbstractTab;
+import org.apache.wicket.extensions.markup.html.tabs.ITab;
+import org.apache.wicket.extensions.markup.html.tabs.TabbedPanel;
+import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.form.Form;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author lazyman
@@ -20,6 +29,7 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
     private static final String DOT_CLASS = PageSystemConfiguration.class.getName() + ".";
 
     private static final String ID_MAIN_FORM = "mainForm";
+    private static final String ID_TAB_PANEL = "tabPanel";
     private static final String ID_BACK = "back";
     private static final String ID_SAVE = "save";
 
@@ -46,6 +56,31 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
     private void initLayout() {
         Form mainForm = new Form(ID_MAIN_FORM);
         add(mainForm);
+
+        List<ITab> tabs = new ArrayList<ITab>();
+        tabs.add(new AbstractTab(createStringResource("pageSystemConfiguration.system.title")) {
+
+            @Override
+            public WebMarkupContainer getPanel(String panelId) {
+                return new SystemConfigPanel(panelId);
+            }
+        });
+        tabs.add(new AbstractTab(createStringResource("pageSystemConfiguration.logging.title")) {
+
+            @Override
+            public WebMarkupContainer getPanel(String panelId) {
+                return new LoggingConfigPanel(panelId);
+            }
+        });
+        tabs.add(new AbstractTab(createStringResource("pageSystemConfiguration.user.title")) {
+
+            @Override
+            public WebMarkupContainer getPanel(String panelId) {
+                return new UserConfigPanel(panelId);
+            }
+        });
+
+        mainForm.add(new TabbedPanel(ID_TAB_PANEL, tabs));
 
         initButtons(mainForm);
     }

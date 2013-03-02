@@ -42,9 +42,13 @@ public class SimplePanel<T extends Serializable> extends Panel {
 
     public SimplePanel(String id, IModel<T> model) {
         super(id);
-        this.model = model;
+        this.model = model == null ? createModel() : model;
 
         initLayout();
+    }
+
+    public IModel<T> createModel() {
+        return null;
     }
 
     public IModel<T> getModel() {

@@ -131,9 +131,8 @@ public class MidPointApplication extends AuthenticatedWebApplication {
 
         mount(new MountedMapper("/admin", PageHome.class, encoder));
         mount(new MountedMapper("/admin/home", PageHome.class, encoder));    //todo remove
-        //todo dashboard and myPasswords is not finished yet
         mount(new MountedMapper("/admin/dashboard", PageDashboard.class, encoder));
-//        mount(new MountedMapper("/admin/myPasswords", PageMyPasswords.class, encoder));
+        mount(new MountedMapper("/admin/myPasswords", PageMyPasswords.class, encoder));
 
         // todo mount used for performance tests, will be implemented properly in next release
         // mount(new MountedMapperWithoutPageComponentInfo("/admin/users", PageUsers.class, new PageUsersEncoder()));
@@ -151,7 +150,6 @@ public class MidPointApplication extends AuthenticatedWebApplication {
         mount(new MountedMapper("/admin/roles", PageRoles.class, encoder));
 
         mount(new MountedMapper("/admin/resource", PageResource.class, new OnePageParameterEncoder(PageResource.PARAM_RESOURCE_ID)));
-        //todo resource wizard is not finished
         mount(new MountedMapper("/admin/resourceWizard", PageResourceEdit.class, new OnePageParameterEncoder(PageResourceEdit.PARAM_RESOURCE_ID)));
         mount(new MountedMapper("/admin/resources", PageResources.class, encoder));
         mount(new MountedMapper("/admin/resources/account", PageAccount.class, new OnePageParameterEncoder(PageAccount.PARAM_ACCOUNT_ID)));

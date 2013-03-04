@@ -41,7 +41,6 @@ import com.evolveum.midpoint.web.component.menu.top.TopMenuItem;
 import com.evolveum.midpoint.web.component.message.MainFeedback;
 import com.evolveum.midpoint.web.component.message.OpResult;
 import com.evolveum.midpoint.web.component.message.TempFeedback;
-import com.evolveum.midpoint.web.component.util.LoadableModel;
 import com.evolveum.midpoint.web.security.MidPointApplication;
 import com.evolveum.midpoint.web.security.MidPointAuthWebSession;
 import com.evolveum.midpoint.web.security.SecurityUtils;
@@ -50,8 +49,6 @@ import com.evolveum.midpoint.wf.WfDataAccessor;
 import com.evolveum.midpoint.wf.WorkflowManager;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
-import org.apache.wicket.ajax.AjaxRequestTarget;
-import org.apache.wicket.atmosphere.Subscribe;
 import org.apache.wicket.devutils.debugbar.DebugBar;
 import org.apache.wicket.feedback.FeedbackMessage;
 import org.apache.wicket.feedback.FeedbackMessages;
@@ -60,15 +57,15 @@ import org.apache.wicket.markup.head.IHeaderResponse;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.WebPage;
 import org.apache.wicket.markup.html.basic.Label;
-import org.apache.wicket.markup.html.list.ListItem;
-import org.apache.wicket.markup.html.list.ListView;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
 import org.apache.wicket.model.StringResourceModel;
 import org.apache.wicket.resource.CoreLibrariesContributor;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 /**
  * @author lazyman
@@ -137,40 +134,7 @@ public abstract class PageBase extends WebPage {
         }
     }
 
-    @Subscribe
-    public void subscribe(AjaxRequestTarget target, String message) {
-        System.out.println("subscribe " + message);
-        atmList.add(message);
-
-        target.add(get("atm"));
-    }
-
-    @Subscribe
-    public void subscribeDate(AjaxRequestTarget target, Date date) {
-        System.out.println("subscribeDate " + date);
-        atmList.add(date.toString());
-
-        target.add(get("atm"));
-    }
-
     private void initLayout() {
-        WebMarkupContainer atm = new WebMarkupContainer("atm");
-        atm.setOutputMarkupId(true);
-        add(atm);
-        ListView atmUl = new ListView("atmUl", new LoadableModel() {
-            @Override
-            protected Object load() {
-                return PageBase.atmList;
-            }
-        }) {
-
-            @Override
-            protected void populateItem(ListItem item) {
-                item.add(new Label("atmLi", item.getModel()));
-            }
-        };
-        atm.add(atmUl);
-
         Label title = new Label("title", createPageTitleModel());
         title.setRenderBodyOnly(true);
         add(title);

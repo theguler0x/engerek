@@ -60,10 +60,7 @@ import com.evolveum.midpoint.web.util.MidPointPageParametersEncoder;
 import com.evolveum.midpoint.web.util.OnePageParameterEncoder;
 import com.evolveum.midpoint.wf.WorkflowManager;
 import org.apache.commons.configuration.Configuration;
-import org.apache.wicket.Page;
 import org.apache.wicket.RuntimeConfigurationType;
-import org.apache.wicket.atmosphere.EventBus;
-import org.apache.wicket.atmosphere.ResourceRegistrationListener;
 import org.apache.wicket.authroles.authentication.AbstractAuthenticatedWebSession;
 import org.apache.wicket.authroles.authentication.AuthenticatedWebApplication;
 import org.apache.wicket.core.request.mapper.MountedMapper;
@@ -77,10 +74,6 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.FilenameFilter;
-import java.util.Date;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author lazyman
@@ -104,59 +97,14 @@ public class MidPointApplication extends AuthenticatedWebApplication {
     transient Protector protector;
     private WebApplicationConfiguration webApplicationConfiguration;
 
-    private EventBus eventBus;
-
-    public EventBus getEventBus() {
-        return eventBus;
-    }
-
     @Override
     public Class<PageHome> getHomePage() {
         return PageHome.class;
     }
 
-    /**
-     * This is wicket-atmosphere example usage - ajax push, now disabled.
-     * Probably won't be used at all.
-     *
-     * For an unknown reason tomcat won't shut down if atmosphere is running,
-     * I didn't explore it more, no time for it. [lazyman]
-     */
-    private void initEventBus() {
-        eventBus = new EventBus(this);
-        eventBus.addRegistrationListener(new ResourceRegistrationListener() {
-
-            @Override
-            public void resourceUnregistered(String uuid) {
-                System.out.println("Unregistered " + uuid);
-            }
-
-            @Override
-            public void resourceRegistered(String uuid, Page page) {
-                System.out.println("Registered " + uuid);
-            }
-        });
-
-//        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-//        final Runnable beeper = new Runnable() {
-//
-//            @Override
-//            public void run() {
-//                try {
-//                    eventBus.post(new Date());
-//                } catch (Exception e) {
-//                    e.printStackTrace();
-//                }
-//            }
-//        };
-//        scheduler.scheduleWithFixedDelay(beeper, 3, 3, TimeUnit.SECONDS);
-    }
-
     @Override
     public void init() {
         super.init();
-
-        initEventBus();
 
         getComponentInstantiationListeners().add(new SpringComponentInjector(this));
 

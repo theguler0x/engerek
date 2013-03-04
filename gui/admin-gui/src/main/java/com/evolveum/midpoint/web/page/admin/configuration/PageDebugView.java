@@ -252,7 +252,7 @@ public class PageDebugView extends PageAdminConfiguration {
             result.recordFatalError("Couldn't save object.", ex);
         }
 
-        if (!result.isSuccess() || !result.isHandledError()) {
+        if (!result.isSuccess() && !result.isHandledError()) {
             showResult(result);
             target.add(getFeedbackPanel());
         } else {

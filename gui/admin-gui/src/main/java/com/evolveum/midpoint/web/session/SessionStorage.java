@@ -19,7 +19,14 @@ public class SessionStorage implements Serializable {
      */
     private PageParameters previousPageParams;
 
+    /**
+     * place to store informations in session for "configuration" pages
+     */
     private ConfigurationStorage configuration;
+    /**
+     * Store session information for "users" pages
+     */
+    private UsersStorage users;
 
     public Class<? extends WebPage> getPreviousPage() {
         return previousPage;
@@ -42,5 +49,12 @@ public class SessionStorage implements Serializable {
             configuration = new ConfigurationStorage();
         }
         return configuration;
+    }
+
+    public UsersStorage getUsers() {
+        if (users == null) {
+            users = new UsersStorage();
+        }
+        return users;
     }
 }

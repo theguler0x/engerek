@@ -105,8 +105,7 @@ public class PageTasks extends PageAdminTasks {
         Form mainForm = new Form("mainForm");
         add(mainForm);
 
-        OptionPanel option = new OptionPanel("option", createStringResource("pageTasks.optionsTitle"),
-        		getPage(), true);
+        OptionPanel option = new OptionPanel("option", createStringResource("pageTasks.optionsTitle"), true);
         mainForm.add(option);
 
         OptionItem diagnostics = new OptionItem("diagnostics", createStringResource("pageTasks.diagnostics"));

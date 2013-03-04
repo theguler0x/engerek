@@ -37,14 +37,13 @@ import org.apache.wicket.request.resource.PackageResourceReference;
  * @author lazyman
  */
 public class OptionPanel extends Border {
+
     private OptionPanelHidde optionHide;
     private boolean hidden;
-    private Page page;
 
-    public OptionPanel(String id, IModel<String> title, final Page page, final Boolean hidden) {
+    public OptionPanel(String id, IModel<String> title, final Boolean hidden) {
         super(id);
         this.hidden = hidden;
-        this.page = page;
         WebMarkupContainer parent = new WebMarkupContainer("parent");
         parent.setOutputMarkupId(true);
         addToBorder(parent);
@@ -55,7 +54,7 @@ public class OptionPanel extends Border {
 
             @Override
             protected void onEvent(AjaxRequestTarget target) {
-
+                Page page = OptionPanel.this.getPage();
                 setHidden(page, !getHiddenFromSession());
             }
         });
@@ -77,6 +76,7 @@ public class OptionPanel extends Border {
     }
 
     private Boolean getHiddenFromSession() {
+        Page page = getPage();
         OptionPanelHidde optionHide = (OptionPanelHidde) getSession().getAttribute("optionHide_" + page.getClass().getName());
         if (optionHide != null) {
             return optionHide.isHidden();

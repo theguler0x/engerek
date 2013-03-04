@@ -158,8 +158,7 @@ public class PageReports extends PageAdminReports {
 		ajaxDownloadBehavior.setContentType("application/pdf; charset=UTF-8");
 		mainForm.add(ajaxDownloadBehavior);
 
-		OptionPanel option = new OptionPanel(ID_OPTION, createStringResource("pageReports.optionsTitle"),
-				getPage(), false);
+		OptionPanel option = new OptionPanel(ID_OPTION, createStringResource("pageReports.optionsTitle"), false);
 		option.setOutputMarkupId(true);
 		mainForm.add(option);
 

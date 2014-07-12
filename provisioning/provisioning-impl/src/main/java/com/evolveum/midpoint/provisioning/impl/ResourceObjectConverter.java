@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2014 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -87,6 +87,7 @@ import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.LockoutStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationProvisioningScriptType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationProvisioningScriptsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ProvisioningOperationTypeType;
@@ -821,6 +822,30 @@ public class ResourceObjectConverter {
 			}
 		}
 		
+		PropertyDelta<LockoutStatusType> lockoutPropertyDelta = PropertyDelta.findPropertyDelta(objectChange,
+				SchemaConstants.PATH_ACTIVATION_LOCKOUT_STATUS);
+		if (lockoutPropertyDelta != null) {
+			if (activationCapabilityType == null) {
+				throw new SchemaException("Attempt to change activation lockoutStatus on "+resource+" which does not have the capability");
+			}
+			LockoutStatusType status = lockoutPropertyDelta.getPropertyNew().getRealValue();
+			LOGGER.trace("Found activation lockoutStatus change to: {}", status);
+
+			// TODO: simulated
+			if (ResourceTypeUtil.hasResourceNativeActivationLockoutCapability(resource)) {
+				// Native lockout, need to check if there is not also change to simulated activation which may be in conflict
+//				checkSimulatedActivation(objectChange, status, shadow, resource, objectClassDefinition);
+				operations.add(new PropertyModificationOperation(lockoutPropertyDelta));
+			} else {
+				// Try to simulate activation capability
+				
+				// TODO
+//				PropertyModificationOperation activationAttribute = convertToSimulatedActivationAttribute(lockoutPropertyDelta, shadow, resource,
+//						status, objectClassDefinition);
+//				operations.add(activationAttribute);
+			}	
+		}
+		
 		return operations;
 	}
 	
@@ -1065,24 +1090,43 @@ public class ResourceObjectConverter {
 		if (ResourceTypeUtil.hasResourceNativeActivationCapability(resource)) {
 			return shadow.asObjectable().getActivation();
 		} else if (ResourceTypeUtil.hasActivationCapability(resource)) {
-			return convertFromSimulatedActivationAttributes(shadow, resource, parentResult);
+			return convertFromSimulatedActivationAttributes(resource, shadow, parentResult);
 		} else {
 			// No activation capability, nothing to do
 			return null;
 		}
 	}
 	
-	private ActivationType convertFromSimulatedActivationAttributes(
-			PrismObject<ShadowType> shadow, ResourceType resource, OperationResult parentResult) {
+	private static ActivationType convertFromSimulatedActivationAttributes(ResourceType resource,
+			PrismObject<ShadowType> shadow, OperationResult parentResult) {
 		// LOGGER.trace("Start converting activation type from simulated activation atribute");
 		ActivationCapabilityType activationCapability = ResourceTypeUtil.getEffectiveCapability(resource,
 				ActivationCapabilityType.class);
 		if (activationCapability == null) {
 			return null;
 		}
-		ResourceAttributeContainer attributesContainer = ShadowUtil.getAttributesContainer(shadow);
+		
+		ActivationType activationType = new ActivationType();
+		
+		converFromSimulatedActivationAdministrativeStatus(activationType, activationCapability, resource, shadow, parentResult);
+		
+		return activationType;
+	}
+
+	private static ActivationStatusCapabilityType getStatusCapability(ResourceType resource, ActivationCapabilityType activationCapability) {
+		ActivationStatusCapabilityType statusCapabilityType = activationCapability.getStatus();
+		if (statusCapabilityType != null) {
+			return statusCapabilityType;
+		}
+		return null;
+	}
+	
+	private static void converFromSimulatedActivationAdministrativeStatus(ActivationType activationType, ActivationCapabilityType activationCapability,
+			ResourceType resource, PrismObject<ShadowType> shadow, OperationResult parentResult) {
+		
 		ActivationStatusCapabilityType statusCapabilityType = getStatusCapability(resource, activationCapability);
 		
+		ResourceAttributeContainer attributesContainer = ShadowUtil.getAttributesContainer(shadow);		
 		ResourceAttribute<?> activationProperty = null;
 		if (statusCapabilityType != null && statusCapabilityType.getAttribute() != null) {
 			activationProperty = attributesContainer.findAttribute(statusCapabilityType.getAttribute());
@@ -1094,19 +1138,19 @@ public class ResourceObjectConverter {
 		// return null;
 		// }
 
-		Collection<Object> values = null;
-
+		Collection<Object> activationValues = null;
 		if (activationProperty != null) {
-			values = activationProperty.getRealValues(Object.class);
+			activationValues = activationProperty.getRealValues(Object.class);
 		}
-		ActivationType activation = convertFromSimulatedActivationValues(resource, values, parentResult);
+		
+		converFromSimulatedActivationAdministrativeStatusInternal(activationType, statusCapabilityType, resource, activationValues, parentResult);
+		
 		LOGGER.trace(
 				"Detected simulated activation attribute {} on {} with value {}, resolved into {}",
 				new Object[] { SchemaDebugUtil.prettyPrint(statusCapabilityType.getAttribute()),
-						ObjectTypeUtil.toShortString(resource), values,
-						activation == null ? "null" : activation.getAdministrativeStatus() });
+						ObjectTypeUtil.toShortString(resource), activationValues,
+						activationType == null ? "null" : activationType.getAdministrativeStatus() });
 		
-		// TODO: make this optional
 		// Remove the attribute which is the source of simulated activation. If we leave it there then we
 		// will have two ways to set activation.
 		if (statusCapabilityType.isIgnoreAttribute() == null
@@ -1115,70 +1159,27 @@ public class ResourceObjectConverter {
 				attributesContainer.remove(activationProperty);
 			}
 		}
-		
-		return activation;
-
 	}
 	
-	private static ActivationType convertFromSimulatedActivationAttributes(ResourceType resource,
-			ShadowType shadow, OperationResult parentResult) {
-		// LOGGER.trace("Start converting activation type from simulated activation atribute");
-		ActivationCapabilityType activationCapability = ResourceTypeUtil.getEffectiveCapability(resource,
-				ActivationCapabilityType.class);
+	/**
+	 * Moved to a separate method especially to enable good logging (see above). 
+	 */
+	private static void converFromSimulatedActivationAdministrativeStatusInternal(ActivationType activationType, ActivationStatusCapabilityType statusCapabilityType,
+				ResourceType resource, Collection<Object> activationValues, OperationResult parentResult) {
 		
-		ActivationStatusCapabilityType statusCapabilityType = getStatusCapability(resource, activationCapability);
-		
-		QName enableDisableAttribute = statusCapabilityType.getAttribute();
-		List<Object> values = ShadowUtil.getAttributeValues(shadow, enableDisableAttribute);
-		ActivationType activation = convertFromSimulatedActivationValues(resource, values, parentResult);
-		LOGGER.trace(
-				"Detected simulated activation attribute {} on {} with value {}, resolved into {}",
-				new Object[] { SchemaDebugUtil.prettyPrint(statusCapabilityType.getAttribute()),
-						ObjectTypeUtil.toShortString(resource), values,
-						activation == null ? "null" : activation.getAdministrativeStatus() });
-		return activation;
-	}
-
-	private static ActivationStatusCapabilityType getStatusCapability(ResourceType resource, ActivationCapabilityType activationCapability) {
-		ActivationStatusCapabilityType statusCapabilityType = activationCapability.getStatus();
-		if (statusCapabilityType != null) {
-			if (activationCapability.getEnableDisable() != null) {
-				LOGGER.warn("There is deprecated enableDisable activation capability in "+resource+", ignoring it");
-			}
-			return statusCapabilityType;
-		}
-		if (activationCapability.getEnableDisable() != null) {
-			LOGGER.warn("There is deprecated enableDisable activation capability in "+resource+"; using it instead of status capability");
-			return activationCapability.getEnableDisable();
-		}
-		return null;
-	}
-
-	private static ActivationType convertFromSimulatedActivationValues(ResourceType resource,
-			Collection<Object> activationValues, OperationResult parentResult) {
-
-		ActivationCapabilityType activationCapability = ResourceTypeUtil.getEffectiveCapability(resource,
-				ActivationCapabilityType.class);
-		if (activationCapability == null) {
-			return null;
-		}
-
-		ActivationStatusCapabilityType statusCapabilityType = getStatusCapability(resource, activationCapability);
 		List<String> disableValues = statusCapabilityType.getDisableValue();
-		List<String> enableValues = statusCapabilityType.getEnableValue();
-
-		ActivationType activationType = new ActivationType();
+		List<String> enableValues = statusCapabilityType.getEnableValue();		
 
 		if (MiscUtil.isNoValue(activationValues)) {
 
 			if (MiscUtil.hasNoValue(disableValues)) {
 				activationType.setAdministrativeStatus(ActivationStatusType.DISABLED);
-				return activationType;
+				return;
 			}
 
 			if (MiscUtil.hasNoValue(enableValues)) {
 				activationType.setAdministrativeStatus(ActivationStatusType.ENABLED);
-				return activationType;
+				return;
 			}
 
 			// No activation information.
@@ -1189,7 +1190,7 @@ public class ResourceObjectConverter {
 						+ " has native activation capability but noes not provide value for DISABLE attribute");
 			}
 
-			return null;
+			return;
 
 		} else {
 			if (activationValues.size() > 1) {
@@ -1205,21 +1206,20 @@ public class ResourceObjectConverter {
 			for (String disable : disableValues) {
 				if (disable.equals(String.valueOf(disableObj))) {
 					activationType.setAdministrativeStatus(ActivationStatusType.DISABLED);
-					return activationType;
+					return;
 				}
 			}
 
 			for (String enable : enableValues) {
 				if ("".equals(enable) || enable.equals(String.valueOf(disableObj))) {
 					activationType.setAdministrativeStatus(ActivationStatusType.ENABLED);
-					return activationType;
+					return;
 				}
 			}
 		}
 
-		return null;
 	}
-	
+
 	private ActivationStatusCapabilityType getActivationStatusFromSimulatedActivation(ShadowType shadow, ResourceType resource, OperationResult result){
 		ActivationCapabilityType activationCapability = ResourceTypeUtil.getEffectiveCapability(resource,
 				ActivationCapabilityType.class);

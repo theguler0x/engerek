@@ -547,7 +547,7 @@ public class LensUtil {
 		while (iterator.hasNext()) {
 			ItemDelta projModification = iterator.next();
 			LOGGER.trace("MOD: {}\n{}", projModification.getPath(), projModification.debugDump());
-			if (projModification.getPath().equals(SchemaConstants.PATH_TRIGGER)) {
+			if (projModification.getPath().equivalent(SchemaConstants.PATH_TRIGGER)) {
 				focusCtx.swallowToProjectionWaveSecondaryDelta(projModification);
 				iterator.remove();
 			}
@@ -692,6 +692,26 @@ public class LensUtil {
 					} else {
 						aPrioriDelta.merge(aPropProjDelta);
 					}
+				}
+			}
+		}
+		return aPrioriDelta;
+	}
+	
+	/**
+	 * Extracts the delta from this projection context and also from all other projection contexts that have 
+	 * equivalent discriminator.
+	 */
+	public static <F extends ObjectType, T> ObjectDelta<ShadowType> findAPrioriDelta(LensContext<F> context,
+			LensProjectionContext projCtx) throws SchemaException {
+		ObjectDelta<ShadowType> aPrioriDelta = null;
+		for (LensProjectionContext aProjCtx: findRelatedContexts(context, projCtx)) {
+			ObjectDelta<ShadowType> aProjDelta = aProjCtx.getDelta();
+			if (aProjDelta != null) {
+				if (aPrioriDelta == null) {
+					aPrioriDelta = aProjDelta.clone();
+				} else {
+					aPrioriDelta.merge(aProjDelta);
 				}
 			}
 		}

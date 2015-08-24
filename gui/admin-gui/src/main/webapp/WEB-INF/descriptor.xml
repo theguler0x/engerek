@@ -34,10 +34,14 @@
                 <name>PageAdmin.menu.top.users.new</name>
                 <page>com.evolveum.midpoint.web.page.admin.users.PageUser</page>
             </item>
-            <divider/>
+            <divider/>            
             <header>
                 <name>PageAdmin.menu.top.users.org</name>
             </header>
+            <item>
+     			<name>PageAdmin.menu.top.users.org.diff</name>
+     			<page>com.evolveum.midpoint.web.page.admin.users.PageOrgDiff</page>
+			</item>
             <item>
                 <name>PageAdmin.menu.top.users.org.tree</name>
                 <page>com.evolveum.midpoint.web.page.admin.users.PageOrgTree</page>

@@ -125,7 +125,7 @@ public class PageDebugDownloadBehaviour extends AjaxDownloadBehaviorFromFile {
 
         if (!WebMiscUtil.isSuccessOrHandledError(result)) {
             page.showResultInSession(result);
-            page.getSession().error(page.getString("pageDebugList.message.createFileException"));
+            page.getSession().error(page.getString("PageOrgDiff.message.createFileException"));
             LOGGER.debug("Removing file '{}'.", new Object[]{file.getAbsolutePath()});
             Files.remove(file);
 

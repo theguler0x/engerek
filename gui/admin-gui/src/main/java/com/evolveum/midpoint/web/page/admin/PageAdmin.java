@@ -43,6 +43,7 @@ import com.evolveum.midpoint.web.page.admin.roles.PageRole;
 import com.evolveum.midpoint.web.page.admin.roles.PageRoles;
 import com.evolveum.midpoint.web.page.admin.server.PageTaskAdd;
 import com.evolveum.midpoint.web.page.admin.server.PageTasks;
+import com.evolveum.midpoint.web.page.admin.users.PageOrgDiff;
 import com.evolveum.midpoint.web.page.admin.users.PageOrgTree;
 import com.evolveum.midpoint.web.page.admin.users.PageOrgUnit;
 import com.evolveum.midpoint.web.page.admin.users.PageUser;
@@ -53,6 +54,7 @@ import com.evolveum.midpoint.web.page.admin.workflow.PageProcessInstancesRequest
 import com.evolveum.midpoint.web.page.admin.workflow.PageWorkItems;
 import com.evolveum.midpoint.web.page.admin.workflow.PageWorkItemsClaimable;
 import com.evolveum.midpoint.web.util.WebMiscUtil;
+
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 
 import java.util.ArrayList;
@@ -229,6 +231,7 @@ public class PageAdmin extends PageBase {
         users.addMenuItem(new MenuItem(createStringResource("PageAdmin.menu.top.users.new"), PageUser.class));
         users.addMenuItem(new MenuItem(null));
         users.addMenuItem(new MenuItem(createStringResource("PageAdmin.menu.top.users.org"), true, null, null));
+        users.addMenuItem(new MenuItem(createStringResource("PageAdmin.menu.top.users.org.diff"), PageOrgDiff.class));
         users.addMenuItem(new MenuItem(createStringResource("PageAdmin.menu.top.users.org.tree"), PageOrgTree.class));
         users.addMenuItem(new MenuItem(createStringResource("PageAdmin.menu.top.users.org.new"), PageOrgUnit.class));
 

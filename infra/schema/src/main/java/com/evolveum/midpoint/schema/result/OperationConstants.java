@@ -39,6 +39,7 @@ public class OperationConstants {
     public static final String IMPORT_OBJECTS_FROM_CAMEL = PREFIX + ".import.objectsFromCamel";
 	public static final String IMPORT_OBJECTS_FROM_STREAM = PREFIX + ".import.objectsFromStream";
 	public static final String IMPORT_OBJECT = PREFIX + ".import.object";
+	public static final String IMPORT_DETSIS = PREFIX + ".import.detsis";
 
 	public static final String FOCUS_VALIDITY_SCAN = PREFIX + ".focusValidityScan";
 	public static final String TRIGGER_SCAN = PREFIX + ".triggerScan";

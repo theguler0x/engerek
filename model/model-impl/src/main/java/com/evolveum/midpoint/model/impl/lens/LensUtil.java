@@ -58,6 +58,7 @@ import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
 import com.evolveum.midpoint.prism.delta.ReferenceDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.prism.util.PrismUtil;
 import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
 import com.evolveum.midpoint.provisioning.api.ProvisioningService;
 import com.evolveum.midpoint.repo.api.RepositoryService;
@@ -157,8 +158,8 @@ public class LensUtil {
 			CommunicationException, SchemaException, ConfigurationException, SecurityViolationException {
 		ShadowType equivalentAccountType = equivalentAccount.asObjectable();
 		ShadowKindType kind = ShadowUtil.getKind(equivalentAccountType);
-		return getProjectionContext(context, ShadowUtil.getResourceOid(equivalentAccountType), 
-				kind, equivalentAccountType.getIntent(), provisioningService, 
+		return getProjectionContext(context, ShadowUtil.getResourceOid(equivalentAccountType),
+				kind, equivalentAccountType.getIntent(), provisioningService,
 				prismContext, result);
 	}
 	
@@ -193,8 +194,9 @@ public class LensUtil {
      *
      * filterExistingValues: if true, then values that already exist in the item are not added (and those that don't exist are not removed)
 	 */
-	public static <V extends PrismValue, D extends ItemDefinition, I extends ItemValueWithOrigin<V,D>> ItemDelta<V,D> consolidateTripleToDelta(ItemPath itemPath, 
-    		DeltaSetTriple<I> triple, D itemDefinition, 
+	public static <V extends PrismValue, D extends ItemDefinition, I extends ItemValueWithOrigin<V,D>> 
+		ItemDelta<V,D> consolidateTripleToDelta(
+			ItemPath itemPath, DeltaSetTriple<I> triple, D itemDefinition, 
     		ItemDelta<V,D> aprioriItemDelta, PrismContainer<?> itemContainer, ValueMatcher<?> valueMatcher, Comparator<V> comparator,
     		boolean addUnchangedValues, boolean filterExistingValues, boolean isExclusiveStrong, 
     		String contextDescription, boolean applyWeak) throws ExpressionEvaluationException, PolicyViolationException, SchemaException {
@@ -237,6 +239,7 @@ public class LensUtil {
         	// Check what to do with the value using the usual "triple routine". It means that if a value is
         	// in zero set than we need no delta, plus set means add delta and minus set means delete delta.
         	// The first set that the value is present determines the result.
+			// TODO shouldn't we use valueMatcher here? [med]
             Collection<ItemValueWithOrigin<V,D>> zeroPvwos =
                     collectPvwosFromSet(value, triple.getZeroSet());
             Collection<ItemValueWithOrigin<V,D>> plusPvwos =
@@ -268,7 +271,7 @@ public class LensUtil {
                 LOGGER.trace("Value {} unchanged, doing nothing", value);
                 continue;
             }
-            
+
             PrismValueDeltaSetTripleProducer<V, D> exclusiveMapping = null;
             Collection<ItemValueWithOrigin<V,D>> pvwosToAdd = null;
             if (addUnchangedValues) {
@@ -1316,4 +1319,11 @@ public class LensUtil {
     	}
     	return null;
     }
+	
+	public static <O extends ObjectType> void setDeltaOldValue(LensElementContext<O> ctx, ItemDelta<?,?> itemDelta) {
+		if (itemDelta.getEstimatedOldValues() != null) {
+			return;
+		}
+		PrismUtil.setDeltaOldValue(ctx.getObjectOld(), itemDelta);
+	}
 }

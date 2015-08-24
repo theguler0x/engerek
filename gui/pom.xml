@@ -23,7 +23,7 @@
     <parent>
         <artifactId>parent</artifactId>
         <groupId>com.evolveum.midpoint</groupId>
-        <version>3.2-SNAPSHOT</version>
+        <version>3.3-SNAPSHOT</version>
         <relativePath>../build-system/pom.xml</relativePath>
     </parent>
     <organization>
@@ -50,10 +50,9 @@
         <module>admin-gui</module>
         <module>admin-gui-en-US</module>
 	    <module>admin-gui-sk-SK</module>
-
+		<module>admin-gui-cs-CZ</module>
         <module>admin-gui-tr-TR</module>
         <module>admin-gui-es-ES</module>
-
     </modules>
 
 </project>

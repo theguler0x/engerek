@@ -253,7 +253,8 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
     @Test
     public void test100ModifyUserAddAccount() throws Exception {
-        TestUtil.displayTestTile(this, "test100ModifyUserAddAccount");
+    	final String TEST_NAME = "test100ModifyUserAddAccount";
+        TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + ".test100ModifyUserAddAccount");
@@ -263,9 +264,11 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         XMLGregorianCalendar startTime = clock.currentTimeXMLGregorianCalendar();
         
 		// WHEN
+        TestUtil.displayWhen(TEST_NAME);
         modifyUserAddAccount(USER_JACK_OID, ACCOUNT_JACK_DUMMY_FILE, task, result);
 		
 		// THEN
+        TestUtil.displayThen(TEST_NAME);
 		result.computeStatus();
         TestUtil.assertSuccess(result);
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
@@ -1176,13 +1179,12 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // Check audit
         display("Audit", dummyAuditService);
         dummyAuditService.assertSimpleRecordSanity();
-        dummyAuditService.assertRecords(2);
+        dummyAuditService.assertRecords(3);
         dummyAuditService.assertAnyRequestDeltas();
-        dummyAuditService.assertExecutionDeltas(0, 2);
+        dummyAuditService.assertExecutionDeltas(0, 1);
         dummyAuditService.assertHasDelta(0, ChangeType.MODIFY, ShadowType.class);
-        dummyAuditService.assertHasDelta(0, ChangeType.MODIFY, UserType.class);
-//        dummyAuditService.assertExecutionDeltas(1, 1);
-//        dummyAuditService.asserHasDelta(1, ChangeType.MODIFY, UserType.class);
+        dummyAuditService.assertExecutionDeltas(1, 1);
+        dummyAuditService.assertHasDelta(1, ChangeType.MODIFY, UserType.class);
         dummyAuditService.assertTarget(USER_JACK_OID);
         dummyAuditService.assertExecutionSuccess();
 
@@ -2359,9 +2361,6 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
         dummyAuditService.assertOldValue(ChangeType.MODIFY, UserType.class,
         		UserType.F_FULL_NAME, PrismTestUtil.createPolyString("Jack Sparrow"));
-        display("Audit: old shadow", dummyAuditService.getEstimatedOldObject(ChangeType.MODIFY, ShadowType.class));
-        dummyAuditService.assertOldValue(ChangeType.MODIFY, ShadowType.class, 
-        		new ItemPath(ShadowType.F_ATTRIBUTES, SchemaConstants.ICFS_NAME), "jack");
         // This is not reconciliation. We are not reading old value.
 //        dummyAuditService.assertOldValue(ChangeType.MODIFY, ShadowType.class, 
 //        		dummyResourceCtl.getAttributeFullnamePath(), "Jack Sparrow");
@@ -2528,7 +2527,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.assertExecutionDeltas(1);
         dummyAuditService.assertHasDelta(ChangeType.MODIFY, UserType.class);
         // raw operation, no target
-        //dummyAuditService.assertTarget(USER_JACK_OID);
+        // dummyAuditService.assertTarget(USER_JACK_OID); // MID-2451
         dummyAuditService.assertExecutionSuccess();
         
         assertScriptCompileIncrement(0);
@@ -2654,14 +2653,15 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // Check audit        
         display("Audit", dummyAuditService);
         dummyAuditService.assertSimpleRecordSanity();
-        dummyAuditService.assertRecords(3);
+        dummyAuditService.assertRecords(2);
         dummyAuditService.assertAnyRequestDeltas();
         dummyAuditService.assertExecutionDeltas(0, 3);
         dummyAuditService.assertHasDelta(0, ChangeType.ADD, UserType.class);
         dummyAuditService.assertHasDelta(0, ChangeType.MODIFY, UserType.class);
         dummyAuditService.assertHasDelta(0, ChangeType.ADD, ShadowType.class);
-        dummyAuditService.assertExecutionDeltas(1, 1);
-        dummyAuditService.assertHasDelta(1, ChangeType.MODIFY, UserType.class);
+        // this one was redundant
+//        dummyAuditService.assertExecutionDeltas(1, 1);
+//        dummyAuditService.assertHasDelta(1, ChangeType.MODIFY, UserType.class);
      // raw operation, no target
 //        dummyAuditService.assertTarget(USER_JACK_OID);
         dummyAuditService.assertExecutionSuccess();
@@ -2734,7 +2734,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
      // Check audit
         display("Audit", dummyAuditService);
-        dummyAuditService.assertRecords(2);
+        dummyAuditService.assertRecords(3);
         dummyAuditService.assertSimpleRecordSanity();
         dummyAuditService.assertAnyRequestDeltas();
         dummyAuditService.assertExecutionDeltas(3);
@@ -2804,7 +2804,19 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.assertAnyRequestDeltas();
         dummyAuditService.assertExecutionDeltas(2);
         dummyAuditService.assertHasDelta(ChangeType.MODIFY, UserType.class);
-        dummyAuditService.assertHasDelta(ChangeType.MODIFY, ShadowType.class);
+        ObjectDeltaOperation<ShadowType> auditShadowDelta = dummyAuditService.assertHasDelta(ChangeType.MODIFY, ShadowType.class);
+        
+        assertEquals("Unexpected number of modifications in shadow audit delta: "+auditShadowDelta.debugDump(), 4, auditShadowDelta.getObjectDelta().getModifications().size());
+        
+        dummyAuditService.assertOldValue(ChangeType.MODIFY, UserType.class,
+        		UserType.F_NAME, PrismTestUtil.createPolyString("morgan"));
+        dummyAuditService.assertOldValue(ChangeType.MODIFY, ShadowType.class, 
+        		new ItemPath(ShadowType.F_ATTRIBUTES, SchemaConstants.ICFS_NAME), "morgan");
+        dummyAuditService.assertOldValue(ChangeType.MODIFY, ShadowType.class, 
+        		new ItemPath(ShadowType.F_ATTRIBUTES, SchemaConstants.ICFS_UID), "morgan");
+        dummyAuditService.assertOldValue(ChangeType.MODIFY, ShadowType.class, 
+        		new ItemPath(ShadowType.F_NAME), PrismTestUtil.createPolyString("morgan"));
+        
         dummyAuditService.assertTarget(USER_MORGAN_OID);
         dummyAuditService.assertExecutionSuccess();
 

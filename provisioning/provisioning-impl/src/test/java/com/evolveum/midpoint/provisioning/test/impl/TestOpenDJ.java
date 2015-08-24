@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2015 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,10 @@ import static org.testng.AssertJUnit.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -59,7 +62,9 @@ import com.evolveum.midpoint.prism.Containerable;
 import com.evolveum.midpoint.prism.Objectable;
 import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.prism.PrismProperty;
 import com.evolveum.midpoint.prism.PrismPropertyDefinition;
+import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
@@ -87,6 +92,7 @@ import com.evolveum.midpoint.schema.processor.ResourceAttribute;
 import com.evolveum.midpoint.schema.processor.ResourceAttributeDefinition;
 import com.evolveum.midpoint.schema.processor.ResourceSchema;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.util.MiscSchemaUtil;
 import com.evolveum.midpoint.schema.util.ObjectQueryUtil;
 import com.evolveum.midpoint.schema.util.ShadowUtil;
 import com.evolveum.midpoint.schema.util.ResourceTypeUtil;
@@ -153,7 +159,7 @@ import com.sun.mail.imap.protocol.UID;
 @ContextConfiguration(locations = "classpath:ctx-provisioning-test-main.xml")
 @DirtiesContext
 public class TestOpenDJ extends AbstractOpenDJTest {
-	
+
 	private static Trace LOGGER = TraceManager.getTrace(TestOpenDJ.class);
 
 	@Autowired
@@ -910,6 +916,60 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		
 		assertShadows(2);
 	}
+	
+	@Test
+	public void test145ModifyAccountJackJpegPhoto() throws Exception {
+		final String TEST_NAME = "test145ModifyAccountJackJpegPhoto";
+		TestUtil.displayTestTile(TEST_NAME);
+		
+		OperationResult result = new OperationResult(TestOpenDJ.class.getName()
+				+ "." + TEST_NAME);
+		
+		byte[] bytesIn = Files.readAllBytes(Paths.get(ProvisioningTestUtil.DOT_JPG_FILENAME));
+		display("Bytes in", MiscUtil.binaryToHex(bytesIn));
+		
+		QName jpegPhotoQName = new QName(RESOURCE_OPENDJ_NS, "jpegPhoto");
+		PropertyDelta<byte[]> jpegPhotoDelta = new PropertyDelta<>(new ItemPath(ShadowType.F_ATTRIBUTES, jpegPhotoQName), 
+				null , prismContext);
+		jpegPhotoDelta.setValueToReplace(new PrismPropertyValue<byte[]>(bytesIn));
+		
+		Collection<? extends ItemDelta> modifications = MiscSchemaUtil.createCollection(jpegPhotoDelta);
+		
+		display("Modifications",modifications);
+		
+		// WHEN
+		TestUtil.displayWhen(TEST_NAME);
+		provisioningService.modifyObject(ShadowType.class, ACCOUNT_JACK_OID,
+				modifications, null, null, taskManager.createTaskInstance(), result);
+		
+		// THEN
+		TestUtil.displayThen(TEST_NAME);
+		result.computeStatus();
+		TestUtil.assertSuccess(result);
+		
+		SearchResultEntry entry = openDJController.searchByUid("rename");
+		display("LDAP Entry", entry);
+		byte[] jpegPhotoLdap = OpenDJController.getAttributeValueBinary(entry, "jpegPhoto");
+		assertNotNull("No jpegPhoto in LDAP entry", jpegPhotoLdap);
+		assertEquals("Byte length changed (LDAP)", bytesIn.length, jpegPhotoLdap.length);
+		assertTrue("Bytes do not match (LDAP)", Arrays.equals(bytesIn, jpegPhotoLdap));
+		
+		PrismObject<ShadowType> shadow = provisioningService.getObject(ShadowType.class,
+				ACCOUNT_JACK_OID, null, taskManager.createTaskInstance(), result);
+		
+		display("Object after change",shadow);
+		
+		PrismContainer<?> attributesContainer = shadow.findContainer(ShadowType.F_ATTRIBUTES);
+		PrismProperty<byte[]> jpegPhotoAttr = attributesContainer.findProperty(jpegPhotoQName);
+		byte[] bytesOut = jpegPhotoAttr.getValues().get(0).getValue();
+		
+		display("Bytes out", MiscUtil.binaryToHex(bytesOut));
+		
+		assertEquals("Byte length changed (shadow)", bytesIn.length, bytesOut.length);
+		assertTrue("Bytes do not match (shadow)", Arrays.equals(bytesIn, bytesOut));
+		
+		assertShadows(2);
+	}
 
 	@Test
 	public void test150ChangePassword() throws Exception {
@@ -941,17 +1001,18 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		assertNull("Unexpected password before change",passwordBefore);
 		
 		ObjectModificationType objectChange = PrismTestUtil.parseAtomicValue(
-                new File("src/test/resources/impl/account-change-password.xml"), ObjectModificationType.COMPLEX_TYPE);
+                new File(TEST_DIR, "account-change-password.xml"), ObjectModificationType.COMPLEX_TYPE);
 		ObjectDelta<ShadowType> delta = DeltaConvertor.createObjectDelta(objectChange, accountType.asPrismObject().getDefinition());
 		display("Object change",delta);
 
 		// WHEN
+		TestUtil.displayWhen(TEST_NAME);
 		provisioningService.modifyObject(ShadowType.class, delta.getOid(), delta.getModifications(), null, null, taskManager.createTaskInstance(), result);
 
 		// THEN
+		TestUtil.displayThen(TEST_NAME);
 		
 		// Check if object was modified in LDAP
-		
 		SearchResultEntry entryAfter = openDJController.searchAndAssertByEntryUuid(uid);			
 		display("LDAP account after", entryAfter);
 
@@ -959,6 +1020,8 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		assertNotNull("The password was not changed",passwordAfter);
 		
 		System.out.println("Changed password: "+passwordAfter);
+		
+		openDJController.assertPassword(entryAfter.getDN().toString(), "mehAbigH4X0R");
 
 		assertShadows(3);
 	}
@@ -1006,6 +1069,8 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		assertNotNull("The password was not changed",passwordAfter);
 		
 		System.out.println("Account password: "+passwordAfter);
+		
+		openDJController.assertPassword(entryAfter.getDN().toString(), "t4k30v3rTh3W0rld");
 			
 		assertShadows(4);
 	}
@@ -1070,7 +1135,7 @@ public class TestOpenDJ extends AbstractOpenDJTest {
         PrismObject<ShadowType> accountNew = provisioningService.getObject(ShadowType.class, ACCOUNT_WILL_OID, null, taskManager.createTaskInstance(), result);
     }
 
-	private void assertShadows(int expectedCount) throws SchemaException {
+	protected void assertShadows(int expectedCount) throws SchemaException {
 		OperationResult result = new OperationResult(TestOpenDJ.class.getName() + ".assertShadows");
 		int actualCount = repositoryService.countObjects(ShadowType.class, null, result);
 		if (actualCount != expectedCount) {
@@ -1328,21 +1393,26 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		IntegrationTestTools.display("Adding object", object);
 
 		// WHEN
+		TestUtil.displayWhen(TEST_NAME);
 		String addedObjectOid = provisioningService.addObject(object.asPrismObject(), null, null, taskManager.createTaskInstance(), result);
 		
 		// THEN
+		TestUtil.displayThen(TEST_NAME);
 		assertEquals(GROUP_SWASHBUCKLERS_OID, addedObjectOid);
 
 		ShadowType shadowType =  repositoryService.getObject(ShadowType.class, GROUP_SWASHBUCKLERS_OID,
 				null, result).asObjectable();
 		PrismAsserts.assertEqualsPolyString("Wrong ICF name (repo)", GROUP_SWASHBUCKLERS_DN, shadowType.getName());
 
-		ShadowType provisioningShadowType = provisioningService.getObject(ShadowType.class, GROUP_SWASHBUCKLERS_OID,
-				null, taskManager.createTaskInstance(), result).asObjectable();
+		PrismObject<ShadowType> provisioningShadow = provisioningService.getObject(ShadowType.class, GROUP_SWASHBUCKLERS_OID,
+				null, taskManager.createTaskInstance(), result);
+		ShadowType provisioningShadowType = provisioningShadow.asObjectable();
 		PrismAsserts.assertEqualsPolyString("Wrong ICF name (provisioning)", GROUP_SWASHBUCKLERS_DN, provisioningShadowType.getName());
 		
 		String uid = ShadowUtil.getSingleStringAttributeValue(shadowType, getPrimaryIdentifierQName());		
 		assertNotNull(uid);
+		ResourceAttribute<Object> memberAttr = ShadowUtil.getAttribute(provisioningShadow, new QName(RESOURCE_OPENDJ_NS, GROUP_MEMBER_ATTR_NAME));
+		assertNull("Member attribute sneaked in", memberAttr);
 		
 		SearchResultEntry ldapEntry = openDJController.searchAndAssertByEntryUuid(uid);
 		display("LDAP group", ldapEntry);
@@ -1394,6 +1464,36 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		display("LDAP group", groupEntry);
 		assertNotNull("No LDAP group entry");
 		openDJController.assertUniqueMember(groupEntry, accountDn);
+	}
+	
+	@Test
+	public void test195GetGroupSwashbucklers() throws Exception {
+		final String TEST_NAME = "test195GetGroupSwashbucklers";
+		TestUtil.displayTestTile(TEST_NAME);
+		
+		OperationResult result = new OperationResult(TestOpenDJ.class.getName()
+				+ "." + TEST_NAME);
+		
+		// WHEN
+		TestUtil.displayWhen(TEST_NAME);
+		PrismObject<ShadowType> provisioningShadow = provisioningService.getObject(ShadowType.class, GROUP_SWASHBUCKLERS_OID,
+				null, taskManager.createTaskInstance(), result);
+		
+		// THEN
+		TestUtil.displayThen(TEST_NAME);
+		ShadowType provisioningShadowType = provisioningShadow.asObjectable();
+		PrismAsserts.assertEqualsPolyString("Wrong ICF name (provisioning)", GROUP_SWASHBUCKLERS_DN, provisioningShadowType.getName());
+		
+		String uid = ShadowUtil.getSingleStringAttributeValue(provisioningShadowType, getPrimaryIdentifierQName());		
+		assertNotNull(uid);
+		ResourceAttribute<Object> memberAttr = ShadowUtil.getAttribute(provisioningShadow, new QName(RESOURCE_OPENDJ_NS, GROUP_MEMBER_ATTR_NAME));
+		assertNull("Member attribute sneaked in", memberAttr);
+		
+		SearchResultEntry ldapEntry = openDJController.searchAndAssertByEntryUuid(uid);
+		display("LDAP group", ldapEntry);
+		assertNotNull("No LDAP group entry");
+		String groupDn = ldapEntry.getDN().toString();
+		assertEquals("Wrong group DN", GROUP_SWASHBUCKLERS_DN, groupDn);
 	}
 
 	/**
@@ -1598,7 +1698,7 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		assertSuccess(result);
 		display("Search resutls", searchResults);
 		
-		assertSearchResults(searchResults, "drake", "hbarbossa", "idm", "jbeckett");
+		assertSearchResults(searchResults, "cook", "drake", "hbarbossa", "idm");
 		
 		assertConnectorOperationIncrement(1);
 		assertConnectorSimulatedPagingSearchIncrement(0);
@@ -1918,7 +2018,7 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		
 		OperationResult parentResult = new OperationResult("test401noReadNativeCapability");
 		
-		addResourceFromFile(new File(ProvisioningTestUtil.COMMON_TEST_DIR_FILE, "resource-opendj-no-read.xml"), LDAP_CONNECTOR_TYPE, true, parentResult);
+		addResourceFromFile(new File(ProvisioningTestUtil.COMMON_TEST_DIR_FILE, "resource-opendj-no-read.xml"), ProvisioningTestUtil.CONNECTOR_LDAP_TYPE, true, parentResult);
 		
 		Task task = taskManager.createTaskInstance();
 		
@@ -1938,7 +2038,7 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		
 		OperationResult parentResult = new OperationResult("test401noReadNativeCapability");
 		
-		addResourceFromFile(new File(ProvisioningTestUtil.COMMON_TEST_DIR_FILE, "/resource-opendj-no-create.xml"), LDAP_CONNECTOR_TYPE, true, parentResult);
+		addResourceFromFile(new File(ProvisioningTestUtil.COMMON_TEST_DIR_FILE, "/resource-opendj-no-create.xml"), ProvisioningTestUtil.CONNECTOR_LDAP_TYPE, true, parentResult);
 		
 		Task task = taskManager.createTaskInstance();
 		
@@ -1959,7 +2059,7 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		
 		OperationResult parentResult = new OperationResult("test401noReadNativeCapability");
 		
-		addResourceFromFile(new File(ProvisioningTestUtil.COMMON_TEST_DIR_FILE, "/resource-opendj-no-delete.xml"), LDAP_CONNECTOR_TYPE, true, parentResult);
+		addResourceFromFile(new File(ProvisioningTestUtil.COMMON_TEST_DIR_FILE, "/resource-opendj-no-delete.xml"), ProvisioningTestUtil.CONNECTOR_LDAP_TYPE, true, parentResult);
 		
 		Task task = taskManager.createTaskInstance();
 		
@@ -1978,7 +2078,7 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 		
 		OperationResult parentResult = new OperationResult("test401noReadNativeCapability");
 		
-		addResourceFromFile(new File(ProvisioningTestUtil.COMMON_TEST_DIR_FILE, "/resource-opendj-no-update.xml"), LDAP_CONNECTOR_TYPE, true, parentResult);
+		addResourceFromFile(new File(ProvisioningTestUtil.COMMON_TEST_DIR_FILE, "/resource-opendj-no-update.xml"), ProvisioningTestUtil.CONNECTOR_LDAP_TYPE, true, parentResult);
 		
 		Task task = taskManager.createTaskInstance();
 		
@@ -2003,7 +2103,7 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 				+ "." + TEST_NAME);
 
 		PrismObject<ResourceType> resource = prismContext.parseObject(RESOURCE_OPENDJ_BAD_CREDENTIALS_FILE);
-		fillInConnectorRef(resource, LDAP_CONNECTOR_TYPE, result);
+		fillInConnectorRef(resource, ProvisioningTestUtil.CONNECTOR_LDAP_TYPE, result);
 
 		// WHEN
 		String addedObjectOid = provisioningService.addObject(resource, null, null, taskManager.createTaskInstance(), result);
@@ -2041,7 +2141,7 @@ public class TestOpenDJ extends AbstractOpenDJTest {
 				+ "." + TEST_NAME);
 
 		PrismObject<ResourceType> resource = prismContext.parseObject(RESOURCE_OPENDJ_BAD_BIND_DN_FILE);
-		fillInConnectorRef(resource, LDAP_CONNECTOR_TYPE, result);
+		fillInConnectorRef(resource, ProvisioningTestUtil.CONNECTOR_LDAP_TYPE, result);
 
 		// WHEN
 		String addedObjectOid = provisioningService.addObject(resource, null, null, taskManager.createTaskInstance(), result);

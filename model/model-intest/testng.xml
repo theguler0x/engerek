@@ -16,6 +16,9 @@
   -->
 <!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
 <suite name="unit" parallel="false">
+	<listeners>
+		<listener class-name="com.evolveum.midpoint.tools.testng.AlphabeticalMethodInterceptor"/>
+	</listeners>
     <test name="Model Integration" preserve-order="true" parallel="false" verbose="10">
         <classes>
         	<class name="com.evolveum.midpoint.model.intest.TestModelServiceContract"/>
@@ -37,6 +40,7 @@
             <class name="com.evolveum.midpoint.model.intest.TestResources"/>
             <class name="com.evolveum.midpoint.model.intest.TestMapping"/>
             <class name="com.evolveum.midpoint.model.intest.TestMappingInbound"/>
+            <class name="com.evolveum.midpoint.model.intest.TestVolatility"/>
             <class name="com.evolveum.midpoint.model.intest.TestSecurity"/>
             <class name="com.evolveum.midpoint.model.intest.TestTriggerTask"/>
             <class name="com.evolveum.midpoint.model.intest.TestIteration"/>

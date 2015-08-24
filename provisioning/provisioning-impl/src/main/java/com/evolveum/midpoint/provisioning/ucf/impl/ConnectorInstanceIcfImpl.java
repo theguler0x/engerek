@@ -90,6 +90,7 @@ import org.identityconnectors.framework.common.objects.SyncResultsHandler;
 import org.identityconnectors.framework.common.objects.SyncToken;
 import org.identityconnectors.framework.common.objects.Uid;
 import org.identityconnectors.framework.common.objects.filter.Filter;
+import org.identityconnectors.framework.spi.SyncTokenResultsHandler;
 
 import com.evolveum.midpoint.prism.ComplexTypeDefinition;
 import com.evolveum.midpoint.prism.PrismContainer;
@@ -216,7 +217,7 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 	private PrismSchema connectorSchema;
 	private String description;
 	private boolean caseIgnoreAttributeNames = false;
-	private boolean legacySchema = false;
+	private Boolean legacySchema = null;
 	private boolean supportsReturnDefaultAttributes = false;
 
 	public ConnectorInstanceIcfImpl(ConnectorInfo connectorInfo, ConnectorType connectorType,
@@ -321,7 +322,13 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 			} else {
 				throw new SystemException("Got unexpected exception: " + ex.getClass().getName(), ex);
 			}
-
+		}
+		
+		PrismProperty<Boolean> legacySchemaConfigProperty = configuration.findProperty(new QName(
+				ConnectorFactoryIcfImpl.NS_ICF_CONFIGURATION,
+				ConnectorFactoryIcfImpl.CONNECTOR_SCHEMA_LEGACY_SCHEMA_XML_ELEMENT_NAME));
+		if (legacySchemaConfigProperty != null) {
+			legacySchema = legacySchemaConfigProperty.getRealValue();
 		}
 
 	}
@@ -354,17 +361,17 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 			return null;
 		}
 
-		PrismSchema mpSchema = new PrismSchema(connectorType.getNamespace(), prismContext);
+		connectorSchema = new PrismSchema(connectorType.getNamespace(), prismContext);
 
 		// Create configuration type - the type used by the "configuration"
 		// element
-		PrismContainerDefinition<?> configurationContainerDef = mpSchema.createPropertyContainerDefinition(
+		PrismContainerDefinition<?> configurationContainerDef = connectorSchema.createPropertyContainerDefinition(
 				ResourceType.F_CONNECTOR_CONFIGURATION.getLocalPart(),
 				ConnectorFactoryIcfImpl.CONNECTOR_SCHEMA_CONFIGURATION_TYPE_LOCAL_NAME);
 
 		// element with "ConfigurationPropertiesType" - the dynamic part of
 		// configuration schema
-		ComplexTypeDefinition configPropertiesTypeDef = mpSchema.createComplexTypeDefinition(new QName(
+		ComplexTypeDefinition configPropertiesTypeDef = connectorSchema.createComplexTypeDefinition(new QName(
 				connectorType.getNamespace(),
 				ConnectorFactoryIcfImpl.CONNECTOR_SCHEMA_CONFIGURATION_PROPERTIES_TYPE_LOCAL_NAME));
 
@@ -410,6 +417,9 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
         configurationContainerDef.createContainerDefinition(
                 ConnectorFactoryIcfImpl.CONNECTOR_SCHEMA_RESULTS_HANDLER_CONFIGURATION_ELEMENT,
                 ConnectorFactoryIcfImpl.CONNECTOR_SCHEMA_RESULTS_HANDLER_CONFIGURATION_TYPE, 0, 1);
+		configurationContainerDef.createPropertyDefinition(
+				ConnectorFactoryIcfImpl.CONNECTOR_SCHEMA_LEGACY_SCHEMA_ELEMENT,
+				ConnectorFactoryIcfImpl.CONNECTOR_SCHEMA_LEGACY_SCHEMA_TYPE, 0, 1);
 
 		// No need to create definition of "configuration" element.
 		// midPoint will look for this element, but it will be generated as part
@@ -419,10 +429,9 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 				ConnectorFactoryIcfImpl.CONNECTOR_SCHEMA_CONFIGURATION_PROPERTIES_ELEMENT_QNAME,
 				configPropertiesTypeDef, 1, 1);
 
-		LOGGER.debug("Generated configuration schema for {}: {} definitions", this, mpSchema.getDefinitions()
+		LOGGER.debug("Generated configuration schema for {}: {} definitions", this, connectorSchema.getDefinitions()
 				.size());
-		connectorSchema = mpSchema;
-		return mpSchema;
+		return connectorSchema;
 	}
 
 	private QName icfTypeToXsdType(Class<?> type, boolean isConfidential) {
@@ -481,7 +490,7 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 		this.capabilities = capabilities;
 		this.caseIgnoreAttributeNames = caseIgnoreAttributeNames;
 		
-		if (resourceSchema != null) {
+		if (resourceSchema != null && legacySchema == null) {
 			legacySchema = isLegacySchema(resourceSchema);
 		}
 
@@ -642,7 +651,7 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 		for (ObjectClassInfo objectClassInfo : objectClassInfoSet) {
 
 			// "Flat" ICF object class names needs to be mapped to QNames
-			QName objectClassXsdName = icfNameMapper.objectClassToQname(objectClassInfo.getType(), getSchemaNamespace(), legacySchema);
+			QName objectClassXsdName = icfNameMapper.objectClassToQname(new ObjectClass(objectClassInfo.getType()), getSchemaNamespace(), legacySchema);
 
 			if (!shouldBeGenerated(generateObjectClasses, objectClassXsdName)){
 				continue;
@@ -1307,6 +1316,10 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 				attributes.add(AttributeBuilder.build(OperationalAttributes.DISABLE_DATE_NAME, XmlTypeConverter.toMillis(shadowType.getActivation().getValidTo())));
 			}
 			
+			if (ActivationUtil.hasLockoutStatus(shadowType)){
+				attributes.add(AttributeBuilder.build(OperationalAttributes.LOCK_OUT_NAME, ActivationUtil.isLockedOut(shadowType)));
+			}
+			
 			if (LOGGER.isTraceEnabled()) {
 				LOGGER.trace("ICF attributes after conversion:\n{}", IcfUtil.dump(attributes));
 			}
@@ -1388,7 +1401,7 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 			throw new GenericFrameworkException("ICF did not returned UID after create");
 		}
 
-		ResourceAttributeDefinition uidDefinition = IcfUtil.getUidDefinition(attributesContainer.getDefinition());
+		ResourceAttributeDefinition uidDefinition = IcfUtil.getUidDefinition(attributesContainer.getDefinition().getComplexTypeDefinition());
 		if (uidDefinition == null) {
 			throw new IllegalArgumentException("No definition for ICF UID attribute found in definition "
 					+ attributesContainer.getDefinition());
@@ -2008,7 +2021,6 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 		OperationOptions options = optionsBuilder.build();
 		
 		SyncResultsHandler syncHandler = new SyncResultsHandler() {
-
 			@Override
 			public boolean handle(SyncDelta delta) {
 				LOGGER.trace("Detected sync delta: {}", delta);
@@ -2022,9 +2034,10 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 		icfResult.addArbitraryObjectAsParam("syncToken", syncToken);
 		icfResult.addArbitraryObjectAsParam("syncHandler", syncHandler);
 
+		SyncToken lastReceivedToken;
 		try {
 			InternalMonitor.recordConnectorOperation("sync");
-			icfConnectorFacade.sync(icfObjectClass, syncToken, syncHandler,
+			lastReceivedToken = icfConnectorFacade.sync(icfObjectClass, syncToken, syncHandler,
 					options);
 			icfResult.recordSuccess();
 			icfResult.addReturn(OperationResult.RETURN_COUNT, syncDeltas.size());
@@ -2048,12 +2061,18 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 			}
 		}
 		// convert changes from icf to midpoint Change
-		List<Change<T>> changeList = null;
+		List<Change<T>> changeList;
 		try {
 			changeList = getChangesFromSyncDeltas(icfObjectClass, syncDeltas, resourceSchema, result);
 		} catch (SchemaException ex) {
 			result.recordFatalError(ex.getMessage(), ex);
 			throw new SchemaException(ex.getMessage(), ex);
+		}
+		
+		if (lastReceivedToken != null) {
+			Change<T> lastChange = new Change((ObjectDelta)null, getToken(lastReceivedToken));
+			LOGGER.trace("Adding last change: {}", lastChange);
+			changeList.add(lastChange);
 		}
 
 		result.recordSuccess();
@@ -2244,7 +2263,7 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 			} else if (midpointEx instanceof Error) {
 				throw (Error) midpointEx;
 			} else {
-				throw new SystemException("Got unexpected exception: " + ex.getClass().getName(), ex);
+				throw new SystemException("Got unexpected exception: " + ex.getClass().getName() + ": "+ex.getMessage(), ex);
 			}
 		}
 		
@@ -2528,7 +2547,7 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 			throws SchemaException, GenericFrameworkException {
 		List<Change<T>> changeList = new ArrayList<Change<T>>();
 
-		QName objectClass = icfNameMapper.objectClassToQname(icfObjClass.getObjectClassValue(), getSchemaNamespace(), legacySchema);
+		QName objectClass = icfNameMapper.objectClassToQname(icfObjClass, getSchemaNamespace(), legacySchema);
 		ObjectClassComplexTypeDefinition objClassDefinition = null;
 		if (objectClass != null) {
 			objClassDefinition = (ObjectClassComplexTypeDefinition) schema.findComplexTypeDefinition(objectClass);
@@ -2542,11 +2561,17 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 			ObjectClassComplexTypeDefinition deltaObjClassDefinition = objClassDefinition;
 			if (objectClass == null) {
 				deltaIcfObjClass = icfDelta.getObjectClass();
-				deltaObjectClass = icfNameMapper.objectClassToQname(deltaIcfObjClass.getObjectClassValue(), getSchemaNamespace(), legacySchema);
-				deltaObjClassDefinition = (ObjectClassComplexTypeDefinition) schema.findComplexTypeDefinition(deltaObjectClass);
+				deltaObjectClass = icfNameMapper.objectClassToQname(deltaIcfObjClass, getSchemaNamespace(), legacySchema);
+				if (deltaIcfObjClass != null) {
+					deltaObjClassDefinition = (ObjectClassComplexTypeDefinition) schema.findComplexTypeDefinition(deltaObjectClass);
+				}
 			}
 			if (deltaObjClassDefinition == null) {
-				throw new SchemaException("Got delta with object class "+deltaObjectClass+" ("+deltaIcfObjClass+") that has no definition in resource schema");
+				if (icfDelta.getDeltaType() == SyncDeltaType.DELETE) {
+					// tolerate this. E.g. LDAP changelogs do not have objectclass in delete deltas.
+				} else {
+					throw new SchemaException("Got delta with object class "+deltaObjectClass+" ("+deltaIcfObjClass+") that has no definition in resource schema");
+				}
 			}
 			
 			SyncDeltaType icfDeltaType = icfDelta.getDeltaType();
@@ -2556,8 +2581,7 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 						ShadowType.class, ChangeType.DELETE, prismContext);
 				ResourceAttribute<String> uidAttribute = IcfUtil.createUidAttribute(
 						icfDelta.getUid(),
-						IcfUtil.getUidDefinition(deltaObjClassDefinition
-								.toResourceAttributeContainerDefinition(ShadowType.F_ATTRIBUTES)));
+						IcfUtil.getUidDefinition(deltaObjClassDefinition, resourceSchema));
 				Collection<ResourceAttribute<?>> identifiers = new ArrayList<ResourceAttribute<?>>(1);
 				identifiers.add(uidAttribute);
 				Change change = new Change(identifiers, objectDelta, getToken(icfDelta.getToken()));
@@ -2606,7 +2630,7 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 				Change change = new Change(identifiers, currentShadow, getToken(icfDelta.getToken()));
 				change.setObjectClassDefinition(deltaObjClassDefinition);
 				changeList.add(change);
-				LOGGER.trace("END creating delta of type {}", icfDeltaType);
+				LOGGER.trace("END creating delta of type {}:\n{}", icfDeltaType, change.debugDump());
 				
 			} else {
 				throw new GenericFrameworkException("Unexpected sync delta type " + icfDeltaType);
@@ -3096,7 +3120,7 @@ public class ConnectorInstanceIcfImpl implements ConnectorInstance {
 		} catch (EncryptionException e) {
 			LOGGER.error("Unable to decrypt value of element {}: {}",
 					new Object[] { propertyName, e.getMessage(), e });
-			throw new SystemException("Unable to dectypt value of element " + propertyName + ": "
+			throw new SystemException("Unable to decrypt value of element " + propertyName + ": "
 					+ e.getMessage(), e);
 		}
 	}

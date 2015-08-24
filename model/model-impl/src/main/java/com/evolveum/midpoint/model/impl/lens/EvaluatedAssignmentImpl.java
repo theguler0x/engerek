@@ -43,6 +43,7 @@ import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.PolicyConstraintsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
 
@@ -65,6 +66,8 @@ public class EvaluatedAssignmentImpl<F extends FocusType> implements EvaluatedAs
 	private PrismObject<?> target;
 	private boolean isValid;
 	private boolean forceRecon;         // used also to force recomputation of parentOrgRefs
+	private boolean presentInCurrentObject;
+	private boolean presentInOldObject;
 
 	public EvaluatedAssignmentImpl() {
 		constructions = new DeltaSetTriple<>();
@@ -164,7 +167,7 @@ public class EvaluatedAssignmentImpl<F extends FocusType> implements EvaluatedAs
 	public void addAuthorization(Authorization authorization) {
 		authorizations.add(authorization);
 	}
-
+	
 	public Collection<Mapping<? extends PrismPropertyValue<?>,? extends PrismPropertyDefinition<?>>> getFocusMappings() {
 		return focusMappings;
 	}
@@ -281,6 +284,8 @@ public class EvaluatedAssignmentImpl<F extends FocusType> implements EvaluatedAs
 			sb.append("\n");
 			DebugUtil.debugDumpWithLabel(sb, "Target", target.toString(), indent+1);
 		}
+		DebugUtil.debugDumpWithLabel(sb, "Present in old object", isPresentInOldObject(), indent+1);
+		DebugUtil.debugDumpWithLabel(sb, "Present in current object", isPresentInCurrentObject(), indent+1);
 		return sb.toString();
 	}
 
@@ -288,5 +293,22 @@ public class EvaluatedAssignmentImpl<F extends FocusType> implements EvaluatedAs
 	public String toString() {
 		return "EvaluatedAssignment(acc=" + constructions + "; org="+orgRefVals+"; autz="+authorizations+"; "+focusMappings.size()+" focus mappings)";
 	}
-	
+
+	public void setPresentInCurrentObject(boolean presentInCurrentObject) {
+		this.presentInCurrentObject = presentInCurrentObject;
+	}
+
+	public void setPresentInOldObject(boolean presentInOldObject) {
+		this.presentInOldObject = presentInOldObject;
+	}
+
+	@Override
+	public boolean isPresentInCurrentObject() {
+		return presentInCurrentObject;
+	}
+
+	@Override
+	public boolean isPresentInOldObject() {
+		return presentInOldObject;
+	}
 }

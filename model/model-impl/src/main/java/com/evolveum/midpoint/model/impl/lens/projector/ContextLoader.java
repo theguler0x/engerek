@@ -21,11 +21,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
-import javax.xml.namespace.QName;
-
-import com.evolveum.midpoint.schema.constants.ObjectTypes;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
-import com.evolveum.midpoint.schema.result.OperationResultStatus;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 
 import org.apache.commons.lang.StringUtils;
@@ -40,6 +36,7 @@ import com.evolveum.midpoint.model.api.PolicyViolationException;
 import com.evolveum.midpoint.model.api.context.SynchronizationPolicyDecision;
 import com.evolveum.midpoint.model.impl.controller.ModelUtils;
 import com.evolveum.midpoint.model.impl.lens.LensContext;
+import com.evolveum.midpoint.model.impl.lens.LensElementContext;
 import com.evolveum.midpoint.model.impl.lens.LensFocusContext;
 import com.evolveum.midpoint.model.impl.lens.LensObjectDeltaOperation;
 import com.evolveum.midpoint.model.impl.lens.LensProjectionContext;
@@ -140,6 +137,8 @@ public class ContextLoader {
 	    		}
     		}
 	    	
+	    	setPrimaryDeltaOldValue(focusContext);
+	    	
     	} else {
     		// Projection contexts are not rotten in this case. There is no focus so there is no way to refresh them.
     		for (LensProjectionContext projectionContext: context.getProjectionContexts()) {
@@ -198,6 +197,11 @@ public class ContextLoader {
 				if (LOGGER.isTraceEnabled()) {
 					LOGGER.trace("Removing rotten context {}", projectionContext.getHumanReadableName());
 				}
+
+				if (projectionContext.isToBeArchived()) {
+					context.getHistoricResourceObjects().add(projectionContext.getResourceShadowDiscriminator());
+				}
+
 				List<LensObjectDeltaOperation<ShadowType>> executedDeltas = projectionContext.getExecutedDeltas();
 				context.getRottenExecutedDeltas().addAll(executedDeltas);
 				projectionIterator.remove();
@@ -354,6 +358,15 @@ public class ContextLoader {
         focusContext.setLoadedObject(object);
         focusContext.setFresh(true);
     }
+	
+	private <O extends ObjectType> void setPrimaryDeltaOldValue(LensElementContext<O> ctx) throws SchemaException, ObjectNotFoundException {
+		if (ctx.getPrimaryDelta() != null && ctx.getObjectOld() != null && ctx.isModify()) {
+			PrismObject<O> objectOld = ctx.getObjectOld();
+			for (ItemDelta<?,?> itemDelta: ctx.getPrimaryDelta().getModifications()) {
+				LensUtil.setDeltaOldValue(ctx, itemDelta);
+			}
+		}
+	}
 	
 	private <F extends ObjectType> void loadFromSystemConfig(LensContext<F> context, OperationResult result)
 			throws ObjectNotFoundException, SchemaException, ConfigurationException {
@@ -905,7 +918,14 @@ public class ContextLoader {
 		if (projContext.getSynchronizationPolicyDecision() == SynchronizationPolicyDecision.BROKEN) {
 			return;
 		}
-		
+
+		// MID-2436 (volatile objects) - as a quick but effective hack, we set reconciliation:=TRUE for volatile accounts
+		ResourceObjectTypeDefinitionType objectDefinition = projContext.getResourceObjectTypeDefinitionType();
+		if (objectDefinition != null && objectDefinition.getVolatility() == ResourceObjectVolatilityType.UNPREDICTABLE && !projContext.isDoReconciliation()) {
+			LOGGER.trace("Resource object volatility is UNPREDICTABLE => setting doReconciliation to TRUE for {}", projContext.getResourceShadowDiscriminator());
+			projContext.setDoReconciliation(true);
+		}
+
 		// Remember OID before the object could be wiped
 		String projectionObjectOid = projContext.getOid();
 		if (projContext.isDoReconciliation() && !projContext.isFullShadow()) {
@@ -1023,6 +1043,8 @@ public class ContextLoader {
 				}
 			}
 		}
+		
+		setPrimaryDeltaOldValue(projContext);
 	}
 	
 	private <F extends ObjectType> boolean needToReload(LensContext<F> context,

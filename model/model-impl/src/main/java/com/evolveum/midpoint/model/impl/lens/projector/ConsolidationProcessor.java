@@ -34,6 +34,7 @@ import com.evolveum.midpoint.model.impl.lens.LensFocusContext;
 import com.evolveum.midpoint.model.impl.lens.LensProjectionContext;
 import com.evolveum.midpoint.model.impl.lens.LensUtil;
 import com.evolveum.midpoint.prism.Containerable;
+import com.evolveum.midpoint.prism.Item;
 import com.evolveum.midpoint.prism.ItemDefinition;
 import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismContainerDefinition;
@@ -499,6 +500,9 @@ public class ConsolidationProcessor {
         	} else {
         		itemDelta.validate();            		
         	}
+        	
+        	LensUtil.setDeltaOldValue(projCtx, itemDelta);
+        	
         	return itemDelta;
         }
 		
@@ -824,10 +828,10 @@ public class ConsolidationProcessor {
 
 	private <V extends PrismValue, D extends ItemDefinition, F extends FocusType> void convertSqueezeSet(Collection<V> fromSet,
 			Collection<ItemValueWithOrigin<V,D>> toSet,
-			PrismValueDeltaSetTripleProducer<V, D> valueConstruction, Construction<F> accountConstruction) {
+			PrismValueDeltaSetTripleProducer<V, D> mapping, Construction<F> construction) {
 		if (fromSet != null) {
 			for (V from: fromSet) {
-				ItemValueWithOrigin<V,D> pvwo = new ItemValueWithOrigin<V,D>(from, valueConstruction, accountConstruction);
+				ItemValueWithOrigin<V,D> pvwo = new ItemValueWithOrigin<V,D>(from, mapping, construction);
 				toSet.add(pvwo);
 			}
 		}

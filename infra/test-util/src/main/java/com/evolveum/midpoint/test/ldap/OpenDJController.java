@@ -46,12 +46,14 @@ import org.opends.messages.Message;
 import org.opends.messages.MessageBuilder;
 import org.opends.server.config.ConfigException;
 import org.opends.server.core.AddOperation;
+import org.opends.server.core.BindOperation;
 import org.opends.server.core.ModifyDNOperation;
 import org.opends.server.core.ModifyOperation;
 import org.opends.server.protocols.internal.InternalClientConnection;
 import org.opends.server.protocols.internal.InternalSearchOperation;
 import org.opends.server.types.Attribute;
 import org.opends.server.types.AttributeValue;
+import org.opends.server.types.ByteString;
 import org.opends.server.types.DN;
 import org.opends.server.types.DereferencePolicy;
 import org.opends.server.types.DirectoryEnvironmentConfig;
@@ -91,6 +93,7 @@ public class OpenDJController extends AbstractResourceController {
 	private String LDAP_SUFFIX = "dc=example,dc=com";
 	
 	public static final String DEFAULT_TEMPLATE_NAME = "opendj.template";
+	public static final String RI_TEMPLATE_NAME = "opendj.template.ri";
 
 	protected File serverRoot = new File(SERVER_ROOT);
 	protected File configFile = null;
@@ -328,6 +331,15 @@ public class OpenDJController extends AbstractResourceController {
 	}
 
 	/**
+	 * Start the embedded OpenDJ directory server using files copied from the
+	 * template with referential integrity plugin turned on.
+	 */
+	public InternalClientConnection startCleanServerRI() throws IOException, URISyntaxException {
+		return startCleanServer(RI_TEMPLATE_NAME);
+	}
+
+
+	/**
 	 * Start the embedded OpenDJ directory server using files copied from the specified
 	 * template.
 	 */
@@ -526,6 +538,18 @@ public class OpenDJController extends AbstractResourceController {
 				1, attrs.size());
 		Attribute attribute = attrs.get(0);
 		return attribute.iterator().next().getValue().toString();
+	}
+	
+	public static byte[] getAttributeValueBinary(SearchResultEntry response, String name) {
+		List<Attribute> attrs = response.getAttribute(name.toLowerCase());
+		if (attrs == null || attrs.size() == 0) {
+			return null;
+		}
+		assertEquals("Too many attributes for name "+name+": ",
+				1, attrs.size());
+		Attribute attribute = attrs.get(0);
+		ByteString value = attribute.iterator().next().getValue();
+		return value.toByteArray();
 	}
 	
 	public static Collection<String> getAttributeValues(SearchResultEntry response, String name) {
@@ -800,6 +824,23 @@ public class OpenDJController extends AbstractResourceController {
 			sb.append("\nuniqueMember: ").append(memberDn);
 		}
 		return executeLdifChange(sb.toString());
+	}
+	
+	public boolean checkPassword(String entryDn, String password) throws DirectoryException {
+		InternalClientConnection conn = new InternalClientConnection(DN.decode(entryDn));
+		BindOperation op = conn.processSimpleBind(entryDn, password);
+		if (op.getResultCode() == ResultCode.SUCCESS) {
+			return true;
+		} else {
+			LOGGER.error("Bind error: {} ({})", op.getAuthFailureReason(), op.getResultCode());
+			return false;
+		}
+	}
+	
+	public void assertPassword(String entryDn, String password) throws DirectoryException {
+		if (!checkPassword(entryDn, password)) {
+			AssertJUnit.fail("Expected that entry "+entryDn+" will have password '"+password+"'. But the check failed.");
+		}
 	}
 
 }

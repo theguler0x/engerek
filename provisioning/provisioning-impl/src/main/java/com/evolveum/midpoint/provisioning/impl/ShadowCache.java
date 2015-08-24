@@ -22,12 +22,14 @@ import java.util.List;
 
 import javax.xml.namespace.QName;
 
+import com.evolveum.midpoint.prism.Item;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.identityconnectors.framework.spi.operations.CreateOp;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 
+import com.evolveum.midpoint.common.InternalsConfig;
 import com.evolveum.midpoint.common.monitor.InternalMonitor;
 import com.evolveum.midpoint.common.refinery.RefinedAssociationDefinition;
 import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
@@ -65,6 +67,7 @@ import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.prism.query.OrFilter;
 import com.evolveum.midpoint.prism.query.SubstringFilter;
 import com.evolveum.midpoint.prism.query.ValueFilter;
+import com.evolveum.midpoint.prism.util.PrismUtil;
 import com.evolveum.midpoint.provisioning.api.ChangeNotificationDispatcher;
 import com.evolveum.midpoint.provisioning.api.GenericConnectorException;
 import com.evolveum.midpoint.provisioning.api.ProvisioningOperationOptions;
@@ -455,18 +458,11 @@ public abstract class ShadowCache {
 			return shadow.getOid();
 		}
 
-		Collection<PropertyDelta<PrismPropertyValue>> sideEffectDelta = convertToPropertyDelta(sideEffectChanges);
-		if (!sideEffectDelta.isEmpty()) {
-//			try {
-				shadowManager.normalizeDeltas(sideEffectDelta, ctx.getObjectClassDefinition());
-				modifications.addAll((Collection) sideEffectDelta);
-//				repositoryService.modifyObject(shadow.getCompileTimeClass(), oid, sideEffectDelta, parentResult);
-				
-//			} catch (ObjectAlreadyExistsException ex) {
-//				parentResult.recordFatalError("Side effect changes could not be applied", ex);
-//				LOGGER.error("Side effect changes could not be applied. " + ex.getMessage(), ex);
-//				throw new SystemException("Side effect changes could not be applied. " + ex.getMessage(), ex);
-//			}
+		Collection<PropertyDelta<PrismPropertyValue>> sideEffectDeltas = convertToPropertyDelta(sideEffectChanges);
+		if (!sideEffectDeltas.isEmpty()) {
+			shadowManager.normalizeDeltas(sideEffectDeltas, ctx.getObjectClassDefinition());
+			PrismUtil.setDeltaOldValue(shadow, sideEffectDeltas);
+			ItemDelta.addAll(modifications, (Collection) sideEffectDeltas);
 		}
 		
 		afterModifyOnResource(shadow, modifications, parentResult);
@@ -574,7 +570,7 @@ public abstract class ShadowCache {
 				    }
                     shadow = shadowTypeWhenNoOid.asPrismObject();
                 } else {
-				    shadow = repositoryService.getObject(delta.getObjectTypeClass(), shadowOid, null, parentResult);
+				    shadow = repositoryService.getObject(delta.getObjectTypeClass(), shadowOid, null, parentResult);	// TODO consider fetching only when really necessary
                 }
 			}
 		} else {
@@ -793,16 +789,12 @@ public abstract class ShadowCache {
 
         if (filter instanceof AndFilter){
             List<? extends ObjectFilter> conditions = ((AndFilter) filter).getConditions();
-            attributeFilter = getAttributeQuery(conditions);
+            attributeFilter = createAttributeQueryInternal(conditions);
             if (attributeFilter.size() > 1){
                 attributeQuery = ObjectQuery.createObjectQuery(AndFilter.createAnd(attributeFilter));
-            }
-
-            if (attributeFilter.size() < 1){
+            } else if (attributeFilter.size() < 1){
                 LOGGER.trace("No attribute filter defined in the query.");
-            }
-
-            if (attributeFilter.size() == 1){
+            } else if (attributeFilter.size() == 1) {
                 attributeQuery = ObjectQuery.createObjectQuery(attributeFilter.iterator().next());
             }
 
@@ -820,8 +812,51 @@ public abstract class ShadowCache {
             }
         	attributeQuery.setAllowPartialResults(true);
         }
+        
+        if (InternalsConfig.consistencyChecks && attributeQuery != null && attributeQuery.getFilter() != null) {
+        	attributeQuery.getFilter().checkConsistence();
+        }
         return attributeQuery;
     }
+    
+    private List<ObjectFilter> createAttributeQueryInternal(List<? extends ObjectFilter> conditions) throws SchemaException{
+		List<ObjectFilter> attributeFilter = new ArrayList<>();
+		ItemPath objectClassPath = new ItemPath(ShadowType.F_OBJECT_CLASS);
+		ItemPath resourceRefPath = new ItemPath(ShadowType.F_RESOURCE_REF);
+		for (ObjectFilter f : conditions){
+			if (f instanceof EqualFilter){
+				if (objectClassPath.equivalent(((EqualFilter) f).getFullPath())){
+					continue;
+				}
+				if (resourceRefPath.equivalent(((EqualFilter) f).getFullPath())){
+					continue;
+				}
+				
+				attributeFilter.add(f);
+			} else if (f instanceof NaryLogicalFilter){
+				List<ObjectFilter> subFilters = createAttributeQueryInternal(((NaryLogicalFilter) f).getConditions());
+	            if (subFilters.size() > 1){
+	            	if (f instanceof OrFilter){
+						attributeFilter.add(OrFilter.createOr(subFilters));
+					} else if (f instanceof AndFilter){
+						attributeFilter.add(AndFilter.createAnd(subFilters));
+					} else {
+						throw new IllegalArgumentException("Could not translate query filter. Unknow type: " + f);
+					}
+	            } else if (subFilters.size() < 1){
+	                continue;
+	            } else if (subFilters.size() == 1) {
+	            	attributeFilter.add(subFilters.iterator().next());
+	            }
+				
+			} else if (f instanceof SubstringFilter){
+				attributeFilter.add(f);
+			}
+			
+		}
+		
+		return attributeFilter;	
+	}
 
     private SearchResultMetadata searchObjectsIterativeRepository(
     		final ProvisioningContext ctx, ObjectQuery query,
@@ -906,38 +941,6 @@ public abstract class ShadowCache {
 		}
 
 		return repoShadow;
-	}
-
-	private List<ObjectFilter> getAttributeQuery(List<? extends ObjectFilter> conditions) throws SchemaException{
-		
-		List<ObjectFilter> attributeFilter = new ArrayList<>();
-		ItemPath objectClassPath = new ItemPath(ShadowType.F_OBJECT_CLASS);
-		ItemPath resourceRefPath = new ItemPath(ShadowType.F_RESOURCE_REF);
-		for (ObjectFilter f : conditions){
-			if (f instanceof EqualFilter){
-				if (objectClassPath.equivalent(((EqualFilter) f).getFullPath())){
-					continue;
-				}
-				if (resourceRefPath.equivalent(((EqualFilter) f).getFullPath())){
-					continue;
-				}
-				
-				attributeFilter.add(f);
-			} else if (f instanceof NaryLogicalFilter){
-				List<ObjectFilter> filters = getAttributeQuery(((NaryLogicalFilter) f).getConditions());
-				if (f instanceof OrFilter){
-					attributeFilter.add(OrFilter.createOr(filters));
-				} else if (f instanceof AndFilter){
-					attributeFilter.add(AndFilter.createAnd(filters));
-				} else 
-					throw new IllegalArgumentException("Could not translate query filter. Unknow type: " + f);
-			} else if (f instanceof SubstringFilter){
-				attributeFilter.add(f);
-			}
-			
-		}
-		
-		return attributeFilter;	
 	}
 	
 	public Integer countObjects(ObjectQuery query, final OperationResult result) throws SchemaException,
@@ -1070,9 +1073,35 @@ public abstract class ShadowCache {
 			
 			for (Change<ShadowType> change: changes) {	
 				
-				ProvisioningContext shadowCtx = ctx.spawn(change.getObjectClassDefinition().getTypeName());
+				if (change.isTokenOnly()) {
+					LOGGER.trace("Found token-only change: {}", change);
+					task.setExtensionProperty(change.getToken());
+					continue;
+				}
 				
-				processChange(shadowCtx, change, parentResult);
+				ObjectClassComplexTypeDefinition changeObjectClassDefinition = change.getObjectClassDefinition();
+				
+				ProvisioningContext shadowCtx;
+				PrismObject<ShadowType> oldShadow = null;
+				if (changeObjectClassDefinition == null) {
+					if (change.getObjectDelta() != null && change.getObjectDelta().isDelete()) {				
+						oldShadow = change.getOldShadow();
+						if (oldShadow == null) {
+							oldShadow = shadowManager.findOrCreateShadowFromChangeGlobalContext(ctx, change, parentResult);
+						}
+						if (oldShadow == null) {
+							LOGGER.debug("No old shadow for delete synchronization event {}, we probably did not know about that object anyway, so well be ignoring this event", change);
+							continue;
+						}
+						shadowCtx = ctx.spawn(oldShadow);
+					} else {
+						throw new SchemaException("No object class definition in change " + change);
+					}
+				} else {
+					shadowCtx = ctx.spawn(changeObjectClassDefinition.getTypeName());
+				}
+				
+				processChange(shadowCtx, change, oldShadow, parentResult);
 				
 				// this is the case,when we want to skip processing of change,
 				// because the shadow was not created or found to the resource
@@ -1150,10 +1179,10 @@ public abstract class ShadowCache {
 				throw new SystemException("Synchronization error: " + ex.getMessage(), ex);
 			}
 
-			notifyChangeResult.computeStatus("Error by notify change operation.");
+			notifyChangeResult.computeStatus("Error in notify change operation.");
 
 			boolean successfull = false;
-			if (notifyChangeResult.isSuccess()) {
+			if (notifyChangeResult.isSuccess() || notifyChangeResult.isHandledError()) {
 				deleteShadowFromRepo(change, result);
 				successfull  = true;
 //				// get updated token from change,
@@ -1282,13 +1311,13 @@ public abstract class ShadowCache {
 
 
 	
-	void processChange(ProvisioningContext ctx, Change<ShadowType> change, OperationResult parentResult) 
+	void processChange(ProvisioningContext ctx, Change<ShadowType> change, PrismObject<ShadowType> oldShadow, OperationResult parentResult) 
 					throws SchemaException, CommunicationException, ConfigurationException, SecurityViolationException, ObjectNotFoundException, GenericConnectorException, ObjectAlreadyExistsException{
 				
-		PrismObject<ShadowType> oldShadow = change.getOldShadow();
-		if (oldShadow == null){
+		if (oldShadow == null) {
 			oldShadow = shadowManager.findOrCreateShadowFromChange(ctx, change, parentResult);
 		}
+		
 		if (oldShadow != null) {
 			applyAttributesDefinition(ctx, oldShadow);
 			ShadowType oldShadowType = oldShadow.asObjectable();
@@ -1416,16 +1445,57 @@ public abstract class ShadowCache {
 			applyAttributesDefinition(ctx, delta.getObjectToAdd());
 		} else if (delta.isModify()) {
 			for(ItemDelta<?,?> itemDelta: delta.getModifications()) {
-				applyAttributeDefinition(ctx, delta, itemDelta);
+				if (SchemaConstants.PATH_ATTRIBUTES.equivalent(itemDelta.getParentPath())) {
+					applyAttributeDefinition(ctx, delta, itemDelta);
+				} else if (SchemaConstants.PATH_ATTRIBUTES.equivalent(itemDelta.getPath())) {
+					if (itemDelta.isAdd()) {
+						for (PrismValue value : itemDelta.getValuesToAdd()) {
+							applyAttributeDefinition(ctx, value);
+						}
+					}
+					if (itemDelta.isReplace()) {
+						for (PrismValue value : itemDelta.getValuesToReplace()) {
+							applyAttributeDefinition(ctx, value);
+						}
+					}
+				}
 			}
-				
 		}
 	}
-	
+
+	// value should be a value of attributes container
+	private void applyAttributeDefinition(ProvisioningContext ctx, PrismValue value)
+			throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException {
+		if (!(value instanceof PrismContainerValue)) {
+			return;		// should never occur
+		}
+		PrismContainerValue<ShadowAttributesType> pcv = (PrismContainerValue<ShadowAttributesType>) value;
+		for (Item item: pcv.getItems()) {
+			ItemDefinition itemDef = item.getDefinition();
+			if (itemDef == null || !(itemDef instanceof ResourceAttributeDefinition)) {
+				QName attributeName = item.getElementName();
+				ResourceAttributeDefinition attributeDefinition = ctx.getObjectClassDefinition().findAttributeDefinition(attributeName);
+				if (attributeDefinition == null) {
+					throw new SchemaException("No definition for attribute " + attributeName);
+				}
+				if (itemDef != null) {
+					// We are going to rewrite the definition anyway. Let's just do some basic checks first
+					if (!QNameUtil.match(itemDef.getTypeName(), attributeDefinition.getTypeName())) {
+						throw new SchemaException("The value of type " + itemDef.getTypeName() + " cannot be applied to attribute " + attributeName + " which is of type " + attributeDefinition.getTypeName());
+					}
+				}
+				item.applyDefinition(attributeDefinition);
+			}
+		}
+	}
+
 	private <V extends PrismValue, D extends ItemDefinition> void applyAttributeDefinition(ProvisioningContext ctx, 
 			ObjectDelta<ShadowType> delta, ItemDelta<V, D> itemDelta) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException {
+		if (!SchemaConstants.PATH_ATTRIBUTES.equivalent(itemDelta.getParentPath())) {		// just to be sure
+			return;
+		}
 		D itemDef = itemDelta.getDefinition();
-		if ((itemDef == null || !(itemDef instanceof ResourceAttributeDefinition)) && SchemaConstants.PATH_ATTRIBUTES.equivalent(itemDelta.getParentPath())) {
+		if (itemDef == null || !(itemDef instanceof ResourceAttributeDefinition)) {
 			QName attributeName = itemDelta.getElementName();
 			ResourceAttributeDefinition attributeDefinition = ctx.getObjectClassDefinition().findAttributeDefinition(attributeName);
 			if (attributeDefinition == null) {
@@ -1608,6 +1678,8 @@ public abstract class ShadowCache {
 				}
 			}
 		}
+		
+		resultShadowType.setCachingMetadata(resourceShadowType.getCachingMetadata());
 		
 		// Sanity asserts to catch some exotic bugs
 		PolyStringType resultName = resultShadow.asObjectable().getName();

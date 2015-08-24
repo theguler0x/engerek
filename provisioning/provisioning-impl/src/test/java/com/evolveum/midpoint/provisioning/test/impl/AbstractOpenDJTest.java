@@ -49,6 +49,7 @@ public abstract class AbstractOpenDJTest extends AbstractIntegrationTest {
 	protected static final File RESOURCE_OPENDJ_FILE = new File(ProvisioningTestUtil.COMMON_TEST_DIR_FILE, "resource-opendj.xml");
 	protected static final File RESOURCE_OPENDJ_INITIALIZED_FILE = new File(ProvisioningTestUtil.COMMON_TEST_DIR_FILENAME, "resource-opendj-initialized.xml");
 	protected static final String RESOURCE_OPENDJ_OID = "ef2bc95b-76e0-59e2-86d6-3d4f02d3ffff";
+	protected static final String RESOURCE_OPENDJ_NS = "http://midpoint.evolveum.com/xml/ns/public/resource/instance/ef2bc95b-76e0-59e2-86d6-3d4f02d3ffff";
 	
 	protected static final File RESOURCE_OPENDJ_BAD_CREDENTIALS_FILE = new File(TEST_DIR, "resource-opendj-bad-credentials.xml");
 	protected static final String RESOURCE_OPENDJ_BAD_CREDENTIALS_OID = "8bc3ff5a-ef5d-11e4-8bba-001e8c717e5b";
@@ -70,6 +71,7 @@ public abstract class AbstractOpenDJTest extends AbstractIntegrationTest {
 	protected static final File ACCOUNT_JACK_FILE = new File(TEST_DIR, "account-jack.xml");
 	protected static final File ACCOUNT_JACK_REPO_FILE = new File(TEST_DIR, "account-jack-repo.xml");
 	protected static final String ACCOUNT_JACK_OID = "c0c010c0-d34d-b44f-f11d-333222444555";
+	protected static final String ACCOUNT_JACK_NAME = "jack";
 	protected static final File ACCOUNT_JACK_CHANGE_FILE = new File(TEST_DIR, "account-jack-change.xml");
 	
 	protected static final File ACCOUNT_MODIFY_PASSWORD_FILE = new File(TEST_DIR_NAME, "account-modify-password.xml");
@@ -122,13 +124,13 @@ public abstract class AbstractOpenDJTest extends AbstractIntegrationTest {
 	protected static final String RESOURCE_NS = "http://midpoint.evolveum.com/xml/ns/public/resource/instance/ef2bc95b-76e0-59e2-86d6-3d4f02d3ffff";
 	protected static final QName RESOURCE_OPENDJ_ACCOUNT_OBJECTCLASS = new QName(RESOURCE_NS,"inetOrgPerson");
 	protected static final QName RESOURCE_OPENDJ_POSIX_ACCOUNT_OBJECTCLASS = new QName(RESOURCE_NS,"posixAccount");
-	protected static final String LDAP_CONNECTOR_TYPE = "com.evolveum.polygon.connector.ldap.LdapConnector";
 	
 	protected static final File QUERY_COMPLEX_FILTER_FILE = new File(TEST_DIR, "query-complex-filter.xml");
 	protected static final File QUERY_ALL_ACCOUNTS_FILE = new File(TEST_DIR, "query-filter-all-accounts.xml");
 	protected static final File QUERY_VANHELGEN_FILE = new File(TEST_DIR, "query-vanhelgen.xml");
 	
 	protected static final String OBJECT_CLASS_INETORGPERSON_NAME = "inetOrgPerson";
+	protected static final String GROUP_MEMBER_ATTR_NAME = "uniqueMember";
 	
 	private static final Trace LOGGER = TraceManager.getTrace(AbstractOpenDJTest.class);
 	
@@ -153,7 +155,7 @@ public abstract class AbstractOpenDJTest extends AbstractIntegrationTest {
 		// not have a definition here
 		InternalsConfig.encryptionChecks = false;
 		provisioningService.postInit(initResult);
-		resource = addResourceFromFile(RESOURCE_OPENDJ_FILE, LDAP_CONNECTOR_TYPE, initResult);
+		resource = addResourceFromFile(RESOURCE_OPENDJ_FILE, ProvisioningTestUtil.CONNECTOR_LDAP_TYPE, initResult);
 		repoAddShadowFromFile(ACCOUNT_BAD_FILE, initResult);
 	}
 	

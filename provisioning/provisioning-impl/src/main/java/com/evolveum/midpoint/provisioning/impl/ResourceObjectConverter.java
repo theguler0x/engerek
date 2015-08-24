@@ -41,6 +41,8 @@ import org.apache.commons.lang.Validate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import com.evolveum.midpoint.common.Clock;
+import com.evolveum.midpoint.common.InternalsConfig;
 import com.evolveum.midpoint.common.ResourceObjectPattern;
 import com.evolveum.midpoint.common.refinery.RefinedAttributeDefinition;
 import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
@@ -102,6 +104,7 @@ import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.CachingMetadataType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.LockoutStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationProvisioningScriptType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationProvisioningScriptsType;
@@ -143,6 +146,9 @@ public class ResourceObjectConverter {
 	
 	@Autowired(required=true)
 	private ResourceObjectReferenceResolver resourceObjectReferenceResolver;
+	
+	@Autowired(required=true)
+	private Clock clock;
 
 	@Autowired(required=true)
 	private PrismContext prismContext;
@@ -191,7 +197,7 @@ public class ResourceObjectConverter {
 			} else if (secondaryIdentifierDefs.isEmpty()) {
 				throw new SchemaException("No secondary identifier defined, cannot search");
 			}
-			RefinedAttributeDefinition secondaryIdentifierDef = secondaryIdentifierDefs.iterator().next();
+			RefinedAttributeDefinition<String> secondaryIdentifierDef = secondaryIdentifierDefs.iterator().next();
 			ResourceAttribute<?> secondaryIdentifier = null;
 			for (ResourceAttribute<?> identifier: identifiers) {
 				if (identifier.getElementName().equals(secondaryIdentifierDef.getName())) {
@@ -204,8 +210,8 @@ public class ResourceObjectConverter {
 			
 			final ResourceAttribute<?> finalSecondaryIdentifier = secondaryIdentifier;
 
-            List<PrismPropertyValue> secondaryIdentifierValues = (List) secondaryIdentifier.getValues();
-            PrismPropertyValue secondaryIdentifierValue;
+            List<PrismPropertyValue<String>> secondaryIdentifierValues = (List) secondaryIdentifier.getValues();
+            PrismPropertyValue<String> secondaryIdentifierValue;
             if (secondaryIdentifierValues.size() > 1) {
                 throw new IllegalStateException("Secondary identifier has more than one value: " + secondaryIdentifier.getValues());
             } else if (secondaryIdentifierValues.size() == 1) {
@@ -488,7 +494,7 @@ public class ResourceObjectConverter {
 		}
 
         // Execute entitlement modification on other objects (if needed)
-		executeEntitlementChangesModify(ctx, shadowBefore, shadowAfter, scripts, itemDeltas, parentResult);
+        shadowAfter = executeEntitlementChangesModify(ctx, shadowBefore, shadowAfter, scripts, itemDeltas, parentResult);
 		
 		parentResult.recordSuccess();
 		return sideEffectChanges;
@@ -872,18 +878,19 @@ public class ResourceObjectConverter {
 				return deltas;
 		}
 	
-	private void executeEntitlementChangesAdd(ProvisioningContext ctx, PrismObject<ShadowType> shadow, OperationProvisioningScriptsType scripts,
+	private PrismObject<ShadowType> executeEntitlementChangesAdd(ProvisioningContext ctx, PrismObject<ShadowType> shadow, OperationProvisioningScriptsType scripts,
 			OperationResult parentResult) throws SchemaException, ObjectNotFoundException, CommunicationException, SecurityViolationException, ConfigurationException, ObjectAlreadyExistsException {
 		
 		Map<ResourceObjectDiscriminator, ResourceObjectOperations> roMap = new HashMap<>();
 		
-		entitlementConverter.collectEntitlementsAsObjectOperationInShadowAdd(ctx, roMap, shadow, parentResult);
+		shadow = entitlementConverter.collectEntitlementsAsObjectOperationInShadowAdd(ctx, roMap, shadow, parentResult);
 		
 		executeEntitlements(ctx, roMap, parentResult);
 		
+		return shadow;
 	}
 	
-	private void executeEntitlementChangesModify(ProvisioningContext ctx, PrismObject<ShadowType> subjectShadowBefore,
+	private PrismObject<ShadowType> executeEntitlementChangesModify(ProvisioningContext ctx, PrismObject<ShadowType> subjectShadowBefore,
 			PrismObject<ShadowType> subjectShadowAfter,
             OperationProvisioningScriptsType scripts, Collection<? extends ItemDelta> objectDeltas, OperationResult parentResult) throws SchemaException, ObjectNotFoundException, CommunicationException, SecurityViolationException, ConfigurationException, ObjectAlreadyExistsException {
 		
@@ -892,7 +899,7 @@ public class ResourceObjectConverter {
 		for (ItemDelta itemDelta : objectDeltas) {
 			if (new ItemPath(ShadowType.F_ASSOCIATION).equivalent(itemDelta.getPath())) {
 				ContainerDelta<ShadowAssociationType> containerDelta = (ContainerDelta<ShadowAssociationType>)itemDelta;				
-				entitlementConverter.collectEntitlementsAsObjectOperation(ctx, roMap, containerDelta,
+				subjectShadowAfter = entitlementConverter.collectEntitlementsAsObjectOperation(ctx, roMap, containerDelta,
                         subjectShadowBefore, subjectShadowAfter, parentResult);
 				
 			} else if (isRename(itemDelta)) {
@@ -931,10 +938,9 @@ public class ResourceObjectConverter {
 			}
 		}
 		
-		
-		
 		executeEntitlements(ctx, roMap, parentResult);
 		
+		return subjectShadowAfter;
 	}
 	
 	private void executeEntitlementChangesDelete(ProvisioningContext ctx, PrismObject<ShadowType> shadow, 
@@ -977,7 +983,7 @@ public class ResourceObjectConverter {
 			Collection<Operation> operations = entry.getValue().getOperations();
 			
 			// TODO: better handling of result, partial failures, etc.
-			executeModify(entitlementCtx, null, identifiers, operations, parentResult);
+			executeModify(entitlementCtx, entry.getValue().getCurrentShadow(), identifiers, operations, parentResult);
 			
 		}
 	}
@@ -995,6 +1001,10 @@ public class ResourceObjectConverter {
 			RefinedObjectClassDefinition baseContextObjectClassDefinition = ctx.getRefinedSchema().determineCompositeObjectClassDefinition(baseContextShadow);
 			ResourceObjectIdentification baseContextIdentification = new ResourceObjectIdentification(baseContextObjectClassDefinition, ShadowUtil.getIdentifiers(baseContextShadow));
 			searchHierarchyConstraints = new SearchHierarchyConstraints(baseContextIdentification, null);
+		}
+		
+		if (InternalsConfig.consistencyChecks && query != null && query.getFilter() != null) {
+			query.getFilter().checkConsistence();
 		}
 
 		ResultHandler<ShadowType> innerResultHandler = new ResultHandler<ShadowType>() {
@@ -1450,14 +1460,23 @@ public class ResourceObjectConverter {
 		Iterator<Change<ShadowType>> iterator = changes.iterator();
 		while (iterator.hasNext()) {
 			Change<ShadowType> change = iterator.next();
-			
+			LOGGER.trace("Original change:\n{}", change.debugDump());
+			if (change.isTokenOnly()) {
+				continue;
+			}
 			ProvisioningContext shadowCtx = ctx;
 			AttributesToReturn shadowAttrsToReturn = attrsToReturn;
 			PrismObject<ShadowType> currentShadow = change.getCurrentShadow();
-			if (ctx.isWildcard()) {
-				shadowCtx = ctx.spawn(change.getObjectClassDefinition().getTypeName());
+			ObjectClassComplexTypeDefinition changeObjectClassDefinition = change.getObjectClassDefinition();
+			if (changeObjectClassDefinition == null) {
+				if (!ctx.isWildcard() || change.getObjectDelta() == null || !change.getObjectDelta().isDelete()) {
+					throw new SchemaException("No object class definition in change "+change);
+				}
+			}
+			if (ctx.isWildcard() && changeObjectClassDefinition != null) {
+				shadowCtx = ctx.spawn(changeObjectClassDefinition.getTypeName());
 				if (shadowCtx.isWildcard()) {
-					String message = "Unkown object class "+change.getObjectClassDefinition().getTypeName()+" found in synchronization delta";
+					String message = "Unkown object class "+changeObjectClassDefinition.getTypeName()+" found in synchronization delta";
 					parentResult.recordFatalError(message);
 					throw new SchemaException(message);
 				}
@@ -1466,12 +1485,12 @@ public class ResourceObjectConverter {
 				shadowAttrsToReturn = ProvisioningUtil.createAttributesToReturn(shadowCtx);
 			}
 			
-			if (currentShadow == null) {
-				// There is no current shadow in a change. Add it by fetching it explicitly.
-				if (change.getObjectDelta() == null || !change.getObjectDelta().isDelete()) {						
-					// but not if it is a delete event
+			if (change.getObjectDelta() == null || !change.getObjectDelta().isDelete()) {
+				if (currentShadow == null) {
+					// There is no current shadow in a change. Add it by fetching it explicitly.
 					try {
 						
+						LOGGER.trace("Re-fetching object {} because it is not in the change", change.getIdentifiers());
 						currentShadow = fetchResourceObject(shadowCtx, 
 								change.getIdentifiers(), shadowAttrsToReturn, true, parentResult);	// todo consider whether it is always necessary to fetch the entitlements
 						change.setCurrentShadow(currentShadow);
@@ -1485,21 +1504,23 @@ public class ResourceObjectConverter {
 						iterator.remove();
 						continue;
 					}
-				}
-			} else {
-				if (ctx.isWildcard()) {
-					if (!MiscUtil.equals(shadowAttrsToReturn, attrsToReturn)) {
-						// re-fetch the shadow if necessary (if attributesToGet does not match)
-						ResourceObjectIdentification identification = new ResourceObjectIdentification(shadowCtx.getObjectClassDefinition(), change.getIdentifiers());
-						currentShadow = connector.fetchObject(ShadowType.class, identification, shadowAttrsToReturn, parentResult);
-					}
-					
-				}
+				} else {
+					if (ctx.isWildcard()) {
+						if (!MiscUtil.equals(shadowAttrsToReturn, attrsToReturn)) {
+							// re-fetch the shadow if necessary (if attributesToGet does not match)
+							ResourceObjectIdentification identification = new ResourceObjectIdentification(shadowCtx.getObjectClassDefinition(), change.getIdentifiers());
+							LOGGER.trace("Re-fetching object {} because of attrsToReturn", identification);
+							currentShadow = connector.fetchObject(ShadowType.class, identification, shadowAttrsToReturn, parentResult);
+						}
 						
-				PrismObject<ShadowType> processedCurrentShadow = postProcessResourceObjectRead(shadowCtx,
-						currentShadow, true, parentResult);
-				change.setCurrentShadow(processedCurrentShadow);
+					}
+							
+					PrismObject<ShadowType> processedCurrentShadow = postProcessResourceObjectRead(shadowCtx,
+							currentShadow, true, parentResult);
+					change.setCurrentShadow(processedCurrentShadow);
+				}
 			}
+			LOGGER.trace("Processed change\n:{}", change.debugDump());
 		}
 
 		parentResult.recordSuccess();
@@ -1517,6 +1538,7 @@ public class ResourceObjectConverter {
 		ConnectorInstance connector = ctx.getConnector(parentResult);
 		
 		ShadowType resourceObjectType = resourceObject.asObjectable();
+		setCachingMetadata(ctx, resourceObject);
 		setProtectedFlag(ctx, resourceObject);
 		
 		// Simulated Activation
@@ -1547,6 +1569,12 @@ public class ResourceObjectConverter {
 		if (isProtectedShadow(ctx.getObjectClassDefinition(), resourceObject)) {
 			resourceObject.asObjectable().setProtectedObject(true);
 		}
+	}
+
+	public void setCachingMetadata(ProvisioningContext ctx, PrismObject<ShadowType> resourceObject) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException {
+		CachingMetadataType cachingMetadata = new CachingMetadataType();
+		cachingMetadata.setRetrievalTimestamp(clock.currentTimeXMLGregorianCalendar());
+		resourceObject.asObjectable().setCachingMetadata(cachingMetadata);
 	}
 
 	/**

@@ -126,20 +126,21 @@ public class IcfConvertor {
 		
 		List<ObjectClassComplexTypeDefinition> auxiliaryObjectClassDefinitions = new ArrayList<>();
 
-		if (LOGGER.isTraceEnabled()) {
-			LOGGER.trace("Resource attribute container definition {}.", attributesContainerDefinition.debugDump());
-		}
+		// too loud
+//		if (LOGGER.isTraceEnabled()) {
+//			LOGGER.trace("Resource attribute container definition {}.", attributesContainerDefinition.debugDump());
+//		}
 
 		// Uid is always there
 		Uid uid = co.getUid();
-		ResourceAttribute<String> uidRoa = IcfUtil.createUidAttribute(uid, IcfUtil.getUidDefinition(attributesContainerDefinition));
+		ResourceAttribute<String> uidRoa = IcfUtil.createUidAttribute(uid, IcfUtil.getUidDefinition(attributesContainerDefinition.getComplexTypeDefinition()));
 		attributesContainer.getValue().add(uidRoa);
 
 		for (Attribute icfAttr : co.getAttributes()) {
 			if (icfAttr.is(PredefinedAttributes.AUXILIARY_OBJECT_CLASS_NAME)) {
 				List<QName> auxiliaryObjectClasses = shadow.getAuxiliaryObjectClass();
 				for (Object auxiliaryIcfObjectClass: icfAttr.getValue()) {
-					QName auxiliaryObjectClassQname = icfNameMapper.objectClassToQname((String)auxiliaryIcfObjectClass, resourceSchemaNamespace, false);
+					QName auxiliaryObjectClassQname = icfNameMapper.objectClassToQname(new ObjectClass((String)auxiliaryIcfObjectClass), resourceSchemaNamespace, false);
 					auxiliaryObjectClasses.add(auxiliaryObjectClassQname);
 					ObjectClassComplexTypeDefinition auxiliaryObjectClassDefinition = icfNameMapper.getResourceSchema().findObjectClassDefinition(auxiliaryObjectClassQname);
 					if (auxiliaryObjectClassDefinition == null) {

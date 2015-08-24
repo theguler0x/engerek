@@ -19,16 +19,31 @@ import static org.testng.AssertJUnit.assertEquals;
 import static org.testng.AssertJUnit.assertNotNull;
 import static org.testng.AssertJUnit.assertNull;
 import static com.evolveum.midpoint.test.IntegrationTestTools.display;
+import static org.testng.AssertJUnit.assertTrue;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import com.evolveum.icf.dummy.connector.DummyConnector;
 import com.evolveum.midpoint.model.api.PolicyViolationException;
+import com.evolveum.midpoint.prism.delta.ContainerDelta;
+import com.evolveum.midpoint.prism.delta.ItemDelta;
+import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ConstructionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ExpressionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingStrengthType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectFactory;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceAttributeDefinitionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
+import com.evolveum.prism.xml.ns._public.types_3.ItemPathType;
+import com.evolveum.prism.xml.ns._public.types_3.RawType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.ContextConfiguration;
@@ -303,7 +318,23 @@ public class TestIteration extends AbstractInitializedModelIntegrationTest {
 		repoAddObject(ShadowType.class, createShadow(resourceDummyPink, ACCOUNT_JACK_DUMMY_USERNAME), result);
         
         Collection<ObjectDelta<? extends ObjectType>> deltas = new ArrayList<ObjectDelta<? extends ObjectType>>();
-        ObjectDelta<UserType> accountAssignmentUserDelta = createAccountAssignmentUserDelta(USER_JACK_OID, RESOURCE_DUMMY_PINK_OID, null, true);
+
+		// assignment with weapon := 'pistol' (test for
+		Collection<ItemDelta<?,?>> modifications = new ArrayList<>();
+		AssignmentType assignmentType = createAssignment(RESOURCE_DUMMY_PINK_OID, ShadowKindType.ACCOUNT, null);
+		ConstructionType constructionType = assignmentType.getConstruction();
+		ResourceAttributeDefinitionType attributeDefinitionType = new ResourceAttributeDefinitionType();
+		attributeDefinitionType.setRef(new ItemPathType(new ItemPath(dummyResourceCtlPink.getAttributeWeaponQName())));
+		MappingType mappingType = new MappingType();
+		mappingType.setStrength(MappingStrengthType.STRONG);
+		ExpressionType expressionType = new ExpressionType();
+		expressionType.getExpressionEvaluator().add(new ObjectFactory().createValue(RawType.create("pistol", prismContext)));
+		mappingType.setExpression(expressionType);
+		attributeDefinitionType.setOutbound(mappingType);
+		constructionType.getAttribute().add(attributeDefinitionType);
+		modifications.add(createAssignmentModification(assignmentType, true));
+		ObjectDelta<UserType> accountAssignmentUserDelta = ObjectDelta.createModifyDelta(USER_JACK_OID, modifications, UserType.class, prismContext);
+
         deltas.add(accountAssignmentUserDelta);
                   
 		// WHEN
@@ -331,7 +362,10 @@ public class TestIteration extends AbstractInitializedModelIntegrationTest {
         // Check account
         PrismObject<ShadowType> accountPinkModel = modelService.getObject(ShadowType.class, accountPinkOid, null, task, result);
         assertAccountShadowModel(accountPinkModel, accountPinkOid, "jack1", resourceDummyPinkType);
-        
+		display("accountPinkModel", accountPinkModel);
+		PrismAsserts.assertPropertyValue(accountPinkModel, dummyResourceCtlPink.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME),
+				"pistol");
+
         // Check account in dummy resource
         assertDefaultDummyAccount(ACCOUNT_JACK_DUMMY_USERNAME, "Jack Sparrow", true);
         // The original conflicting account should still remain
@@ -459,7 +493,7 @@ public class TestIteration extends AbstractInitializedModelIntegrationTest {
         
         // Check account
         PrismObject<ShadowType> accountPinkModel = modelService.getObject(ShadowType.class, accountPinkOid, null, task, result);
-        assertAccountShadowModel(accountPinkModel, accountPinkOid, USER_DEWATT_NAME+"1", resourceDummyPinkType);
+        assertAccountShadowModel(accountPinkModel, accountPinkOid, USER_DEWATT_NAME + "1", resourceDummyPinkType);
         
         // Old account
         assertDummyAccount(RESOURCE_DUMMY_PINK_NAME, ACCOUNT_DEWATT_NAME, "Augustus DeWatt", true);
@@ -526,6 +560,54 @@ public class TestIteration extends AbstractInitializedModelIntegrationTest {
 		assertDummyAccount(RESOURCE_DUMMY_PINK_NAME, "scrooge1", "Scrooge McDuck", true);
 	}
 
+	/**
+	 * This tests a situation where the ObjectAlreadyExists conflict occurs because of some misconfiguration.
+	 * For example, the reason of the conflict is not the naming attribute itself.
+	 * @throws Exception
+	 */
+	@Test
+	public void test235HackerAddAccountDummyEternalConflict() throws Exception {
+		final String TEST_NAME = "test235HackerAddAccountDummyEternalConflict";
+		TestUtil.displayTestTile(this, TEST_NAME);
+
+		// GIVEN
+		Task task = taskManager.createTaskInstance(TestIteration.class.getName() + "." + TEST_NAME);
+		OperationResult result = task.getResult();
+		dummyAuditService.clear();
+
+		PrismObject<UserType> userJoeHacker = createUser("hacker", "Joe Hacker", true);
+		ShadowType newPinkyShadow = createShadow(resourceDummyPinkType.asPrismObject(), null, null).asObjectable();
+		userJoeHacker.asObjectable().getLink().add(newPinkyShadow);
+
+		Collection<ObjectDelta<? extends ObjectType>> deltas = new ArrayList<ObjectDelta<? extends ObjectType>>();
+		deltas.add(ObjectDelta.createAddDelta(userJoeHacker));
+
+		// WHEN
+		TestUtil.displayWhen(TEST_NAME);
+
+		// wrong behavior is throwing "java.lang.IllegalStateException: Model operation took too many clicks (limit is 30). Is there a cycle?"
+		// good behavior is reporting ObjectAlreadyExistsException here
+		modelService.executeChanges(deltas, null, task, result);
+
+		// THEN
+		TestUtil.displayThen(TEST_NAME);
+		result.computeStatus();
+		display("Result", result);
+		TestUtil.assertPartialError(result);
+		String exp = "hacker is forbidden to use as an object name";
+		String msg = result.getMessage();
+		if (msg == null) {
+			msg = "(null)";
+		}
+		assertTrue("result message is does not contain expected '" + exp + "', instead it is: '" + msg + "'", msg.contains(exp));
+
+		PrismObject<UserType> userHackerAfter = findUserByUsername("hacker");
+		display("User after change execution", userHackerAfter);
+		assertUser(userHackerAfter, null, "hacker", "Joe Hacker", null, null, null);
+		assertNoLinkedAccount(userHackerAfter);
+
+		assertNoDummyAccount(RESOURCE_DUMMY_PINK_NAME, "hacker");		// just in case ;)
+	}
 
 	@Test
 	public void test240LargoAssignAccountDummyConflictingNoShadow() throws Exception {
@@ -1157,7 +1239,7 @@ public class TestIteration extends AbstractInitializedModelIntegrationTest {
         
         // Check audit
         display("Audit", dummyAuditService);
-        dummyAuditService.assertRecords(3);
+        dummyAuditService.assertRecords(2);
         dummyAuditService.assertSimpleRecordSanity();
         dummyAuditService.assertAnyRequestDeltas();
         dummyAuditService.assertExecutionDeltas(3);
@@ -1527,7 +1609,7 @@ public class TestIteration extends AbstractInitializedModelIntegrationTest {
                 
         // Check audit
         display("Audit", dummyAuditService);
-        dummyAuditService.assertRecords(2);
+        dummyAuditService.assertRecords(3);
         dummyAuditService.assertSimpleRecordSanity();
         dummyAuditService.assertAnyRequestDeltas();
         dummyAuditService.assertExecutionDeltas(3);

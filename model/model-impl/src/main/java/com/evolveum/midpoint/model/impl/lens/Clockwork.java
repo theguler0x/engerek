@@ -60,6 +60,7 @@ import com.evolveum.midpoint.schema.constants.ObjectTypes;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.result.OperationResultStatus;
+import com.evolveum.midpoint.schema.util.SystemConfigurationTypeUtil;
 import com.evolveum.midpoint.security.api.ObjectSecurityConstraints;
 import com.evolveum.midpoint.security.api.OwnerResolver;
 import com.evolveum.midpoint.security.api.SecurityEnforcer;
@@ -168,7 +169,7 @@ public class Clockwork {
 		this.debugListener = debugListener;
 	}
 
-	private static final int MAX_CLICKS = 1000;
+	private static final int DEFAULT_MAX_CLICKS = 200;
 
 	public <F extends ObjectType> HookOperationMode run(LensContext<F> context, Task task, OperationResult result) throws SchemaException, PolicyViolationException, ExpressionEvaluationException, ObjectNotFoundException, ObjectAlreadyExistsException, CommunicationException, ConfigurationException, SecurityViolationException {
 		if (InternalsConfig.consistencyChecks) {
@@ -183,8 +184,9 @@ public class Clockwork {
 			while (context.getState() != ModelState.FINAL) {
 
 				// TODO implement in model context (as transient or even non-transient attribute) to allow for checking in more complex scenarios
-				if (clicked >= MAX_CLICKS) {
-					throw new IllegalStateException("Model operation took too many clicks (limit is " + MAX_CLICKS + "). Is there a cycle?");
+				int maxClicks = getMaxClicks(context, result);
+				if (clicked >= maxClicks) {
+					throw new IllegalStateException("Model operation took too many clicks (limit is " + maxClicks + "). Is there a cycle?");
 				}
 				clicked++;
 
@@ -204,7 +206,17 @@ public class Clockwork {
 			provisioningService.exitConstraintsCheckerCache();
 		}
 	}
-	
+
+	private <F extends ObjectType> int getMaxClicks(LensContext<F> context, OperationResult result) throws SchemaException, ObjectNotFoundException {
+		PrismObject<SystemConfigurationType> sysconfigObject = LensUtil.getSystemConfiguration(context, repositoryService, result);
+		Integer maxClicks = SystemConfigurationTypeUtil.getMaxModelClicks(sysconfigObject);
+		if (maxClicks == null) {
+			return DEFAULT_MAX_CLICKS;
+		} else {
+			return maxClicks;
+		}
+	}
+
 	public <F extends ObjectType> HookOperationMode click(LensContext<F> context, Task task, OperationResult result) throws SchemaException, PolicyViolationException, ExpressionEvaluationException, ObjectNotFoundException, ObjectAlreadyExistsException, CommunicationException, ConfigurationException, SecurityViolationException {
 		
 		// DO NOT CHECK CONSISTENCY of the context here. The context may not be fresh and consistent yet. Project will fix
@@ -232,12 +244,24 @@ public class Clockwork {
 				// there will be secondary changes that are not part of the request.
 				audit(context, AuditEventStage.REQUEST, task, result);
 			}
-			
+
+			boolean recompute = false;
 			if (!context.isFresh()) {
+				LOGGER.trace("Context is not fresh -- forcing cleanup and recomputation");
+				recompute = true;
+			} else if (context.getExecutionWave() > context.getProjectionWave()) {		// should not occur
+				LOGGER.warn("Execution wave is greater than projection wave -- forcing cleanup and recomputation");
+				recompute = true;
+			}
+
+			if (recompute) {
 				context.cleanup();
 				projector.project(context, "PROJECTOR ("+state+")", task, result);
+			} else if (context.getExecutionWave() == context.getProjectionWave()) {
+				LOGGER.trace("Running projector for current execution wave");
+				projector.resume(context, "PROJECTOR ("+state+")", task, result);
 			} else {
-				LOGGER.trace("Skipping projection because the context is fresh");
+				LOGGER.trace("Skipping projection because the context is fresh and projection for current wave has already run");
 			}
 			
 			if (!context.isRequestAuthorized()) {
@@ -461,20 +485,14 @@ public class Clockwork {
     			LOGGER.trace("Context rot: projection {} NOT rotten because of wrong wave number", projectionContext);
         		continue;
 			}
+//			if (!projectionContext.isDoReconciliation()) {	// meaning volatility is NONE
+//				LOGGER.trace("Context rot: projection {} NOT rotten because the resource is non-volatile", projectionContext);
+//				continue;
+//			}
     		ObjectDelta<ShadowType> execDelta = projectionContext.getExecutableDelta();
     		if (isSignificant(execDelta)) {
     			
-				// in this case we do not want to rot projection context. in the
-				// case the projection is rotten we can lost some information
-				// needed for inbound processing
-//    			if (execDelta.isAdd() && !LensUtil.hasDependentContext(context, projectionContext)){
-//    				projectionContext.setObjectOld(projectionContext.getObjectNew());
-//    				projectionContext.setObjectCurrent(projectionContext.getObjectNew());
-//    				projectionContext.setFullShadow(true);
-//    				LOGGER.trace("Context rot: projection {} NOT rotten because of ADD delta and no dependent context.", projectionContext);
-//    				continue;
-//    			}
-    			LOGGER.trace("Context rot: projection {} rotten because of delta {} and dependent context exists for this projection", projectionContext, execDelta);
+    			LOGGER.trace("Context rot: projection {} rotten because of delta {}", projectionContext, execDelta);
    				projectionContext.setFresh(false);
       			projectionContext.setFullShadow(false);
        			rot = true;
@@ -483,8 +501,7 @@ public class Clockwork {
        				relCtx.setFresh(false);
        				relCtx.setFullShadow(false);
       			}
-    			
-    			
+
 	        } else {
 	        	LOGGER.trace("Context rot: projection {} NOT rotten because no delta", projectionContext);
 	        }
@@ -500,7 +517,7 @@ public class Clockwork {
 	    		focusContext.setFresh(false);
     		}
     		//remove secondary deltas from other than execution wave - we need to recompute them..
-    		cleanUpSecondaryDeltas(context);
+//    		cleanUpSecondaryDeltas(context);
     		
     		
     	}
@@ -509,15 +526,14 @@ public class Clockwork {
     	}
 	}
 
-	private <F extends ObjectType> void cleanUpSecondaryDeltas(LensContext<F> context){
-		LensFocusContext focusContext = context.getFocusContext();
-		ObjectDelta executionWaveDelta = focusContext.getSecondaryDeltas().get(context.getExecutionWave());
-		if (context.getExecutionWave() == 0 && !LensUtil.isSyncChannel(context.getChannel()) && focusContext.getSecondaryDeltas().size() > 1) {
-			focusContext.getSecondaryDeltas().retainAll(MiscUtil.createCollection(executionWaveDelta, focusContext.getSecondaryDeltas().get(1)));
-		} else {
-			focusContext.getSecondaryDeltas().retainAll(MiscUtil.createCollection(executionWaveDelta));
-		}
-	}
+//	// TODO this is quite unclear. Originally here was keeping the delta from the current wave (plus delta from wave #1).
+//	// The reason was not clear.
+//	// Let us erase everything.
+//	private <F extends ObjectType> void cleanUpSecondaryDeltas(LensContext<F> context){
+//		LensFocusContext focusContext = context.getFocusContext();
+//		ObjectDeltaWaves<F> executionWaveDeltaList = focusContext.getSecondaryDeltas();
+//		executionWaveDeltaList.clear();
+//	}
 	
 	private <P extends ObjectType> boolean isSignificant(ObjectDelta<P> delta) {
 		if (delta == null || delta.isEmpty()) {

@@ -66,6 +66,7 @@ import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 
 /**
@@ -165,6 +166,7 @@ public class DeleteTaskHandler implements TaskHandler {
 		Integer maxSize = 100;
 		ObjectPaging paging = ObjectPaging.createPaging(0, maxSize);
 		query.setPaging(paging);
+		query.setAllowPartialResults(true);
 		
 		Collection<SelectorOptions<GetOperationOptions>> searchOptions = null;
 		ModelExecuteOptions execOptions = null;
@@ -197,11 +199,24 @@ public class DeleteTaskHandler implements TaskHandler {
             }
 
             SearchResultList<PrismObject<O>> objects;
-            do {
+            while (true) {
             	
 	            objects = modelService.searchObjects(objectType, query, searchOptions, task, opResult);
 	            
+	            if (objects.isEmpty()) {
+	            	break;
+	            }
+	            
+	            int skipped = 0;
 	            for(PrismObject<O> object: objects) {
+	            	
+	            	if (!optionRaw && ShadowType.class.isAssignableFrom(objectType) 
+	            			&& Boolean.TRUE == ((ShadowType)(object.asObjectable())).isProtectedObject()) {
+	            		LOGGER.debug("Skipping delete of protected object {}", object);
+	            		skipped++;
+	            		continue;
+	            	}
+	            	
 	            	ObjectDelta<?> delta = ObjectDelta.createDeleteDelta(objectType, object.getOid(), prismContext);
 					modelService.executeChanges(MiscSchemaUtil.createCollection(delta), execOptions, task, opResult);
 					progress++;
@@ -210,10 +225,15 @@ public class DeleteTaskHandler implements TaskHandler {
 	            opResult.summarize();
 	            task.setProgress(progress);
 	            if (LOGGER.isTraceEnabled()) {
-	            	LOGGER.trace("Deleted {} objects, result:\n{}", progress, opResult.debugDump());
+	            	LOGGER.trace("Search returned {} objects, {} skipped, progress: {}, result:\n{}", 
+		            		new Object[]{objects.size(), skipped, progress, opResult.debugDump()});
 	            }
 	            
-            } while (!objects.isEmpty());
+	            if (objects.size() == skipped) {
+	            	break;
+	            }
+	            
+            }
 
         } catch (ObjectAlreadyExistsException | ObjectNotFoundException | SchemaException
 				| ExpressionEvaluationException | ConfigurationException

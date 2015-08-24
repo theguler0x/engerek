@@ -71,12 +71,14 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ConstructionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ExclusionPolicyConstraintType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.PolicyConstraintsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.TimeIntervalStatusType;
@@ -213,7 +215,7 @@ public class AssignmentEvaluator<F extends FocusType> {
 		assignmentPathSegment.setEvaluateConstructions(true);
 		assignmentPathSegment.setValidityOverride(true);
 		
-		evaluateAssignment(evalAssignment, assignmentPathSegment, evaluateOld, PlusMinusZero.ZERO, source, sourceDescription, assignmentPath, task, result);
+		evaluateAssignment(evalAssignment, assignmentPathSegment, evaluateOld, PlusMinusZero.ZERO, true, source, sourceDescription, assignmentPath, task, result);
 		
 		if (LOGGER.isTraceEnabled()) {
 			LOGGER.trace("Assignment evaluation finished:\n{}", evalAssignment.debugDump());
@@ -223,7 +225,7 @@ public class AssignmentEvaluator<F extends FocusType> {
 	}
 	
 	private void evaluateAssignment(EvaluatedAssignmentImpl<F> evalAssignment, AssignmentPathSegment assignmentPathSegment, 
-			boolean evaluateOld, PlusMinusZero mode, ObjectType source, String sourceDescription,
+			boolean evaluateOld, PlusMinusZero mode, boolean isParentValid, ObjectType source, String sourceDescription,
 			AssignmentPath assignmentPath, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, ExpressionEvaluationException, PolicyViolationException {
 		assertSource(source, evalAssignment);
 		
@@ -292,7 +294,8 @@ public class AssignmentEvaluator<F extends FocusType> {
 			if (assignmentType.getConstruction() != null) {
 				
 				if (evaluateConstructions && assignmentPathSegment.isEvaluateConstructions()) {
-					prepareConstructionEvaluation(evalAssignment, assignmentPathSegment, evaluateOld, mode, source, sourceDescription, 
+					prepareConstructionEvaluation(evalAssignment, assignmentPathSegment, evaluateOld, mode, 
+							isParentValid && isValid, source, sourceDescription, 
 							assignmentPath, assignmentPathSegment.getOrderOneObject(), task, result);
 				}
 				
@@ -305,7 +308,7 @@ public class AssignmentEvaluator<F extends FocusType> {
 				
 			} else if (target != null) {
 				
-				evaluateTarget(evalAssignment, assignmentPathSegment, evaluateOld, mode, target, source, assignmentType.getTargetRef().getRelation(), sourceDescription,
+				evaluateTarget(evalAssignment, assignmentPathSegment, evaluateOld, mode, isValid, target, source, assignmentType.getTargetRef().getRelation(), sourceDescription,
 						assignmentPath, task, result);
 				
 			} else {
@@ -324,7 +327,7 @@ public class AssignmentEvaluator<F extends FocusType> {
 	}
 
 	private void prepareConstructionEvaluation(EvaluatedAssignmentImpl<F> evaluatedAssignment, AssignmentPathSegment assignmentPathSegment, 
-			boolean evaluateOld, PlusMinusZero mode, ObjectType source, String sourceDescription,
+			boolean evaluateOld, PlusMinusZero mode, boolean isValid, ObjectType source, String sourceDescription,
 			AssignmentPath assignmentPath, ObjectType orderOneObject, Task task, OperationResult result) throws SchemaException, ExpressionEvaluationException, ObjectNotFoundException {
 		assertSource(source, evaluatedAssignment);
 		
@@ -344,6 +347,7 @@ public class AssignmentEvaluator<F extends FocusType> {
 		construction.setOriginType(OriginType.ASSIGNMENTS);
 		construction.setChannel(channel);
 		construction.setOrderOneObject(orderOneObject);
+		construction.setValid(isValid);
 		
 		// Do not evaluate the construction here. We will do it in the second pass. Just prepare everything to be evaluated.
 		switch (mode) {
@@ -411,13 +415,13 @@ public class AssignmentEvaluator<F extends FocusType> {
 
 
 	private void evaluateTarget(EvaluatedAssignmentImpl<F> assignment, AssignmentPathSegment assignmentPathSegment, 
-			boolean evaluateOld, PlusMinusZero mode, PrismObject<?> target, ObjectType source, QName relation, String sourceDescription,
+			boolean evaluateOld, PlusMinusZero mode, boolean isValid, PrismObject<?> target, ObjectType source, QName relation, String sourceDescription,
 			AssignmentPath assignmentPath, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, ExpressionEvaluationException, PolicyViolationException {
 		assertSource(source, assignment);
 		ObjectType targetType = (ObjectType) target.asObjectable();
 		assignmentPathSegment.setTarget(targetType);
 		if (targetType instanceof AbstractRoleType) {
-			boolean roleConditionTrue = evaluateAbstractRole(assignment, assignmentPathSegment, evaluateOld, mode, (AbstractRoleType)targetType, source, sourceDescription, 
+			boolean roleConditionTrue = evaluateAbstractRole(assignment, assignmentPathSegment, evaluateOld, mode, isValid, (AbstractRoleType)targetType, source, sourceDescription, 
 					assignmentPath, task, result);
 			if (roleConditionTrue && mode != PlusMinusZero.MINUS && targetType instanceof OrgType && assignmentPath.getEvaluationOrder() == 1) {
 				PrismReferenceValue refVal = new PrismReferenceValue();
@@ -431,7 +435,7 @@ public class AssignmentEvaluator<F extends FocusType> {
 	}
 
 	private boolean evaluateAbstractRole(EvaluatedAssignmentImpl<F> assignment, AssignmentPathSegment assignmentPathSegment, 
-			boolean evaluateOld, PlusMinusZero mode, AbstractRoleType roleType, ObjectType source, String sourceDescription,
+			boolean evaluateOld, PlusMinusZero mode, boolean isValid, AbstractRoleType roleType, ObjectType source, String sourceDescription,
 			AssignmentPath assignmentPath, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, ExpressionEvaluationException, PolicyViolationException {
 		assertSource(source, assignment);
 		
@@ -496,7 +500,7 @@ public class AssignmentEvaluator<F extends FocusType> {
 				roleAssignmentPathSegment.setEvaluateConstructions(true);
 				roleAssignmentPathSegment.setEvaluationOrder(evaluationOrder);
 				roleAssignmentPathSegment.setOrderOneObject(orderOneObject);
-				evaluateAssignment(assignment, roleAssignmentPathSegment, evaluateOld, mode, roleType, subSourceDescription, assignmentPath, task, result);
+				evaluateAssignment(assignment, roleAssignmentPathSegment, evaluateOld, mode, isValid, roleType, subSourceDescription, assignmentPath, task, result);
 //			} else if (inducementOrder < assignmentPath.getEvaluationOrder()) {
 //				LOGGER.trace("Follow({}) inducement({}) in role {}",
 //						new Object[]{evaluationOrder, inducementOrder, source});
@@ -524,11 +528,14 @@ public class AssignmentEvaluator<F extends FocusType> {
 			roleAssignmentPathSegment.setEvaluateConstructions(false);
 			roleAssignmentPathSegment.setEvaluationOrder(evaluationOrder+1);
 			roleAssignmentPathSegment.setOrderOneObject(orderOneObject);
-			evaluateAssignment(assignment, roleAssignmentPathSegment, evaluateOld, mode, roleType, subSourceDescription, assignmentPath, task, result);
+			evaluateAssignment(assignment, roleAssignmentPathSegment, evaluateOld, mode, isValid, roleType, subSourceDescription, assignmentPath, task, result);
 		}
-		for(AuthorizationType authorizationType: roleType.getAuthorization()) {
-			Authorization authorization = createAuthorization(authorizationType);
-			assignment.addAuthorization(authorization);
+		
+		if (evaluationOrder == 1) {
+			for(AuthorizationType authorizationType: roleType.getAuthorization()) {
+				Authorization authorization = createAuthorization(authorizationType, roleType.toString());
+				assignment.addAuthorization(authorization);
+			}
 		}
 		
 		return mode != PlusMinusZero.MINUS;
@@ -574,8 +581,9 @@ public class AssignmentEvaluator<F extends FocusType> {
 	}
 
 
-	private Authorization createAuthorization(AuthorizationType authorizationType) {
+	private Authorization createAuthorization(AuthorizationType authorizationType, String sourceDesc) {
 		Authorization authorization = new Authorization(authorizationType);
+		authorization.setSourceDescription(sourceDesc);
 		return authorization;
 	}
 

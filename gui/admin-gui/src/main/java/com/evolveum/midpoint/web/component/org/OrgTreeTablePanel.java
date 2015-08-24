@@ -15,7 +15,6 @@ import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.component.BasicSearchPanel;
-import com.evolveum.midpoint.web.component.DropDownMultiChoice;
 import com.evolveum.midpoint.web.component.TabbedPanel;
 import com.evolveum.midpoint.web.component.data.ObjectDataProvider;
 import com.evolveum.midpoint.web.component.data.TablePanel;
@@ -28,25 +27,20 @@ import com.evolveum.midpoint.web.component.util.LoadableModel;
 import com.evolveum.midpoint.web.component.util.SimplePanel;
 import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
 import com.evolveum.midpoint.web.page.PageBase;
-import com.evolveum.midpoint.web.page.admin.users.component.ExecuteChangeOptionsDto;
 import com.evolveum.midpoint.web.page.admin.users.component.OrgTreeProvider;
 import com.evolveum.midpoint.web.page.admin.users.component.SelectableFolderContent;
 import com.evolveum.midpoint.web.page.admin.users.component.TreeTablePanel;
 import com.evolveum.midpoint.web.page.admin.users.dto.OrgDto;
 import com.evolveum.midpoint.web.page.admin.users.dto.OrgTableDto;
 import com.evolveum.midpoint.web.page.admin.users.dto.OrgTreeDto;
-import com.evolveum.midpoint.web.page.admin.users.dto.OrgsDto;
 import com.evolveum.midpoint.web.page.admin.users.dto.TreeStateSet;
-import com.evolveum.midpoint.web.page.admin.users.dto.UsersDto;
 import com.evolveum.midpoint.web.session.UserProfileStorage;
-import com.evolveum.midpoint.web.session.UsersStorage;
 import com.evolveum.midpoint.web.util.ObjectTypeGuiDescriptor;
 import com.evolveum.midpoint.web.util.WebMiscUtil;
 import com.evolveum.midpoint.web.util.WebModelUtils;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.Component;
@@ -67,13 +61,11 @@ import org.apache.wicket.markup.repeater.Item;
 import org.apache.wicket.model.AbstractReadOnlyModel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
-import org.apache.wicket.model.PropertyModel;
 
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 public class OrgTreeTablePanel extends SimplePanel{
@@ -108,9 +100,7 @@ public class OrgTreeTablePanel extends SimplePanel{
     private static final String ID_TREE_HEADER = "treeHeader";
     private static final String ID_SEARCH_FORM = "searchForm";
     private static final String ID_BASIC_SEARCH = "basicSearch";
-    private static final String ID_SEARCH_TYPE = "searchType";
-    
-    private LoadableModel<OrgsDto> model;
+
     private IModel<OrgTreeDto> selected = new LoadableModel<OrgTreeDto>() {
 
         @Override
@@ -118,39 +108,9 @@ public class OrgTreeTablePanel extends SimplePanel{
             return getRootFromProvider();
         }
     };
-    
-    public OrgTreeTablePanel(){
-        this(true);
-    }
-    
+
     public OrgTreeTablePanel(String id, IModel<String> rootOid) {
         super(id, rootOid);
-    }
-    public OrgTreeTablePanel(boolean clearPagingInSession) {
-        model = new LoadableModel<OrgsDto>(false) {
-
-            @Override
-            public OrgsDto load() {
-                UsersStorage storage = getSessionStorage().getUsers();
-                OrgsDto dto = storage.getUsersSearch();
-                if (dto == null) {
-                    dto = new OrgsDto();
-                }
-
-                return dto;
-            }
-        };
-
-        executeOptionsModel = new LoadableModel<ExecuteChangeOptionsDto>(false) {
-
-            @Override
-            protected ExecuteChangeOptionsDto load() {
-                return new ExecuteChangeOptionsDto();
-            }
-        };
-
-        getSessionStorage().clearPagingInSession(clearPagingInSession);
-        initLayout();
     }
 
     @Override
@@ -280,25 +240,6 @@ public class OrgTreeTablePanel extends SimplePanel{
         Form form = new Form(ID_SEARCH_FORM);
         form.setOutputMarkupId(true);
         add(form);
-        
-        IModel<Map<String, String>> options = new Model(null);
-        DropDownMultiChoice searchType = new DropDownMultiChoice<OrgsDto.SearchType>(ID_SEARCH_TYPE,
-                new PropertyModel<List<OrgsDto.SearchType>>(model, OrgsDto.F_TYPE),
-                WebMiscUtil.createReadonlyModelFromEnum(OrgsDto.SearchType.class),
-                new IChoiceRenderer<OrgsDto.SearchType>() {
-
-                    @Override
-                    public Object getDisplayValue(OrgsDto.SearchType object) {
-                        return WebMiscUtil.createLocalizedModelForEnum(object, OrgTreeTablePanel.this).getObject();
-                    }
-
-                    @Override
-                    public String getIdValue(OrgsDto.SearchType object, int index) {
-                        return Integer.toString(index);
-                    }
-                }, options);
-        
-        form.add(searchType);
 
         BasicSearchPanel basicSearch = new BasicSearchPanel(ID_BASIC_SEARCH, new Model()) {
 

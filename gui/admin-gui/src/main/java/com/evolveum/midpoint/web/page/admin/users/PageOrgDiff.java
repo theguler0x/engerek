@@ -40,6 +40,7 @@ import com.evolveum.midpoint.security.api.AuthorizationConstants;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.application.AuthorizationAction;
@@ -213,7 +214,13 @@ public class PageOrgDiff extends PageAdminUsers {
         String oid = this.model.getObject().getOid();
         OperationResult result = new OperationResult(OPERATION_LOAD_ORGS);
         try {
-            getTaskService().scheduleTasksNow(Arrays.asList(oid), result);
+            try {
+				getTaskService().scheduleTasksNow(Arrays.asList(oid), result);
+			} catch (SecurityViolationException | ObjectNotFoundException
+					| SchemaException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
             result.computeStatus();
 
             if (result.isSuccess()) {

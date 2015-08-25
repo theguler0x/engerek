@@ -87,6 +87,8 @@ public class ImportDetsisTaskHandler  implements TaskHandler {
     public TaskRunResult run(Task task)  {
     	LOGGER.info(": START TASK RUN RESULT...");
         long progress = task.getProgress();
+        
+        
         OperationResult opResult = new OperationResult(OperationConstants.IMPORT_DETSIS);
         TaskRunResult runResult = new TaskRunResult();
         runResult.setOperationResult(opResult);

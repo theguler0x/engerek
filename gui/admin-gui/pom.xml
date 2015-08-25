@@ -355,6 +355,7 @@
             	</exclusion>
             </exclusions>
         </dependency>
+        
         <dependency>
             <groupId>com.evolveum.midpoint.model</groupId>
             <artifactId>certification-impl</artifactId>

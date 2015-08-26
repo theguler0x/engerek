@@ -100,7 +100,7 @@ public class PageOrgDiff extends PageAdminUsers {
 	//private IModel<PrismObject<OrgType>> orgModel;
 	private PageParameters parameters;
 	private static boolean edit = false;
-	private String taskOid ="c28c3745-9691-4a0e-9055-1837fdd1f99e";
+	private String taskOid ="3db60ed4-c198-45a1-83bc-75972ab98ba7";
 	PageOrgDiffUtils utils = PageOrgDiffUtils.getInstance();
 	
 	

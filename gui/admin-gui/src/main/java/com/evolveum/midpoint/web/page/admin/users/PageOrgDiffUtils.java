@@ -11,7 +11,7 @@ public class PageOrgDiffUtils implements Serializable {
 	private int count = 0;
 	private int engerekOrg = 0;
 	private int detsisOrg = 0;
-	private String orgSayi = "asd";
+	private String orgSayi = "";
 	private Map<String, String> deletedMap = new HashMap<String, String>();
 	private Map<String, String> addedMap = new HashMap<String, String>();
 

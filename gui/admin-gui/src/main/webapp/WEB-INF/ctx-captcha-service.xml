@@ -20,9 +20,9 @@ http://www.springframework.org/schema/security/spring-security-3.2.xsd">
 		class="com.octo.captcha.service.multitype.GenericManageableCaptchaService"
 		scope="singleton" name="genericCaptchaService">
 		<beans:constructor-arg index="0"><beans:ref bean="imageEngine" /></beans:constructor-arg>
-		<beans:constructor-arg index="1"><beans:value>180</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="2"><beans:value>180000</beans:value></beans:constructor-arg>
-		<beans:constructor-arg type="int" index="3" value="75000"/>
+		<beans:constructor-arg index="1"><beans:value>18</beans:value></beans:constructor-arg>
+		<beans:constructor-arg index="2"><beans:value>18000</beans:value></beans:constructor-arg>
+		<beans:constructor-arg type="int" index="3" value="7500"/>
 	</beans:bean>
 
 	<beans:bean id="imageEngine" class="com.octo.captcha.engine.GenericCaptchaEngine">
@@ -87,11 +87,11 @@ http://www.springframework.org/schema/security/spring-security-3.2.xsd">
 		<beans:constructor-arg index="1"><beans:value>100</beans:value></beans:constructor-arg>
 	</beans:bean>
 	
-	<beans:bean id="simpleWhitePaster" class="com.octo.captcha.component.image.textpaster.SimpleTextPaster">
+	<!--<beans:bean id="simpleWhitePaster" class="com.octo.captcha.component.image.textpaster.SimpleTextPaster">
 		<beans:constructor-arg type="java.lang.Integer" index="0"><beans:value>6</beans:value></beans:constructor-arg>
 		<beans:constructor-arg type="java.lang.Integer" index="1"><beans:value>7</beans:value></beans:constructor-arg>
 		<beans:constructor-arg type="java.awt.Color" index="2"><beans:ref bean="colorBlack" /></beans:constructor-arg>
-	</beans:bean>
+	</beans:bean> -->
 	
 	<!-- Constructs a color generator which generate dark color correspond to the different ranges-->
 	 <beans:bean id="colorGenRandomDark" class="com.octo.captcha.component.image.color.RandomRangeColorGenerator" >
@@ -121,7 +121,7 @@ http://www.springframework.org/schema/security/spring-security-3.2.xsd">
             </beans:constructor-arg>
         </beans:bean >
 	
-	<beans:bean id="colorGenRandomList" class="com.octo.captcha.component.image.color.RandomListColorGenerator" >
+	<!--<beans:bean id="colorGenRandomList" class="com.octo.captcha.component.image.color.RandomListColorGenerator" >
         <beans:constructor-arg index="0">
             <beans:list>
                 <beans:ref bean="colorGreen"/>
@@ -130,7 +130,7 @@ http://www.springframework.org/schema/security/spring-security-3.2.xsd">
                 <beans:ref bean="colorBlack" />
             </beans:list>
         </beans:constructor-arg>
-    </beans:bean>
+    </beans:bean> -->
  
 	
 	
@@ -164,29 +164,29 @@ http://www.springframework.org/schema/security/spring-security-3.2.xsd">
             <beans:constructor-arg  index="2"><beans:value>10</beans:value></beans:constructor-arg >
         </beans:bean>
 	
-	<beans:bean id="colorGreen" class="java.awt.Color">
+	<!--<beans:bean id="colorGreen" class="java.awt.Color">
 		<beans:constructor-arg index="0"><beans:value>0</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="1"><beans:value>255</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="2"><beans:value>0</beans:value></beans:constructor-arg>
-	</beans:bean>
+	</beans:bean> -->
 	 	
-	<beans:bean id="colorBlue" class="java.awt.Color">		
+	<!--<beans:bean id="colorBlue" class="java.awt.Color">		
 		<beans:constructor-arg index="0"><beans:value>0</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="1"><beans:value>0</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="2"><beans:value>255</beans:value></beans:constructor-arg>
-	</beans:bean>
+	</beans:bean> -->
 	
-	<beans:bean id="colorRed" class="java.awt.Color">
+	<!--<beans:bean id="colorRed" class="java.awt.Color">
 		<beans:constructor-arg index="0"><beans:value>255</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="1"><beans:value>0</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="2"><beans:value>0</beans:value></beans:constructor-arg>
-	</beans:bean>
+	</beans:bean> -->
 	
-	<beans:bean id="colorBlack" class="java.awt.Color">
+	<!-- <beans:bean id="colorBlack" class="java.awt.Color">
 		<beans:constructor-arg index="0"><beans:value>14</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="1"><beans:value>24</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="2"><beans:value>32</beans:value></beans:constructor-arg>
-	</beans:bean>
+	</beans:bean> -->
 
 
 

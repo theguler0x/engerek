@@ -472,7 +472,7 @@ public class PageOrgDiff extends PageAdminUsers {
 
             }
             
-            showResultInSession(result);
+            //showResultInSession(result);
             setResponsePage(PageOrgDiff.class);
             
 

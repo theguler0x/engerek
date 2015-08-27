@@ -104,15 +104,16 @@
 
  
 		   <dependency>
-			<groupId>com.biznet.captcha</groupId>
+			<groupId>com.octo.captcha</groupId>
 			<artifactId>jcaptcha-integration-simple-servlet</artifactId>
 			<version>2.0-alpha-1</version>
 		</dependency>
-		<!-- <dependency>
+		<!--  <dependency>
 			<groupId>com.biznet.captcha</groupId>
-			<artifactId>jcaptcha</artifactId>
+			<artifactId>jcaptcha-integration-simple-servlet</artifactId>
 			<version>2.0-alpha-1</version>
 		</dependency> -->
+	
 		<!-- WRO4J -->
 		<dependency>
 			<groupId>ro.isdc.wro4j</groupId>

@@ -166,7 +166,7 @@ http://www.springframework.org/schema/security/spring-security-3.2.xsd">
 	
 	<beans:bean id="colorGreen" class="java.awt.Color">
 		<beans:constructor-arg index="0"><beans:value>0</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="1"><beans:value>255</beans:value></beans:constructor-arg>
+		<beans:constructor-arg index="1"><beans:value>128</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="2"><beans:value>0</beans:value></beans:constructor-arg>
 	</beans:bean>
 	
@@ -183,9 +183,9 @@ http://www.springframework.org/schema/security/spring-security-3.2.xsd">
 	</beans:bean>
 	
 	<beans:bean id="colorBlack" class="java.awt.Color">
-		<beans:constructor-arg index="0"><beans:value>14</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="1"><beans:value>24</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="2"><beans:value>32</beans:value></beans:constructor-arg>
+		<beans:constructor-arg index="0"><beans:value>0</beans:value></beans:constructor-arg>
+		<beans:constructor-arg index="1"><beans:value>0</beans:value></beans:constructor-arg>
+		<beans:constructor-arg index="2"><beans:value>0</beans:value></beans:constructor-arg>
 	</beans:bean>
 
 

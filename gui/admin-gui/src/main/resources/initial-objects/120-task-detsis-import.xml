@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<task xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+	oid="3db60ed4-c198-45a1-83bc-75972ab98ba7">
+
+	<name>Detsis Import Task</name>
+	<description>Import Objects from Detsis WS xml</description>
+	<ownerRef oid="00000000-0000-0000-0000-000000000002" />
+	<executionStatus>runnable</executionStatus>
+	
+	<category>System</category>
+	<handlerUri>http://midpoint.evolveum.com/xml/ns/public/model/detsis/handler-3</handlerUri>
+	<recurrence>single</recurrence>
+</task>

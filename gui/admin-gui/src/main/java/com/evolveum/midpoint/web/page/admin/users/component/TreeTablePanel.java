@@ -1078,7 +1078,7 @@ public class TreeTablePanel extends SimplePanel<String> {
         OrgTreeDto dto = selected.getObject();
         String oid = dto != null ? dto.getOid() : getModel().getObject();
 
-        OrgFilter org = OrgFilter.createOrg(oid, OrgFilter.Scope.ONE_LEVEL);
+        OrgFilter org = OrgFilter.createOrg(oid, OrgFilter.Scope.SUBTREE);
 
         BasicSearchPanel<String> basicSearch = (BasicSearchPanel) get(createComponentPath(ID_SEARCH_FORM, ID_BASIC_SEARCH));
         String object = basicSearch.getModelObject();
@@ -1124,7 +1124,7 @@ public class TreeTablePanel extends SimplePanel<String> {
         }
 
         try {
-            OrgFilter org = OrgFilter.createOrg(oid, OrgFilter.Scope.ONE_LEVEL);
+            OrgFilter org = OrgFilter.createOrg(oid, OrgFilter.Scope.SUBTREE);
 
             PrismReferenceValue referenceValue = new PrismReferenceValue();
             referenceValue.setOid(oid);
@@ -1166,7 +1166,7 @@ public class TreeTablePanel extends SimplePanel<String> {
         }
 
         try {
-            OrgFilter org = OrgFilter.createOrg(oid, OrgFilter.Scope.ONE_LEVEL);
+            OrgFilter org = OrgFilter.createOrg(oid, OrgFilter.Scope.SUBTREE);
 
             PrismReferenceValue referenceFilter = new PrismReferenceValue();
             referenceFilter.setOid(oid);

@@ -17,6 +17,7 @@ import org.apache.wicket.extensions.markup.html.repeater.data.table.PropertyColu
 import org.apache.wicket.extensions.markup.html.repeater.util.SortableDataProvider;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.form.Form;
+import org.apache.wicket.markup.html.panel.FeedbackPanel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.PropertyModel;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
@@ -65,6 +66,18 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.TaskType;
 
+
+
+/*TODO:
+ * SAYFANIN CALISMA SENARYOSU SUSEKILDEDIR:
+ * 
+ * SISTEM ILK DEFA KOSTURULDUGUNDA WEBSERVISINDEN XML'E DOKUMANTE EDILMIS YAPI IMPORT BUTONU ILE ENGEREK SISTEMINE IMPORT EDILIR.
+ * BUNDAN SONRA EXPORT BUTONU DA SISTEMDEKI MEVCUT YAPININ DISARI AKTARILMASINI SAGLAR
+ * DAHA SONRA HERHANGI BIR ANDA SISTEMDE BULUNAN DETSISWS DEN GELEN ORGANIZASYON XML'I ILE SISTEMDEKI DETSIS YAPILARI KARSILASTIRILMAK ISTENDIGINDE
+ * COMPARE BUTONU KULLANILIR.COMPARE BUTONUNA BASILIGINDA SISTEMDE BULUNAN DOSYALAR ILE DETSIS XML DE BULUNAN DOSYALAR ARASINDAKI FARKLAR SAYFADA 
+ * GOSTERILIR. FARKLILIKLARI ENGEREK SISTEMINE DAHIL ETMEK ICIN TEKRAR IMPORT BUTONU KULLANILIR.
+ * 
+ */
 @PageDescriptor(url = "/admin/org/diff", encoder = OnePageParameterEncoder.class, action = {
 		@AuthorizationAction(actionUri = PageAdminUsers.AUTH_ORG_ALL, label = PageAdminUsers.AUTH_ORG_ALL_LABEL, description = PageAdminUsers.AUTH_ORG_ALL_DESCRIPTION),
 		@AuthorizationAction(actionUri = AuthorizationConstants.AUTZ_UI_ORG_UNIT_URL, label = "PageOrgDiff.auth.orgDiff.label", description = "PageOrgDiff.auth.orgDiff.description") })
@@ -97,16 +110,20 @@ public class PageOrgDiff extends PageAdminUsers {
 	private static String MAIN_FOLDER=MIDPOINT_HOME+"/detsis/";
 	
 	private IModel<TaskDto> model;
-	//private IModel<PrismObject<OrgType>> orgModel;
 	private PageParameters parameters;
 	private static boolean edit = false;
+	
+	/*TODO: :
+	 * IMPORT ISLEMINI UYGULAYAN TASK'IN OID NUMARASINA IHTIYACIMIZ VAR. SU ANDA BUNU STATIC OLARAK YAPIYORUZ.
+	 */
 	private String taskOid ="3db60ed4-c198-45a1-83bc-75972ab98ba7";
+	
+	/*TODO: 
+	 * BURADA ISLEMLERIMIZ ICIN KULLANDIGM YAPILARI TUTTUGUM UTILS CLASSININ INSTANCE'INI SINGLETON OLARAK CAGIRIYORUZ
+	 * SINGLETON OLMASI ONEMLI AKSI TAKDIRDE BIR DATABASE KULLANMADIGIMIZ ICIN VERILER HER YENILEME DE YENI INSTANCE ICERISINDEN CAGIRILIR VE
+	 * DEFAULT DEGERLER DONER
+	 */
 	PageOrgDiffUtils utils = PageOrgDiffUtils.getInstance();
-	
-	
-	//PrismObjectDefinition<OrgType> organizationDefinition = getPrismContext().getSchemaRegistry().findObjectDefinitionByCompileTimeClass(OrgType.class);
-	//PropertyDelta<PolyString> fullNameDelta = PropertyDelta.createReplaceDelta(organizationDefinition, OrgType.F_EXTENSION.valueOf(ID_DETSIS_STATUS), new PolyString("false"));
-	
 	
 	private XMLParseHelper xp = new XMLParseHelper();
 
@@ -115,12 +132,6 @@ public class PageOrgDiff extends PageAdminUsers {
 		this(parameters, null);
 	}
 
-	/*public PageOrgDiff(PageParameters parameters, PageTemplate previousPage) {
-		setPreviousPage(previousPage);
-		getPageParameters().overwriteWith(parameters);
-		// initModels();
-		initLayout();
-	}*/
 	
     public PageOrgDiff(PageParameters parameters, PageTemplate previousPage) {
     	
@@ -139,10 +150,14 @@ public class PageOrgDiff extends PageAdminUsers {
         initLayout();
 	}
     
+    /* TODO:
+     * SAYFANIN PARTLARININ INITIALIZE EDILDIGI METHOD
+     */
 	private void initLayout() {
 		
 		Form mainForm = new Form(ID_MAIN_FORM);
 		add(mainForm);
+		mainForm.add(new FeedbackPanel("feedback"));
 		//compareXMLPerformed(tr);
 		initBasicInfoLayout(mainForm);
 		initButtons(mainForm);
@@ -151,13 +166,21 @@ public class PageOrgDiff extends PageAdminUsers {
 		
 	}
 	
-
+	
+	/*TODO: BURASI TEST AMACLIDIR SILINMESINDE BIR SAKINCA YOK FAKAT SILINECEKSE HTML SAYFASINDAN DA BU COMPONENTLER KALDIRILMALI
+	 * 
+	 */
 	private void initBasicInfoLayout(Form mainForm) {
 
 		mainForm.add(new Label(ID_DESCRIPTION));
 		mainForm.add(new Label(ID_START_LABEL));
 	}
 	
+	
+	/*TODO:
+	 * BURASI SAYFADA IMPORT EDILECEK DOSYA SAYISI, ESLESEN DOSYA SAYISI, SILINECEK DOSYA SAYISI VE EKLENECEK DOSYA SAYISI
+	 * BILGILERININ GOSTERILDIGI KISIM.
+	 */
 	private void initResult(Form mainForm){
 		
 		SortableDataProvider<OperationResult, String> provider = new ListDataProvider<>(this,
@@ -169,6 +192,7 @@ public class PageOrgDiff extends PageAdminUsers {
 		mainForm.add(result);
 	}
 
+	/*BUTONLARIN INTIALIZE EDILDIGI METOD. */
 	private void initButtons(final Form mainForm) {
 
 			
@@ -208,9 +232,9 @@ public class PageOrgDiff extends PageAdminUsers {
 
 	}
 	
-	
+	/*IMPORT METODU TASK YARDIMI ILE GERCEKLESTIRILIYOR*/
     private void importNowPerformed(AjaxRequestTarget target) {
-    	PageBase page = getPageBase();
+    	//PageBase page = getPageBase();
         String oid = this.model.getObject().getOid();
         OperationResult result = new OperationResult(OPERATION_LOAD_ORGS);
         try {
@@ -222,7 +246,8 @@ public class PageOrgDiff extends PageAdminUsers {
 				e.printStackTrace();
 			}
             result.computeStatus();
-
+            
+            //TODO:SILINMIS ORGANIZASYON VARSA ONLARI DISABLE EDIYOR
             if (result.isSuccess()) {
                 result.recordStatus(OperationResultStatus.SUCCESS, "The task has been successfully scheduled to run.");
                 if(!isMapEmpty(utils.getDeletedMap())){
@@ -237,11 +262,13 @@ public class PageOrgDiff extends PageAdminUsers {
             result.recordFatalError("Couldn't schedule the task due to an unexpected exception", e);
         }
         
-        page.showResult(result);
-		target.add(page.getFeedbackPanel());
+        //page.showResult(result);
+		//target.add(getFeedbackPanel());
+        showResultInSession(result);
 		setResponsePage(PageOrgDiff.class);
     }
     
+    /*STATIC OLARAK OID'SINI BELIRLEDIGIMIZ TASKI SAYFAYA LOAD EDIYOR*/
     private TaskDto loadTask() {
 		OperationResult result = new OperationResult(OPERATION_LOAD_TASK);
         Task operationTask = getTaskManager().createTaskInstance(OPERATION_LOAD_TASK);
@@ -283,6 +310,7 @@ public class PageOrgDiff extends PageAdminUsers {
         return taskDto;
     }
     
+    //IMPORT TASK OPERATIN RESULT
 	private List<IColumn<OperationResult, String>> initResultColumns() {
 		List<IColumn<OperationResult, String>> columns = new ArrayList<IColumn<OperationResult, String>>();
 
@@ -294,6 +322,7 @@ public class PageOrgDiff extends PageAdminUsers {
 		return columns;
 	}
 	
+	/*COMPARE ISLEMI SONUCU FARKLILIKLARI SAYFADA GOSTEREN LABELLAR BUTUNU*/
 	private void initFark(final Form mainForm){
 		mainForm.add(new Label(ID_DELETED_LABEL, Integer.toString(utils.getTargetDeleted())));
 		mainForm.add(new Label(ID_ADDED_LABEL, Integer.toString(utils.getTargetAdded())));
@@ -303,12 +332,13 @@ public class PageOrgDiff extends PageAdminUsers {
 		mainForm.add(new Label(ID_DETSIS_ORG, Integer.toString(utils.getDetsisOrg())));
 	}
 	
+	
+	/*TODO: 
+	 * DETSISWS SISTEMINDEN SILINEN ORGANIZASYON YAPILARININ ENGEREKTE MEVCUTTA BULUNAN DURUMLARININ DISABLE OLARAK SET EDILMESI ISLEMI*/
 	private void disableOrgPerformed(AjaxRequestTarget target, String detsisNo){
 		OperationResult result = new OperationResult(DELETE_UNIT);
 		PageBase page = getPageBase();
 		String oid = getOID(detsisNo);
-		//PrismObject<OrgType> oldOrgUnit;
-		//WebModelUtils.deleteObject(OrgType.class, oid, result, this);
 		ObjectDelta delta =WebModelUtils.createActivationAdminStatusDelta(OrgType.class, oid, false, page.getPrismContext());
 		WebModelUtils.save(delta, result, page);
 		result.computeStatus();
@@ -319,7 +349,8 @@ public class PageOrgDiff extends PageAdminUsers {
         return (PageBase) getPage();
     }
 	
-	
+		
+	/*TODO DISABLE EDILECEK ORGANIZASYONUN DETSIS NAME'I KULLANILARAK BU METHOD UZERINDEN OID TESPITI EDILIYOR*/
 	  private String getOID(String ds){
         String s1,s2;
         s1=ds.substring(0, 4); //ilk 4
@@ -329,85 +360,84 @@ public class PageOrgDiff extends PageAdminUsers {
   }
 	
 	
+	  /*TODO: COMPARE METHODU*/
 	private void compareXMLPerformed(AjaxRequestTarget trg){
 
         try {
         	OperationResult result = new OperationResult(OPERATION_COMPARE_ORGS);
         	
-            //Task operationTask = getTaskManager().createTaskInstance(OPERATION_COMPARE_ORGS);
-            
             DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
             documentBuilderFactory.setNamespaceAware(true);
             documentBuilderFactory.setIgnoringElementContentWhitespace(true);
             DocumentBuilder documentBuilder = documentBuilderFactory.newDocumentBuilder();
             
+            /*TODO: 
+             * BU KISIM SOURCE FOLDERIN PATH + NAME OZELLIKLERINI SET EDIYOR. 
+             * SISTEMIN HALIHAZIRDA VAR OLAN YAPISININ EXPORT EDILMIS HALI SOURCE DOSYAMIZI OLUSTURUYOR(DETSISXMLFILE_OUT)
+             * PAGEORGDIFF.PROPERTIES DOSYASINDAN ADI DEGISTIRILEBILIR. PATH KISMI SU AN KOD ICERISINDEKI "MAIN_FOLDER" DEGISKENINE BAGLIDIR.*/
             StringBuilder source = new StringBuilder();
             source.append(MAIN_FOLDER);
             source.append(createStringResource("PageOrgDiff.filePath.source").getString());
             LOGGER.debug("SOURCE PATH INFO: "+source.toString());
             
+            /*TODO: 
+             * BU KISIM TARGET FOLDERIN PATH + NAME OZELLIKLERINI SET EDIYOR. 
+             * DETSISWS UZERINDEN CEKILEREK OLUSTURULMUS DETSISXMLFILE.XML FILE TARGET DOSYAMIZDIR.
+             * PAGEORGDIFF.PROPERTIES DOSYASINDAN ADI DEGISTIRILEBILIR. PATH KISMI SU AN KOD ICERISINDEKI "MAIN_FOLDER" DEGISKENINE BAGLIDIR.*/
             StringBuilder target = new StringBuilder();
             target.append(MAIN_FOLDER);
             target.append(createStringResource("PageOrgDiff.filePath.target").getString());
             LOGGER.debug("SOURCE PATH INFO: "+target.toString());
             
+            /*YUKARIDAKI ACIKLAMALARA BAGLI OLARAK SOURCEDOC = EXPORT DOC, TARGETDOC=DETSISWS DOC*/
             Document sourceDoc = documentBuilder.parse(new File(source.toString()));
             Document targetDoc = documentBuilder.parse(new File(target.toString()));
 
             //SOURCE -ENGEREK REPO
-            //normalize source doc
             sourceDoc.getDocumentElement().normalize();
             NodeList orgListSource = xp.getNodeList(sourceDoc, "org");
+            
+            /*SOURCE DOSYASINA BAGLI HASHMAP TANIMI*/
             final Map<String, String> testSRCMap = new HashMap<String, String>();
 
-            //karşılaştırılacak repo orgları
+            /* TODO: SOURCE DOC DA BULUNAN XML YAPISI NODELIST YARDIMI ILE HASHMAP'E AKTARILIYOR. 
+             * KEY OLARAK GETNAME(DETSISID) VALUE OLARAK ADMINISTRATIVE STATUS KULLANILDI.
+             * BU SAYEDE DISABLE VE ENABLE ORGANIZASYON FARKI ANLASILABILIYOR
+             */
             for(DTVTOrg item: xp.getOrgValues(xp.getNodes(orgListSource))){
             	testSRCMap.put(item.getName(), item.getAdministrativeStatus());
             }
             
-            //List<DTVTOrg> testSRC = xp.getOrgValues(xp.getNodes(orgListSource));
-            //testSRC.size();
-
-
             //TARGET - WEB SERVICE
-            //normalize target doc
             targetDoc.getDocumentElement().normalize();
+            
+            /*TODO: DETSISWS(TARGET) DOSYASINA BAGLI HASHMAP TANIMI*/
             final Map<String, String> testTRGMap = new HashMap<String, String>();
             NodeList orgListTarget = xp.getNodeList(targetDoc, "org");
             
-            //List<Element> trg = xp.getNodes(orgListTarget);
-            //int orgNumTarget = orgListTarget.getLength();
-            
+          //TODO: TARGET(DETSISWS) DOSYASINDA BULUNAN XML YAPISI NODELIST YARDIMI ILE HASHMAP'E AKTARILIYOR
             for(DTVTOrg item: xp.getOrgValues(xp.getNodes(orgListTarget))){
             	testTRGMap.put(item.getName(), item.getAdministrativeStatus());
             }
-
-            //karşılaştırılacak WS orgları
-            //List<DTVTOrg> testTRG = xp.getOrgValues(xp.getNodes(orgListTarget));
-            //testTRG.size();
-            //List<DTVTOrg> eslesenSrcList= new ArrayList<DTVTOrg>();
-
+            
+            /*TODO: TARGET VE EXPORT SISTEMINDEKI ORGANIZASYON SAYILARI AYNI ISE SETORGSAYI DEGISKENI 
+             * PROPERTIES SAYFASINDAN BELIRTILDIGI SEKILDE SET EDILIYOR
+             * FARKLI ISE YINE AYNI SEKILDE PROPERTIES'DEN SET EDILIYOR*/
             if (testSRCMap.size()==testTRGMap.size()){
               
                 utils.setOrgSayi(createStringResource("PageOrgDiff.orgSayiAyni").getString());
-                //System.out.println("Organizasyon sayıları AYNI.");
                 utils.setEngerekOrg(testSRCMap.size());
                 utils.setDetsisOrg(testTRGMap.size());
 
 
             }else{
-                System.out.println("Organizasyon sayıları FARKLI.");
-            	
                 utils.setOrgSayi(createStringResource("PageOrgDiff.orgSayiFarkli").getString());
                 utils.setEngerekOrg(testSRCMap.size());
                 utils.setDetsisOrg(testTRGMap.size());
                 
-                //System.out.println("Engerek'teki mevcut org sayısı: " + testSRCMap.size());
-                //System.out.println("DETSIS WS'den gelen org sayısı: " + testTRGMap.size());
-
             }
             
-
+            //KARSILASTIRMA ICIN KULLANILAN COUNT
             utils.setCount(0);
             
             
@@ -428,52 +458,38 @@ public class PageOrgDiff extends PageAdminUsers {
                 }
             }
             
-            
-            /*for(DTVTOrg srcOrg : testSRC) {
-                for(DTVTOrg trgOrg : testTRG) {
-                    if(srcOrg.getName().equals(trgOrg.getName())) {
-                        count++;
-            
-                    }else{
-                    	oldOrgList.add(srcOrg.getName());
-                    	//detsisHash.put(srcOrg.getName(), srcOrg.getDetsisStatus());
-                    	
-                    }
-                }
-            }*/
+            //SILINEN LISTE DEBUG
             if(!utils.getDeletedMap().isEmpty()){
 	            for(String org : utils.getDeletedMap().keySet()){
-	            	System.out.println("delete: " + org);
+	            	LOGGER.info("Delete org: " + org);
 	            	
 	            }
             }
             
-            
+            //YENI EKLENECEK LISTE DEBUG
             if(!utils.getAddedMap().isEmpty()){
 	            for(String org : utils.getAddedMap().keySet()){
-	            	System.out.println("add: " + org);
+	            	LOGGER.info("New org: " + org);
 	            }
             }
             
-            //System.out.println(detsisHash.entrySet().toArray());
+            LOGGER.info("COUNTER: "+utils.getCount());
             
-            System.out.println("COUNTER: "+utils.getCount());
-
+            /*SISTEM VE DETSISWS ARASINDAKI FARKLILIKLARI YANSITAN METODLAR*/
             if(testSRCMap.size()>utils.getCount()){
             	utils.setTargetDeleted(utils.getDeletedMap().size());
-                 System.out.println("Import edilecek dosyada "+ utils.getCount() + " adet import dosyasındakilerle eşleşiyor.");
-                 System.out.println("Import edilecek dosyada " + utils.getTargetDeleted()+ " adet silimiş oranizasyon var." );
+            	LOGGER.info("Import edilecek dosyada "+ utils.getCount() + " adet import dosyasındakilerle eşleşiyor.");
+            	LOGGER.info("Import edilecek dosyada " + utils.getTargetDeleted()+ " adet silimiş oranizasyon var." );
             } else if(testTRGMap.size()>utils.getCount()) {
-                //System.out.println("WS'de daha fazla.");
                 utils.setTargetAdded(utils.getAddedMap().size());
-                System.out.println("Import edilecek dosyada "+ utils.getCount() + " adet import dosyasındakilerle eşleşiyor.");
-                System.out.println("Import edilecek dosyada " + utils.getTargetAdded()+ " adet eklenmiş oranizasyon var." );
+                LOGGER.info("Import edilecek dosyada "+ utils.getCount() + " adet import dosyasındakilerle eşleşiyor.");
+                LOGGER.info("Import edilecek dosyada " + utils.getTargetAdded()+ " adet eklenmiş oranizasyon var." );
                 
 
             }
-            
-            //showResultInSession(result);
+            showResultInSession(result);
             setResponsePage(PageOrgDiff.class);
+            //trg.add(getFeedbackPanel());
             
 
         } catch (SAXParseException e) {
@@ -494,12 +510,14 @@ public class PageOrgDiff extends PageAdminUsers {
       		return true;
       	return false;
       }
-	
+	  
+	  /*TODO: EXPORT ISLEMINI BASLATAN METOD*/
 	 private void exportAllType(AjaxRequestTarget target) {
-		 LOGGER.info("***EXPORT ALREADY STARTED***");
+		 LOGGER.info("***EXPORT IS STARTING***");
 	        initDownload(target, OrgType.class, null);
 	    }
 	 
+	 /*EXPORT ISLEMI ICIN OZELLESTIRILMIS DOWNLOAD BEHAVIOUR YAPISINI CAGIRAN METOD*/
 	 private void initDownload(AjaxRequestTarget target, Class<? extends ObjectType> type, ObjectQuery query) {
 		 OperationResult result = new OperationResult(OPERATION_EXPORT_ORGS);
 	        OrgTypeDownloadBehaviour downloadBehaviour = new OrgTypeDownloadBehaviour();

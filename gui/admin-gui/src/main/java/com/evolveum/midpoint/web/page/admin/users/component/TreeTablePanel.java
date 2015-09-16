@@ -57,7 +57,9 @@ import com.evolveum.midpoint.web.page.admin.configuration.component.HeaderMenuAc
 import com.evolveum.midpoint.web.page.admin.users.PageOrgUnit;
 import com.evolveum.midpoint.web.page.admin.users.PageUser;
 import com.evolveum.midpoint.web.page.admin.users.dto.*;
+import com.evolveum.midpoint.web.security.MidPointAuthWebSession;
 import com.evolveum.midpoint.web.security.SecurityUtils;
+import com.evolveum.midpoint.web.session.SessionStorage;
 import com.evolveum.midpoint.web.session.UserProfileStorage;
 import com.evolveum.midpoint.web.util.ObjectTypeGuiDescriptor;
 import com.evolveum.midpoint.web.util.OnePageParameterEncoder;
@@ -70,6 +72,7 @@ import com.evolveum.prism.xml.ns._public.query_3.SearchFilterType;
 import org.apache.commons.lang.StringUtils;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.Component;
+import org.apache.wicket.ajax.AjaxEventBehavior;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.IColumn;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.PropertyColumn;
@@ -138,7 +141,21 @@ public class TreeTablePanel extends SimplePanel<String> {
 
         @Override
         protected OrgTreeDto load() {
-            return getRootFromProvider();
+            TabbedPanel currentTabbedPanel = null;
+            MidPointAuthWebSession session = TreeTablePanel.this.getSession();
+            SessionStorage storage = session.getSessionStorage();
+            if (getTree().getParent().getParent().getParent().getClass() == TabbedPanel.class) {
+                currentTabbedPanel = (TabbedPanel) getTree().getParent().getParent().getParent();
+                int tabId = currentTabbedPanel.getSelectedTab();
+                if (storage.getUsers().getSelectedTabId() != -1 && tabId != storage.getUsers().getSelectedTabId()){
+                    storage.getUsers().setSelectedItem(null);
+                }
+            }
+            if (storage.getUsers().getSelectedItem() != null){
+                return storage.getUsers().getSelectedItem();
+            } else {
+                return getRootFromProvider();
+            }
         }
     };
 
@@ -248,7 +265,7 @@ public class TreeTablePanel extends SimplePanel<String> {
         add(treeContainer);
 
         TableTree<OrgTreeDto, String> tree = new TableTree<OrgTreeDto, String>(ID_TREE, columns, provider,
-                Integer.MAX_VALUE, new TreeStateModel(provider)) {
+                Integer.MAX_VALUE, new TreeStateModel(this, provider)) {
 
             @Override
             protected Component newContentComponent(String id, IModel<OrgTreeDto> model) {
@@ -257,6 +274,10 @@ public class TreeTablePanel extends SimplePanel<String> {
                     @Override
                     protected void onClick(AjaxRequestTarget target) {
                         super.onClick(target);
+
+                        MidPointAuthWebSession session = TreeTablePanel.this.getSession();
+                        SessionStorage storage = session.getSessionStorage();
+                        storage.getUsers().setSelectedItem(selected.getObject());
 
                         selectTreeItemPerformed(target);
                     }
@@ -279,6 +300,31 @@ public class TreeTablePanel extends SimplePanel<String> {
                     }
                 }));
                 return item;
+            }
+
+            @Override
+            public void collapse(OrgTreeDto collapsedItem){
+                super.collapse(collapsedItem);
+                MidPointAuthWebSession session = TreeTablePanel.this.getSession();
+                SessionStorage storage = session.getSessionStorage();
+                Set<OrgTreeDto> items  = storage.getUsers().getExpandedItems();
+                if (items != null && items.contains(collapsedItem)){
+                    items.remove(collapsedItem);
+                }
+                storage.getUsers().setExpandedItems((TreeStateSet)items);
+                storage.getUsers().setCollapsedItem(collapsedItem);
+            }
+
+
+            @Override
+            protected void onModelChanged() {
+                super.onModelChanged();
+
+                Set<OrgTreeDto> items = getModelObject();
+
+                MidPointAuthWebSession session = TreeTablePanel.this.getSession();
+                SessionStorage storage = session.getSessionStorage();
+                storage.getUsers().setExpandedItems((TreeStateSet<OrgTreeDto>) items);
             }
         };
         tree.getTable().add(AttributeModifier.replace("class", "table table-striped table-condensed"));
@@ -316,8 +362,13 @@ public class TreeTablePanel extends SimplePanel<String> {
         form.add(childOrgUnitContainer);
 
         List<IColumn<OrgTableDto, String>> childTableColumns = createChildTableColumns();
+
+        MidPointAuthWebSession session = getSession();
+        SessionStorage storage = session.getSessionStorage();
+        int pageSize = storage.getUserProfile().getPagingSize(UserProfileStorage.TableId.TREE_TABLE_PANEL_CHILD);
+
         final TablePanel childTable = new TablePanel<>(ID_CHILD_TABLE, childTableProvider, childTableColumns,
-                UserProfileStorage.TableId.TREE_TABLE_PANEL_CHILD, UserProfileStorage.DEFAULT_PAGING_SIZE);
+                UserProfileStorage.TableId.TREE_TABLE_PANEL_CHILD, pageSize);
         childTable.setOutputMarkupId(true);
         childTable.getNavigatorPanel().add(new VisibleEnableBehaviour(){
 
@@ -837,7 +888,7 @@ public class TreeTablePanel extends SimplePanel<String> {
             }
 
             user.getParentOrgRef().add(ref.clone());
-            
+
             AssignmentType assignment = new AssignmentType();
             assignment.setTargetRef(ref);
 
@@ -893,11 +944,16 @@ public class TreeTablePanel extends SimplePanel<String> {
             OperationResult subResult = result.createSubresult(OPERATION_DELETE_OBJECT);
             WebModelUtils.deleteObject(object.getType(), object.getOid(), subResult, page);
             subResult.computeStatusIfUnknown();
+
+            MidPointAuthWebSession session = getSession();
+            SessionStorage storage = session.getSessionStorage();
+            storage.getUsers().setExpandedItems(null);
         }
         result.computeStatusComposite();
 
         page.showResult(result);
         target.add(page.getFeedbackPanel());
+        target.add(getTree());
 
         refreshTable(target);
     }
@@ -1388,20 +1444,40 @@ public class TreeTablePanel extends SimplePanel<String> {
 
         private TreeStateSet<OrgTreeDto> set = new TreeStateSet<OrgTreeDto>();
         private ISortableTreeProvider provider;
+        private TreeTablePanel panel;
 
-        TreeStateModel(ISortableTreeProvider provider) {
+        TreeStateModel(TreeTablePanel panel, ISortableTreeProvider provider) {
+            this.panel = panel;
             this.provider = provider;
         }
 
         @Override
         public Set<OrgTreeDto> getObject() {
-            //just to have root expanded at all time
-            if (set.isEmpty()) {
-                Iterator<OrgTreeDto> iterator = provider.getRoots();
-                if (iterator.hasNext()) {
-                    set.add(iterator.next());
-                }
+            MidPointAuthWebSession session = panel.getSession();
+            SessionStorage storage = session.getSessionStorage();
+            Set<OrgTreeDto> dtos = storage.getUsers().getExpandedItems();
+            OrgTreeDto collapsedItem = storage.getUsers().getCollapsedItem();
+            Iterator<OrgTreeDto> iterator = provider.getRoots();
 
+            if (collapsedItem != null){
+                if (set.contains(collapsedItem)){
+                    set.remove(collapsedItem);
+                    storage.getUsers().setCollapsedItem(null);
+                }
+            }
+            if (dtos != null && (dtos instanceof TreeStateSet)) {
+                for (OrgTreeDto orgTreeDto : dtos) {
+                    if (!set.contains(orgTreeDto)) {
+                        set.add(orgTreeDto);
+                    }
+                }
+            }
+            //just to have root expanded at all time
+            if (iterator.hasNext()){
+                OrgTreeDto root = iterator.next();
+                if (set.isEmpty() || !set.contains(root)) {
+                    set.add(root);
+                }
             }
             return set;
         }

@@ -252,7 +252,7 @@
                         </p>
                     </xsd:documentation>
                     <xsd:appinfo>
-                    	<a:displayName>Name</a:displayName>
+                    	<a:displayName>Adı</a:displayName>
                     	<a:displayOrder>0</a:displayOrder>
                     </xsd:appinfo>
                 </xsd:annotation>
@@ -267,7 +267,7 @@
                         </p>
                     </xsd:documentation>
                     <xsd:appinfo>
-                    	<a:displayName>Description</a:displayName>
+                    	<a:displayName>Açıklama</a:displayName>
                     	<a:displayOrder>10</a:displayOrder>
                     </xsd:appinfo>
                 </xsd:annotation>
@@ -309,7 +309,7 @@
                         </p>
                     </xsd:documentation>
                     <xsd:appinfo>
-                    	<a:displayName>Extension</a:displayName>
+                    	<a:displayName>Uzantı</a:displayName>
                     	<a:displayOrder>1000</a:displayOrder>
                     </xsd:appinfo>
                 </xsd:annotation>
@@ -333,7 +333,7 @@
 	                </xsd:documentation>
 	                <xsd:appinfo>
 	        			<a:objectReferenceTargetType>tns:OrgType</a:objectReferenceTargetType>
-	        			<a:displayName>Parent Organization</a:displayName>
+	        			<a:displayName>Üst Organizasyon</a:displayName>
                     	<a:displayOrder>240</a:displayOrder>
 	        		</xsd:appinfo>
 	            </xsd:annotation>
@@ -672,7 +672,7 @@
     		<xsd:appinfo>
     			<a:operational>true</a:operational>
     			<a:container/>
-                <a:displayName>Metadata</a:displayName>
+                <a:displayName>Metaveri</a:displayName>
     		</xsd:appinfo>
     	</xsd:annotation>
     	<xsd:sequence>
@@ -1861,7 +1861,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Assignment</a:displayName>
+                                <a:displayName>Atamalar</a:displayName>
                             </xsd:appinfo>
                         </xsd:annotation>
                     </xsd:element>
@@ -1939,7 +1939,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Full Name</a:displayName>
+		                    	<a:displayName>Tam İsim</a:displayName>
 		                    	<a:displayOrder>100</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -1966,7 +1966,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Given Name</a:displayName>
+		                    	<a:displayName>İsim</a:displayName>
 		                    	<a:displayOrder>110</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -1993,7 +1993,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Family Name</a:displayName>
+		                    	<a:displayName>Soyad</a:displayName>
 		                    	<a:displayOrder>120</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -2016,7 +2016,7 @@
                                 </p> 
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Additional Name</a:displayName>
+		                    	<a:displayName>Ek İsim</a:displayName>
 		                    	<a:displayOrder>130</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -2044,7 +2044,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Nickname</a:displayName>
+		                    	<a:displayName>Takma ad</a:displayName>
 		                    	<a:displayOrder>140</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -2071,7 +2071,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Honorific Prefix</a:displayName>
+		                    	<a:displayName>Ünvan Kısaltması</a:displayName>
 		                    	<a:displayOrder>150</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -2097,7 +2097,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Honorific Suffix</a:displayName>
+		                    	<a:displayName>Ünvan Son eki</a:displayName>
 		                    	<a:displayOrder>160</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -2120,7 +2120,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Title</a:displayName>
+		                    	<a:displayName>Ünvan</a:displayName>
 		                    	<a:displayOrder>170</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -2144,7 +2144,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Preferred Language</a:displayName>
+		                    	<a:displayName>Tercih edilen dil</a:displayName>
 		                    	<a:displayOrder>200</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -2168,7 +2168,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Locale</a:displayName>
+		                    	<a:displayName>Bölge ve Dil (tr_TR)</a:displayName>
 		                    	<a:displayOrder>210</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -2189,7 +2189,7 @@
                                 </p> 
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Timezone</a:displayName>
+		                    	<a:displayName>Zaman Dilimi</a:displayName>
 		                    	<a:displayOrder>220</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -2208,7 +2208,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Email Address</a:displayName>
+                                <a:displayName>Email Adresi</a:displayName>
                                 <a:displayOrder>300</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -2222,7 +2222,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Telephone Number</a:displayName>
+                                <a:displayName>Telefon Numarası</a:displayName>
                                 <a:displayOrder>310</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -2239,7 +2239,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Employee Number</a:displayName>
+                                <a:displayName>Sicil No</a:displayName>
                                 <a:displayOrder>400</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -2262,7 +2262,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Employee Type</a:displayName>
+                                <a:displayName>Çalışan Tipi</a:displayName>
                                 <a:displayOrder>410</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -2283,7 +2283,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Cost Center</a:displayName>
+                                <a:displayName>Maliyet Merkezi</a:displayName>
                                 <a:displayOrder>420</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -2305,7 +2305,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Organization</a:displayName>
+                                <a:displayName>Organizasyon</a:displayName>
                                 <a:displayOrder>430</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -2327,7 +2327,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Organizational Unit</a:displayName>
+                                <a:displayName>Organizasyon Birimi</a:displayName>
                                 <a:displayOrder>440</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -2344,7 +2344,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Locality</a:displayName>
+                                <a:displayName>Konum</a:displayName>
                                 <a:displayOrder>450</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -2358,7 +2358,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Jpeg photo</a:displayName>
+                                <a:displayName>Jpeg foto</a:displayName>
                                 <a:displayOrder>460</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -2370,7 +2370,7 @@
                                 The set of user's credentials (such as passwords).
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Credentials</a:displayName>
+                                <a:displayName>Kimlik Bilgileri</a:displayName>
                             </xsd:appinfo>
                         </xsd:annotation>
                     </xsd:element>
@@ -2416,14 +2416,14 @@
             <xsd:element name="password" type="tns:PasswordType" minOccurs="0" maxOccurs="1">
                 <xsd:annotation>
                     <xsd:appinfo>
-                        <a:displayName>Password</a:displayName>
+                        <a:displayName>Şifre</a:displayName>
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
             <xsd:element name="securityQuestions" type="tns:SecurityQuestionsCredentialsType" minOccurs="0" maxOccurs="1">
                 <xsd:annotation>
                     <xsd:appinfo>
-                        <a:displayName>Security Questions</a:displayName>
+                        <a:displayName>Güvenlik Soruları</a:displayName>
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
@@ -2604,7 +2604,7 @@
             </xsd:documentation>
             <xsd:appinfo>
                 <a:container/>
-                <a:displayName>Assignment</a:displayName>
+                <a:displayName>Atama</a:displayName>
             </xsd:appinfo>
         </xsd:annotation>
         <xsd:sequence>
@@ -2630,7 +2630,7 @@
                         </xsd:documentation>
                         <xsd:appinfo>
                     		<a:objectReference>tns:targetRef</a:objectReference>
-                            <a:displayName>Target</a:displayName>
+                            <a:displayName>Hedef</a:displayName>
                     	</xsd:appinfo>
                     </xsd:annotation>
                 </xsd:element>
@@ -2641,7 +2641,7 @@
                             TODO: target ref
                         </xsd:documentation>
                         <xsd:appinfo>
-                            <a:displayName>Target</a:displayName>
+                            <a:displayName>Hedef</a:displayName>
                         </xsd:appinfo>
                     </xsd:annotation>
                 </xsd:element>
@@ -2684,7 +2684,7 @@
                     </xsd:documentation>
                     <xsd:appinfo>
             			<a:objectReferenceTargetType>tns:OrgType</a:objectReferenceTargetType>
-                        <a:displayName>Tenant reference</a:displayName>
+                        <a:displayName>Tenant referansı</a:displayName>
             		</xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
@@ -2700,7 +2700,7 @@
                     </xsd:documentation>
                     <xsd:appinfo>
             			<a:objectReferenceTargetType>tns:OrgType</a:objectReferenceTargetType>
-                        <a:displayName>Org reference</a:displayName>
+                        <a:displayName>Org referansı</a:displayName>
             		</xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
@@ -2751,7 +2751,7 @@
             </xsd:documentation>
             <xsd:appinfo>
                 <a:container/>
-                <a:displayName>Activation</a:displayName>
+                <a:displayName>Aktifleştirme</a:displayName>
             </xsd:appinfo>
         </xsd:annotation>
         <xsd:sequence>
@@ -2775,7 +2775,7 @@
                         described concept is inactive.
                     </xsd:documentation>
                     <xsd:appinfo>
-                        <a:displayName>Administrative Status</a:displayName>
+                        <a:displayName>İdari Durum</a:displayName>
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
@@ -2795,7 +2795,7 @@
                         If this property is not present then the computation haven't taken place yet.
                     </xsd:documentation>
                     <xsd:appinfo>
-                        <a:displayName>Effective Status</a:displayName>
+                        <a:displayName>Geçerli Durum</a:displayName>
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
@@ -2806,7 +2806,7 @@
                         Not applied if the "enabled" flag is set to any value.
                     </xsd:documentation>
                     <xsd:appinfo>
-                        <a:displayName>Valid From</a:displayName>
+                        <a:displayName>Geçerlilik Başlangıcı</a:displayName>
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
@@ -2817,7 +2817,7 @@
                         Not applied if the "enabled" flag is set to any value.
                     </xsd:documentation>
                     <xsd:appinfo>
-                        <a:displayName>Valid To</a:displayName>
+                        <a:displayName>Geçerlilik Sonu</a:displayName>
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
@@ -2838,7 +2838,7 @@
                         If this property is not present then the computation haven't taken place yet.
                     </xsd:documentation>
                     <xsd:appinfo>
-                        <a:displayName>Validity Status</a:displayName>
+                        <a:displayName>Geçerlilik Durumu</a:displayName>
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
@@ -2916,7 +2916,7 @@
                         to unlock the account by setting this property to "normal" value.
                     </xsd:documentation>
                     <xsd:appinfo>
-                        <a:displayName>Lock-out Status</a:displayName>
+                        <a:displayName>Kilitlenme Durumu</a:displayName>
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
@@ -2931,7 +2931,7 @@
                         for most cases. It only makes sense if the lockoutStatus is not in the "normal" state.
                     </xsd:documentation>
                     <xsd:appinfo>
-                        <a:displayName>Lock-out Expiration</a:displayName>
+                        <a:displayName>Kilitlenme Bitişi</a:displayName>
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
@@ -6083,7 +6083,7 @@
                             	and there is no uniqueness requirement.
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Display Name</a:displayName>
+		                    	<a:displayName>Gösterim Adı</a:displayName>
 		                    	<a:displayOrder>100</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -6459,7 +6459,7 @@
                                 documentation.
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Activation</a:displayName>
+                                <a:displayName>Etkinleştirme</a:displayName>
                             </xsd:appinfo>
                         </xsd:annotation>
                     </xsd:element>
@@ -6727,7 +6727,7 @@
                             	</p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Display Name</a:displayName>
+		                    	<a:displayName>Gösterim Adı</a:displayName>
 		                    	<a:displayOrder>9</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -6745,7 +6745,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-		                    	<a:displayName>Identifier</a:displayName>
+		                    	<a:displayName>Belirteç</a:displayName>
 		                    	<a:displayOrder>110</a:displayOrder>
 		                    </xsd:appinfo>
                         </xsd:annotation>
@@ -6770,7 +6770,7 @@
                             	</p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Inducement</a:displayName>
+                                <a:displayName>Atama Teşviki</a:displayName>
                             </xsd:appinfo>
                         </xsd:annotation>
                     </xsd:element>
@@ -6796,7 +6796,7 @@
                     			</p>
                     		</xsd:documentation>
                     		 <xsd:appinfo>
-                                <a:displayName>Requestable</a:displayName>
+                                <a:displayName>Talep edilebilir</a:displayName>
                             </xsd:appinfo>
                     	</xsd:annotation>
                     </xsd:element>
@@ -6824,7 +6824,7 @@
                     			</p>
                     		</xsd:documentation>
                     		 <xsd:appinfo>
-                                <a:displayName>Risk Level</a:displayName>
+                                <a:displayName>Risk Seviyesi</a:displayName>
                             </xsd:appinfo>
                     	</xsd:annotation>
                     </xsd:element>
@@ -6838,7 +6838,7 @@
                                 </p>
                             </xsd:documentation>
                              <xsd:appinfo>
-                                <a:displayName>Owner</a:displayName>
+                                <a:displayName>Rolün Sahibi</a:displayName>
                             </xsd:appinfo>
                         </xsd:annotation>
                     </xsd:element>
@@ -6852,7 +6852,7 @@
                                 </p>
                             </xsd:documentation>
                              <xsd:appinfo>
-                                <a:displayName>Approver</a:displayName>
+                                <a:displayName>Rolün Onaylayıcısı</a:displayName>
                             </xsd:appinfo>
                         </xsd:annotation>
                     </xsd:element>
@@ -7804,7 +7804,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Type</a:displayName>
+                                <a:displayName>Tip</a:displayName>
                                 <a:displayOrder>120</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -7834,7 +7834,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Cost Center</a:displayName>
+                                <a:displayName>Maliyet Merkezi</a:displayName>
                                 <a:displayOrder>200</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -7851,7 +7851,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Locality</a:displayName>
+                                <a:displayName>Konum</a:displayName>
                                 <a:displayOrder>210</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -7865,7 +7865,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Mail Domain</a:displayName>
+                                <a:displayName>E-Posta Domaini</a:displayName>
                                 <a:displayOrder>220</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -7884,7 +7884,7 @@
                                 </p>
                             </xsd:documentation>
                             <xsd:appinfo>
-                                <a:displayName>Display Order</a:displayName>
+                                <a:displayName>Gösterim Sırası</a:displayName>
                                 <a:displayOrder>300</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -7899,7 +7899,7 @@
                             </xsd:documentation>
                             <xsd:appinfo>
                     			<a:objectReferenceTargetType>tns:ValuePolicyType</a:objectReferenceTargetType>
-                    			<a:displayName>Password Policy</a:displayName>
+                    			<a:displayName>Şifre Politikası</a:displayName>
                                 <a:displayOrder>230</a:displayOrder>
                     		</xsd:appinfo>
                         </xsd:annotation>
@@ -11407,7 +11407,7 @@
                     <xsd:element name="taskId" type="xsd:string">
                         <xsd:annotation>
                             <xsd:appinfo>
-                                <a:displayName>Activiti task identifier</a:displayName>
+                                <a:displayName>Activiti görev belirteci</a:displayName>
                                 <a:displayOrder>100</a:displayOrder>
                                 <a:access>read</a:access>
                             </xsd:appinfo>
@@ -11416,7 +11416,7 @@
                     <xsd:element name="processInstanceId" type="xsd:string">
                         <xsd:annotation>
                             <xsd:appinfo>
-                                <a:displayName>Process instance ID</a:displayName>
+                                <a:displayName>Süreç durum ID</a:displayName>
                                 <a:displayOrder>110</a:displayOrder>
                                 <a:access>read</a:access>
                             </xsd:appinfo>
@@ -11425,7 +11425,7 @@
                     <xsd:element name="executionId" type="xsd:string">
                         <xsd:annotation>
                             <xsd:appinfo>
-                                <a:displayName>Process execution ID</a:displayName>
+                                <a:displayName>Süreç çalıştırma ID</a:displayName>
                                 <a:displayOrder>120</a:displayOrder>
                                 <a:access>read</a:access>
                             </xsd:appinfo>
@@ -11434,7 +11434,7 @@
                     <xsd:element name="taskOwner" type="xsd:string">
                         <xsd:annotation>
                             <xsd:appinfo>
-                                <a:displayName>Task owner</a:displayName>
+                                <a:displayName>Görev sahibi</a:displayName>
                                 <a:displayOrder>130</a:displayOrder>
                                 <a:access>read</a:access>
                             </xsd:appinfo>
@@ -11443,7 +11443,7 @@
                     <xsd:element name="taskAssignee" type="xsd:string">
                         <xsd:annotation>
                             <xsd:appinfo>
-                                <a:displayName>Task assignee</a:displayName>
+                                <a:displayName>Göreve atanan</a:displayName>
                                 <a:displayOrder>140</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -11451,7 +11451,7 @@
                     <xsd:element name="taskCandidates" type="xsd:string">
                         <xsd:annotation>
                             <xsd:appinfo>
-                                <a:displayName>Task candidates</a:displayName>
+                                <a:displayName>Görev Adayları</a:displayName>
                                 <a:displayOrder>150</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -11459,7 +11459,7 @@
                     <xsd:element name="processDefinitionKey" type="xsd:string">
                         <xsd:annotation>
                             <xsd:appinfo>
-                                <a:displayName>Process definition key</a:displayName>
+                                <a:displayName>Süreç tanımlama anahtarı</a:displayName>
                                 <a:displayOrder>160</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -11467,7 +11467,7 @@
                     <xsd:element name="processDefinitionId" type="xsd:string">
                         <xsd:annotation>
                             <xsd:appinfo>
-                                <a:displayName>Process definition ID</a:displayName>
+                                <a:displayName>Süreç tanımı ID</a:displayName>
                                 <a:displayOrder>170</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>
@@ -11475,7 +11475,7 @@
                     <xsd:element name="shadowTaskOid" type="xsd:string">
                         <xsd:annotation>
                             <xsd:appinfo>
-                                <a:displayName>Related midPoint task</a:displayName>
+                                <a:displayName>İlgili Engerek görevi</a:displayName>
                                 <a:displayOrder>200</a:displayOrder>
                             </xsd:appinfo>
                         </xsd:annotation>

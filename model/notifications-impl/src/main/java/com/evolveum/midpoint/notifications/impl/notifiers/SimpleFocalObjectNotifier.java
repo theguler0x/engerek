@@ -25,8 +25,10 @@ import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
@@ -93,20 +95,20 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
         String typeName = getFocusTypeName(event);
 
         if (event.isAdd()) {
-            return typeName + " creation notification";
+            return typeName + " oluşturma bildirimi";
         } else if (event.isModify()) {
-            return typeName + " modification notification";
+            return typeName + " değişiklik bildirimi";
         } else if (event.isDelete()) {
-            return typeName + " deletion notification";
+            return typeName + " silme bildirimi";
         } else {
-            return "(unknown " + typeName.toLowerCase() + " operation)";
+            return "(bilinmeyen " + typeName.toLowerCase() + " işlemi)";
         }
     }
 
     // assuming the quick availability check was passed
     private String getFocusTypeName(Event event) {
         String simpleName = ((ModelEvent) event).getFocusContext().getObjectTypeClass().getSimpleName();
-        return StringUtils.substringBeforeLast(simpleName, "Type");         // should usually work ;)
+        return StringUtils.substringBeforeLast(simpleName, "Tip");         // should usually work ;)
     }
 
     @Override
@@ -142,43 +144,64 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
 
         String status;
         if (event.isSuccess()) {
-            status = "SUCCESS";
+            status = "BAŞARILI";
         } else if (event.isOnlyFailure()) {
-            status = "FAILURE";
+            status = "BAŞARISIZ";
         } else if (event.isFailure()) {
-            status = "PARTIAL FAILURE";
+            status = "KISMEN BAŞARILI";
         } else if (event.isInProgress()) {
-            status = "IN PROGRESS";
+            status = "İLERLEME HALİNDE";
         } else {
-            status = "UNKNOWN";
+            status = "BİLİNMİYOR";
         }
 
         String attemptedTo = event.isSuccess() ? "" : "(attempted to be) ";
-
-        body.append("Notification about ").append(typeNameLower).append("-related operation (status: " + status + ")\n\n");
+        body.append(typeNameLower).append("-ilgili işlemin bildirimi (durum: " + status + ")\n\n") ;
+        //body.append("Notification about ").append(typeNameLower).append("-related operation (durum: " + status + ")\n\n");
         body.append(typeName).append(": " + fullName + " (" + userType.getName() + ", oid " + oid + ")\n");
-        body.append("Notification created on: " + new Date() + "\n\n");
+        body.append("Bildirim oluşturulma tarihi: " + new Date() + "\n\n");
 
         List<ItemPath> hiddenPaths = isWatchAuxiliaryAttributes(generalNotifierType) ? new ArrayList<ItemPath>() : auxiliaryPaths;
         if (delta.isAdd()) {
-            body.append("The ").append(typeNameLower).append(" record was " + attemptedTo + "created with the following data:\n");
+		    body.append(typeNameLower).append(" kaydı " + attemptedTo + "aşağıdaki verilerle oluşturuldu:\n");
+            //body.append("The ").append(typeNameLower).append(" record was " + attemptedTo + "created with the following data:\n");
             body.append(textFormatter.formatObject(delta.getObjectToAdd(), hiddenPaths, isWatchAuxiliaryAttributes(generalNotifierType)));
             body.append("\n");
         } else if (delta.isModify()) {
-            body.append("The ").append(typeNameLower).append(" record was " + attemptedTo + "modified. Modified attributes are:\n");
+		    body.append(typeNameLower).append(" kaydı" + attemptedTo + "değiştirildi. Değiştirilen öznitelikler:\n");
+            //body.append("The ").append(typeNameLower).append(" record was " + attemptedTo + "modified. Modified attributes are:\n");
             body.append(textFormatter.formatObjectModificationDelta(delta, hiddenPaths, isWatchAuxiliaryAttributes(generalNotifierType), focusContext.getObjectOld(), focusContext.getObjectNew()));
             body.append("\n");
         } else if (delta.isDelete()) {
-            body.append("The ").append(typeNameLower).append(" record was " + attemptedTo + "removed.\n\n");
+		    body.append(typeNameLower).append(" kaydı " + attemptedTo + "silindi.\n\n");
+            //body.append("The ").append(typeNameLower).append(" record was " + attemptedTo + "removed.\n\n");
         }
 
         if (!event.isSuccess()) {
-            body.append("More information about the status of the request was displayed and/or is present in log files.\n\n");
+		    body.append("Yapılan istemin durumu hakkında daha fazla bilgisi gösterilmiştir ve/veya log dosyalarında mevcuttur.\n\n");
+            //body.append("More information about the status of the request was displayed and/or is present in log files.\n\n");
         }
-
+        if (event.getRequester() != null) {
+        	body.append("Requester: ");
+        	try {
+        		ObjectType requester = event.getRequester().resolveObjectType(result);
+        		if (requester instanceof UserType) {
+        			UserType requesterUser = (UserType) requester;
+        			body.append(requesterUser.getFullName()).append(" (").append(requester.getName()).append(")");
+        		} else {
+        			body.append(ObjectTypeUtil.toShortString(requester));
+        		}
+        	} catch (RuntimeException e) {
+        		body.append("couldn't be determined: ").append(e.getMessage());
+        		LoggingUtils.logUnexpectedException(LOGGER, "Couldn't determine requester for a notification", e);
+        	}
+        	body.append("\n");
+        }
+        body.append("Channel: ").append(modelContext.getChannel()).append("\n\n");
+        
         if (techInfo) {
             body.append("----------------------------------------\n");
-            body.append("Technical information:\n\n");
+            body.append("Teknik bilgi:\n\n");
             body.append(modelContext.debugDump(2));
         }
 

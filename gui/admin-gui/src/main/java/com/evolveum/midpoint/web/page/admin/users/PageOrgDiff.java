@@ -1,6 +1,8 @@
 package com.evolveum.midpoint.web.page.admin.users;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -84,6 +86,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.TaskType;
 public class PageOrgDiff extends PageAdminUsers {
 	
 	private static final String DOT_CLASS = PageOrgDiff.class.getName() + ".";
+	private static final String ID_START_WEB_SERVICE_BUTTON ="startWebServiceButton";
 	private static final String ID_IMPORT_BUTTON = "startImportButton";
 	private static final String ID_COMPARE_BUTTON ="startCompareButton";
 	private static final String ID_EXPORT_BUTTON = "startExportButton";
@@ -195,6 +198,31 @@ public class PageOrgDiff extends PageAdminUsers {
 	/*BUTONLARIN INTIALIZE EDILDIGI METOD. */
 	private void initButtons(final Form mainForm) {
 
+		
+		AjaxButton runWebServiceNow = new AjaxButton(ID_START_WEB_SERVICE_BUTTON,createStringResource("PageOrgDiff.button.runWS")){
+			
+			@Override
+            public void onClick(AjaxRequestTarget target) {
+				Process proc;
+				try {
+					System.out.println("before detsis jar");
+					proc = Runtime.getRuntime().exec("java -jar D:/DetsisXml.jar");
+					System.out.println("Calling detsis jar");
+					InputStream in = proc.getInputStream();
+					InputStream err = proc.getErrorStream();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				// process output
+				
+				
+				//	runWebServicePerformed(target);
+			
+            }
+			
+		};
+		mainForm.add(runWebServiceNow);
 			
 		AjaxButton compareNow = new AjaxButton(ID_COMPARE_BUTTON, createStringResource("PageOrgDiff.button.compare")) {
 
@@ -439,11 +467,14 @@ public class PageOrgDiff extends PageAdminUsers {
             
             //KARSILASTIRMA ICIN KULLANILAN COUNT
             utils.setCount(0);
+            utils.getDeletedMap().clear();
+            utils.getAddedMap().clear();
             
             
             for (final String key : testSRCMap.keySet()) {
-            	String val =testSRCMap.get(key);
-            	System.out.println("VALUE: "+key);
+            	String val = testSRCMap.get(key);
+            	//System.out.println("key: "+key + ", value: " + val);
+            	//System.out.println("val:" + val);
             	if(val.equalsIgnoreCase("enabled")){
 	                if (testTRGMap.containsKey(key)) {
 	                    utils.setCount(utils.getCount()+1);
@@ -476,17 +507,17 @@ public class PageOrgDiff extends PageAdminUsers {
             LOGGER.info("COUNTER: "+utils.getCount());
             
             /*SISTEM VE DETSISWS ARASINDAKI FARKLILIKLARI YANSITAN METODLAR*/
-            if(testSRCMap.size()>utils.getCount()){
+        //    if(testSRCMap.size()>utils.getCount()){
             	utils.setTargetDeleted(utils.getDeletedMap().size());
             	LOGGER.info("Import edilecek dosyada "+ utils.getCount() + " adet import dosyasındakilerle eşleşiyor.");
             	LOGGER.info("Import edilecek dosyada " + utils.getTargetDeleted()+ " adet silimiş oranizasyon var." );
-            } else if(testTRGMap.size()>utils.getCount()) {
+       //     } else if(testTRGMap.size()>utils.getCount()) {
                 utils.setTargetAdded(utils.getAddedMap().size());
                 LOGGER.info("Import edilecek dosyada "+ utils.getCount() + " adet import dosyasındakilerle eşleşiyor.");
                 LOGGER.info("Import edilecek dosyada " + utils.getTargetAdded()+ " adet eklenmiş oranizasyon var." );
                 
 
-            }
+       //     }
             showResultInSession(result);
             setResponsePage(PageOrgDiff.class);
             //trg.add(getFeedbackPanel());

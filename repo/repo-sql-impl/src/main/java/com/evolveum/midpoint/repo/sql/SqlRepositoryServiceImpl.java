@@ -38,6 +38,8 @@ import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.prism.Visitable;
 import com.evolveum.midpoint.prism.Visitor;
+
+import com.evolveum.midpoint.xml.ns._public.common.common_3.SequenceType;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.hibernate.Criteria;
@@ -59,9 +61,7 @@ import org.springframework.stereotype.Repository;
 import com.evolveum.midpoint.common.InternalsConfig;
 import com.evolveum.midpoint.common.crypto.CryptoUtil;
 import com.evolveum.midpoint.prism.ConsistencyCheckScope;
-import com.evolveum.midpoint.prism.Definition;
 import com.evolveum.midpoint.prism.Item;
-import com.evolveum.midpoint.prism.ItemDefinition;
 import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismContainerValue;
 import com.evolveum.midpoint.prism.PrismContext;
@@ -82,6 +82,7 @@ import com.evolveum.midpoint.prism.parser.XNodeProcessorEvaluationMode;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.prism.polystring.PrismDefaultPolyStringNormalizer;
+import com.evolveum.midpoint.prism.query.AllFilter;
 import com.evolveum.midpoint.prism.query.NoneFilter;
 import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.prism.query.ObjectPaging;
@@ -119,7 +120,6 @@ import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.result.OperationResultStatus;
 import com.evolveum.midpoint.schema.util.ObjectQueryUtil;
 import com.evolveum.midpoint.util.DebugUtil;
-import com.evolveum.midpoint.util.Transformer;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
@@ -640,8 +640,8 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         LOGGER.debug("Updating full object xml column start.");
         savedObject.setVersion(Integer.toString(object.getVersion()));
 
-        if (UserType.class.equals(savedObject.getCompileTimeClass())) {
-            savedObject.removeProperty(UserType.F_JPEG_PHOTO);
+        if (FocusType.class.isAssignableFrom(savedObject.getCompileTimeClass())) {
+            savedObject.removeProperty(FocusType.F_JPEG_PHOTO);
         } else if (LookupTableType.class.equals(savedObject.getCompileTimeClass())) {
             PrismContainer table = savedObject.findContainer(LookupTableType.F_ROW);
             savedObject.remove(table);
@@ -938,7 +938,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         Validate.notNull(type, "Object type must not be null.");
         Validate.notNull(result, "Operation result must not be null.");
 
-        logSearchInputParameters(type, query, false);
+        logSearchInputParameters(type, query, false, null);
 
         OperationResult subResult = result.createSubresult(SEARCH_OBJECTS);
         subResult.addParam("type", type.getName());
@@ -951,9 +951,15 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
             if (filter instanceof NoneFilter) {
                 subResult.recordSuccess();
                 return new SearchResultList(new ArrayList<PrismObject<T>>(0));
+                //shouldn't be this in ObjectQueryUtil.simplify?
+            } else if (filter instanceof AllFilter){
+            	query = query.cloneEmpty();
+            	query.setFilter(null);
+            } else {
+	            query = query.cloneEmpty();
+	            query.setFilter(filter);
             }
-            query = query.cloneEmpty();
-            query.setFilter(filter);
+            
         }
 
         SqlPerformanceMonitor pm = getPerformanceMonitor();
@@ -975,11 +981,11 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         }
     }
 
-    private <T extends ObjectType> void logSearchInputParameters(Class<T> type, ObjectQuery query, boolean iterative) {
+    private <T extends ObjectType> void logSearchInputParameters(Class<T> type, ObjectQuery query, boolean iterative, Boolean strictlySequential) {
         ObjectPaging paging = query != null ? query.getPaging() : null;
-        LOGGER.debug("Searching objects of type '{}', query (on trace level), offset {}, count {}, iterative {}.",
+        LOGGER.debug("Searching objects of type '{}', query (on trace level), offset {}, count {}, iterative {}, strictlySequential {}.",
                 new Object[]{type.getSimpleName(), (paging != null ? paging.getOffset() : "undefined"),
-                        (paging != null ? paging.getMaxSize() : "undefined"), iterative}
+                        (paging != null ? paging.getMaxSize() : "undefined"), iterative, strictlySequential}
         );
 
         if (!LOGGER.isTraceEnabled()) {
@@ -1046,15 +1052,15 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
             throw e;
         }
 
-        if (UserType.class.equals(prismObject.getCompileTimeClass())) {
-            if (SelectorOptions.hasToLoadPath(UserType.F_JPEG_PHOTO, options)) {
+        if (FocusType.class.isAssignableFrom(prismObject.getCompileTimeClass())) {
+            if (SelectorOptions.hasToLoadPath(FocusType.F_JPEG_PHOTO, options)) {
                 //todo improve, use user.hasPhoto flag and take options into account [lazyman]
                 //this is called only when options contains INCLUDE user/jpegPhoto
-                Query query = session.getNamedQuery("get.userPhoto");
+                Query query = session.getNamedQuery("get.focusPhoto");
                 query.setString("oid", prismObject.getOid());
                 byte[] photo = (byte[]) query.uniqueResult();
                 if (photo != null) {
-                    PrismProperty property = prismObject.findOrCreateProperty(UserType.F_JPEG_PHOTO);
+                    PrismProperty property = prismObject.findOrCreateProperty(FocusType.F_JPEG_PHOTO);
                     property.setRealValue(photo);
                 }
             }
@@ -1147,6 +1153,11 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         Collection<SelectorOptions<GetOperationOptions>> filtered = SelectorOptions.filterRetrieveOptions(options);
         for (SelectorOptions<GetOperationOptions> option : filtered) {
             ObjectSelector selector = option.getSelector();
+            if (selector == null) {
+            	// Ignore this. These are top-level options. There will not
+            	// apply to lookup table
+            	continue;
+            }
             ItemPath selected = selector.getPath();
 
             if (tablePath.equivalent(selected)) {
@@ -1367,23 +1378,23 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
 
             Collection<? extends ItemDelta> lookupTableModifications = filterLookupTableModifications(type, modifications);
 
-            // JpegPhoto (RUserPhoto) is a special kind of entity. First of all, it is lazily loaded, because photos are really big.
-            // Each RUserPhoto naturally belongs to one RUser, so it would be appropriate to set orphanRemoval=true for user-photo
-            // association. However, this leads to a strange problem when merging in-memory RUser object with the database state:
-            // If in-memory RUser object has no photo associated (because of lazy loading), then the associated RUserPhoto is deleted.
+            // JpegPhoto (RFocusPhoto) is a special kind of entity. First of all, it is lazily loaded, because photos are really big.
+            // Each RFocusPhoto naturally belongs to one RFocus, so it would be appropriate to set orphanRemoval=true for focus-photo
+            // association. However, this leads to a strange problem when merging in-memory RFocus object with the database state:
+            // If in-memory RFocus object has no photo associated (because of lazy loading), then the associated RFocusPhoto is deleted.
             //
-            // To prevent this behavior, we've set orphanRemoval to false. Fortunately, the remove operation on RUser
-            // seems to be still cascaded to RUserPhoto. What we have to implement ourselves, however, is removal of RUserPhoto
-            // _without_ removing of RUser. In order to know whether the photo has to be removed, we have to retrieve
+            // To prevent this behavior, we've set orphanRemoval to false. Fortunately, the remove operation on RFocus
+            // seems to be still cascaded to RFocusPhoto. What we have to implement ourselves, however, is removal of RFocusPhoto
+            // _without_ removing of RFocus. In order to know whether the photo has to be removed, we have to retrieve
             // its value, apply the delta (e.g. if the delta is a DELETE VALUE X, we have to know whether X matches current
-            // value of the photo), and if the resulting value is empty, we have to manually delete the RUserPhoto instance.
+            // value of the photo), and if the resulting value is empty, we have to manually delete the RFocusPhoto instance.
             //
             // So the first step is to retrieve the current value of photo - we obviously do this only if the modifications
             // deal with the jpegPhoto property.
             Collection<SelectorOptions<GetOperationOptions>> options;
-            boolean containsUserPhotoModification = UserType.class.equals(type) && containsPhotoModification(modifications);
-            if (containsUserPhotoModification) {
-                options = Arrays.asList(SelectorOptions.create(UserType.F_JPEG_PHOTO, GetOperationOptions.createRetrieve(RetrieveOption.INCLUDE)));
+            boolean containsFocusPhotoModification = FocusType.class.isAssignableFrom(type) && containsPhotoModification(modifications);
+            if (containsFocusPhotoModification) {
+                options = Arrays.asList(SelectorOptions.create(FocusType.F_JPEG_PHOTO, GetOperationOptions.createRetrieve(RetrieveOption.INCLUDE)));
             } else {
                 options = null;
             }
@@ -1403,9 +1414,9 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
                 LOGGER.trace("OBJECT after:\n{}", prismObject.debugDump());
             }
 
-            // Continuing the photo treatment: should we remove the (now obsolete) user photo?
+            // Continuing the photo treatment: should we remove the (now obsolete) focus photo?
             // We have to test prismObject at this place, because updateFullObject (below) removes photo property from the prismObject.
-            boolean shouldPhotoBeRemoved = containsUserPhotoModification && ((UserType) prismObject.asObjectable()).getJpegPhoto() == null;
+            boolean shouldPhotoBeRemoved = containsFocusPhotoModification && ((FocusType) prismObject.asObjectable()).getJpegPhoto() == null;
 
             // merge and update object
             LOGGER.trace("Translating JAXB to data type.");
@@ -1421,13 +1432,13 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
                 getClosureManager().updateOrgClosure(originalObject, modifications, session, oid, type, OrgClosureManager.Operation.MODIFY, closureContext);
             }
 
-            // JpegPhoto cleanup: As said before, if a user has to have no photo (after modifications are applied),
+            // JpegPhoto cleanup: As said before, if a focus has to have no photo (after modifications are applied),
             // we have to remove the photo manually.
             if (shouldPhotoBeRemoved) {
-                Query query = session.createQuery("delete RUserPhoto where ownerOid = :oid");
+                Query query = session.createQuery("delete RFocusPhoto where ownerOid = :oid");
                 query.setParameter("oid", prismObject.getOid());
                 query.executeUpdate();
-                LOGGER.trace("User photo for {} was deleted", prismObject.getOid());
+                LOGGER.trace("Focus photo for {} was deleted", prismObject.getOid());
             }
 
             LOGGER.trace("Before commit...");
@@ -1484,11 +1495,11 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
     }
 
     private <T extends ObjectType> boolean containsPhotoModification(Collection<? extends ItemDelta> modifications) {
-        ItemPath photoPath = new ItemPath(UserType.F_JPEG_PHOTO);
+        ItemPath photoPath = new ItemPath(FocusType.F_JPEG_PHOTO);
         for (ItemDelta delta : modifications) {
             ItemPath path = delta.getPath();
             if (path.isEmpty()) {
-                throw new UnsupportedOperationException("User cannot be modified via empty-path modification");
+                throw new UnsupportedOperationException("Focus cannot be modified via empty-path modification");
             } else if (photoPath.isSubPathOrEquivalent(path)) { // actually, "subpath" variant should not occur
                 return true;
             }
@@ -1862,12 +1873,13 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
     public <T extends ObjectType> SearchResultMetadata searchObjectsIterative(Class<T> type, ObjectQuery query,
                                                                               ResultHandler<T> handler,
                                                                               Collection<SelectorOptions<GetOperationOptions>> options,
+                                                                              boolean strictlySequential,
                                                                               OperationResult result) throws SchemaException {
         Validate.notNull(type, "Object type must not be null.");
         Validate.notNull(handler, "Result handler must not be null.");
         Validate.notNull(result, "Operation result must not be null.");
 
-        logSearchInputParameters(type, query, true);
+        logSearchInputParameters(type, query, true, strictlySequential);
 
         OperationResult subResult = result.createSubresult(SEARCH_OBJECTS_ITERATIVE);
         subResult.addParam("type", type.getName());
@@ -1879,13 +1891,22 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
             if (filter instanceof NoneFilter) {
                 subResult.recordSuccess();
                 return null;
+                //shouldn't be this in ObjectQueryUtil.simplify?
+            } else if (filter instanceof AllFilter){
+            	query = query.cloneEmpty();
+            	query.setFilter(null);
+            } else {
+            	query = query.cloneEmpty();
+            	query.setFilter(filter);
             }
-            query = query.cloneEmpty();
-            query.setFilter(filter);
         }
 
         if (getConfiguration().isIterativeSearchByPaging()) {
-            searchObjectsIterativeByPaging(type, query, handler, options, subResult);
+            if (strictlySequential) {
+                searchObjectsIterativeByPagingStrictlySequential(type, query, handler, options, subResult);
+            } else {
+                searchObjectsIterativeByPaging(type, query, handler, options, subResult);
+            }
             return null;
         }
 
@@ -1995,6 +2016,102 @@ main:       while (remaining > 0) {
         }
     }
 
+    // Temporary hack. Represents special paging object that means
+    // "give me objects with OID greater than specified one, sorted by OID ascending".
+    //
+    // TODO: replace by using cookie that is part of the standard ObjectPaging
+    // (but think out all consequences, e.g. conflicts with the other use of the cookie)
+    public static class ObjectPagingAfterOid extends ObjectPaging {
+        private String oidGreaterThan;
+
+        public String getOidGreaterThan() {
+            return oidGreaterThan;
+        }
+
+        public void setOidGreaterThan(String oidGreaterThan) {
+            this.oidGreaterThan = oidGreaterThan;
+        }
+
+        @Override
+        public String toString() {
+            return super.toString() + ", after OID: " + oidGreaterThan;
+        }
+
+        @Override
+        public ObjectPagingAfterOid clone() {
+            ObjectPagingAfterOid clone = new ObjectPagingAfterOid();
+            copyTo(clone);
+            return clone;
+        }
+
+        protected void copyTo(ObjectPagingAfterOid clone) {
+            super.copyTo(clone);
+            clone.oidGreaterThan = this.oidGreaterThan;
+        }
+    }
+
+    /**
+     * Strictly-sequential version of paged search.
+     *
+     * Assumptions:
+     *  - During processing of returned object(s), any objects can be added, deleted or modified.
+     *
+     * Guarantees:
+     *  - We return each object that existed in the moment of search start:
+     *     - exactly once if it was not deleted in the meanwhile,
+     *     - at most once otherwise.
+     *  - However, we may or may not return any objects that were added during the processing.
+     *
+     * Constraints:
+     *  - There can be no ordering prescribed. We use our own ordering.
+     *  - Moreover, for simplicity we disallow any explicit paging.
+     *
+     *  Implementation is very simple - we fetch objects ordered by OID, and remember last OID fetched.
+     *  Obviously no object will be present in output more than once.
+     *  Objects that are not deleted will be there exactly once, provided their oid is not changed.
+     */
+    private <T extends ObjectType> void searchObjectsIterativeByPagingStrictlySequential(
+            Class<T> type, ObjectQuery query, ResultHandler<T> handler,
+            Collection<SelectorOptions<GetOperationOptions>> options, OperationResult result)
+            throws SchemaException {
+
+        try {
+            ObjectQuery pagedQuery = query != null ? query.clone() : new ObjectQuery();
+
+            String lastOid = "";
+            final int batchSize = getConfiguration().getIterativeSearchByPagingBatchSize();
+
+            if (pagedQuery.getPaging() != null) {
+                throw new IllegalArgumentException("Externally specified paging is not supported on strictly sequential iterative search.");
+            }
+
+            ObjectPagingAfterOid paging = new ObjectPagingAfterOid();
+            pagedQuery.setPaging(paging);
+
+main:       for (;;) {
+                paging.setOidGreaterThan(lastOid);
+                paging.setMaxSize(batchSize);
+
+                List<PrismObject<T>> objects = searchObjects(type, pagedQuery, options, result);
+
+                for (PrismObject<T> object : objects) {
+                    lastOid = object.getOid();
+                    if (!handler.handle(object, result)) {
+                        break main;
+                    }
+                }
+
+                if (objects.size() == 0) {
+                    break;
+                }
+            }
+        } finally {
+            if (result != null && result.isUnknown()) {
+                result.computeStatus();
+            }
+        }
+    }
+
     @Override
     public boolean isAnySubordinate(String upperOrgOid, Collection<String> lowerObjectOids) throws SchemaException {
         Validate.notNull(upperOrgOid, "upperOrgOid must not be null.");
@@ -2051,4 +2168,211 @@ main:       while (remaining > 0) {
 
         throw new SystemException("isAnySubordinateAttempt failed somehow, this really should not happen.");
     }
+
+	@Override
+	public long advanceSequence(String oid, OperationResult parentResult) throws ObjectNotFoundException,
+			SchemaException {
+
+        Validate.notEmpty(oid, "Oid must not null or empty.");
+        Validate.notNull(parentResult, "Operation result must not be null.");
+
+        OperationResult result = parentResult.createSubresult(ADVANCE_SEQUENCE);
+        result.addParam("oid", oid);
+
+        if (LOGGER.isTraceEnabled())
+            LOGGER.trace("Advancing sequence {}", oid);
+
+        int attempt = 1;
+
+        SqlPerformanceMonitor pm = getPerformanceMonitor();
+        long opHandle = pm.registerOperationStart("advanceSequence");
+        try {
+            while (true) {
+                try {
+                    return advanceSequenceAttempt(oid, result);
+                } catch (RuntimeException ex) {
+                    attempt = logOperationAttempt(oid, "advanceSequence", attempt, ex, null);
+                    pm.registerOperationNewTrial(opHandle, attempt);
+                }
+            }
+        } finally {
+            pm.registerOperationFinish(opHandle, attempt);
+        }
+	}
+
+    private long advanceSequenceAttempt(String oid, OperationResult result) throws ObjectNotFoundException,
+            SchemaException, SerializationRelatedException {
+
+        long returnValue;
+
+        LOGGER.debug("Advancing sequence with oid '{}'.", oid);
+        LOGGER_PERFORMANCE.debug("> advance sequence, oid={}", oid);
+
+        Session session = null;
+        try {
+            session = beginTransaction();
+
+            PrismObject<SequenceType> prismObject = getObject(session, SequenceType.class, oid, null, true);
+            if (LOGGER.isTraceEnabled()) {
+                LOGGER.trace("OBJECT before:\n{}", prismObject.debugDump());
+            }
+            SequenceType sequence = prismObject.asObjectable();
+
+            if (!sequence.getUnusedValues().isEmpty()) {
+                returnValue = sequence.getUnusedValues().remove(0);
+            } else {
+                long counter = sequence.getCounter() != null ? sequence.getCounter() : 0L;
+                long maxCounter = sequence.getMaxCounter() != null ? sequence.getMaxCounter() : Long.MAX_VALUE;
+                boolean allowRewind = Boolean.TRUE.equals(sequence.isAllowRewind());
+
+                if (counter < maxCounter) {
+                    returnValue = counter;
+                    sequence.setCounter(counter + 1);
+                } else if (counter == maxCounter) {
+                    returnValue = counter;
+                    if (allowRewind) {
+                        sequence.setCounter(0L);
+                    } else {
+                        sequence.setCounter(counter + 1);       // will produce exception during next run
+                    }
+                } else {        // i.e. counter > maxCounter
+                    if (allowRewind) {          // shouldn't occur but...
+                        LOGGER.warn("Sequence {} overflown with allowRewind set to true. Rewinding.", oid);
+                        returnValue = 0;
+                        sequence.setCounter(1L);
+                    } else {
+                        // TODO some better exception...
+                        throw new SystemException("No (next) value available from sequence " + oid + ". Current counter = " + sequence.getCounter() + ", max value = " + sequence.getMaxCounter());
+                    }
+                }
+            }
+
+            if (LOGGER.isTraceEnabled()) {
+                LOGGER.trace("Return value = {}, OBJECT after:\n{}", returnValue, prismObject.debugDump());
+            }
+
+            // merge and update object
+            LOGGER.trace("Translating JAXB to data type.");
+            RObject rObject = createDataObjectFromJAXB(prismObject, PrismIdentifierGenerator.Operation.MODIFY);
+            rObject.setVersion(rObject.getVersion() + 1);
+
+            updateFullObject(rObject, prismObject);
+            session.merge(rObject);
+
+            LOGGER.trace("Before commit...");
+            session.getTransaction().commit();
+            LOGGER.trace("Committed!");
+
+            return returnValue;
+        } catch (ObjectNotFoundException ex) {
+            rollbackTransaction(session, ex, result, true);
+            throw ex;
+        } catch (SchemaException ex) {
+            rollbackTransaction(session, ex, result, true);
+            throw ex;
+        } catch (QueryException | DtoTranslationException | RuntimeException ex) {
+            handleGeneralException(ex, session, result);                                            // should always throw an exception
+            throw new SystemException("Exception " + ex + " was not handled correctly", ex);        // ...so this shouldn't occur at all
+        } finally {
+            cleanupSessionAndResult(session, result);
+            LOGGER.trace("Session cleaned up.");
+        }
+    }
+
+
+	@Override
+	public void returnUnusedValuesToSequence(String oid, Collection<Long> unusedValues, OperationResult parentResult)
+			throws ObjectNotFoundException, SchemaException {
+        Validate.notEmpty(oid, "Oid must not null or empty.");
+        Validate.notNull(parentResult, "Operation result must not be null.");
+
+        OperationResult result = parentResult.createSubresult(RETURN_UNUSED_VALUES_TO_SEQUENCE);
+        result.addParam("oid", oid);
+
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace("Returning unused values of {} to sequence {}", unusedValues, oid);
+        }
+        if (unusedValues == null || unusedValues.isEmpty()) {
+            result.recordSuccess();
+            return;
+        }
+
+        int attempt = 1;
+
+        SqlPerformanceMonitor pm = getPerformanceMonitor();
+        long opHandle = pm.registerOperationStart("returnUnusedValuesToSequence");
+        try {
+            while (true) {
+                try {
+                    returnUnusedValuesToSequenceAttempt(oid, unusedValues, result);
+                    return;
+                } catch (RuntimeException ex) {
+                    attempt = logOperationAttempt(oid, "returnUnusedValuesToSequence", attempt, ex, null);
+                    pm.registerOperationNewTrial(opHandle, attempt);
+                }
+            }
+        } finally {
+            pm.registerOperationFinish(opHandle, attempt);
+        }
+	}
+
+    private void returnUnusedValuesToSequenceAttempt(String oid, Collection<Long> unusedValues, OperationResult result) throws ObjectNotFoundException,
+            SchemaException, SerializationRelatedException {
+
+        LOGGER.debug("Returning unused values of {} to a sequence with oid '{}'.", unusedValues, oid);
+        LOGGER_PERFORMANCE.debug("> return unused values, oid={}, values={}", oid, unusedValues);
+
+        Session session = null;
+        try {
+            session = beginTransaction();
+
+            PrismObject<SequenceType> prismObject = getObject(session, SequenceType.class, oid, null, true);
+            if (LOGGER.isTraceEnabled()) {
+                LOGGER.trace("OBJECT before:\n{}", prismObject.debugDump());
+            }
+            SequenceType sequence = prismObject.asObjectable();
+            int maxUnusedValues = sequence.getMaxUnusedValues() != null ? sequence.getMaxUnusedValues() : 0;
+            Iterator<Long> valuesToReturnIterator = unusedValues.iterator();
+            while (valuesToReturnIterator.hasNext() && sequence.getUnusedValues().size() < maxUnusedValues) {
+                Long valueToReturn = valuesToReturnIterator.next();
+                if (valueToReturn == null) {        // sanity check
+                    continue;
+                }
+                if (!sequence.getUnusedValues().contains(valueToReturn)) {
+                    sequence.getUnusedValues().add(valueToReturn);
+                } else {
+                    LOGGER.warn("UnusedValues in sequence {} already contains value of {} - ignoring the return request", oid, valueToReturn);
+                }
+            }
+
+            if (LOGGER.isTraceEnabled()) {
+                LOGGER.trace("OBJECT after:\n{}", prismObject.debugDump());
+            }
+
+            // merge and update object
+            LOGGER.trace("Translating JAXB to data type.");
+            RObject rObject = createDataObjectFromJAXB(prismObject, PrismIdentifierGenerator.Operation.MODIFY);
+            rObject.setVersion(rObject.getVersion() + 1);
+
+            updateFullObject(rObject, prismObject);
+            session.merge(rObject);
+
+            LOGGER.trace("Before commit...");
+            session.getTransaction().commit();
+            LOGGER.trace("Committed!");
+        } catch (ObjectNotFoundException ex) {
+            rollbackTransaction(session, ex, result, true);
+            throw ex;
+        } catch (SchemaException ex) {
+            rollbackTransaction(session, ex, result, true);
+            throw ex;
+        } catch (QueryException | DtoTranslationException | RuntimeException ex) {
+            handleGeneralException(ex, session, result);                                            // should always throw an exception
+            throw new SystemException("Exception " + ex + " was not handled correctly", ex);        // ...so this shouldn't occur at all
+        } finally {
+            cleanupSessionAndResult(session, result);
+            LOGGER.trace("Session cleaned up.");
+        }
+    }
+
 }

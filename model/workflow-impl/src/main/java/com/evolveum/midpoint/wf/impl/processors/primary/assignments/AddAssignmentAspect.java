@@ -249,7 +249,7 @@ public abstract class AddAssignmentAspect<T extends ObjectType, F extends FocusT
             instruction.setProcessInstanceName("Adding " + targetName + " to " + assigneeName);
 
             // setup general item approval process
-            String approvalTaskName = "Approve adding " + targetName + " to " + assigneeName;
+			String approvalTaskName =  assigneeName + "'e eklenecek " + targetName + "'i onayla.";
             itemApprovalProcessInterface.prepareStartInstruction(instruction, approvalRequest, approvalTaskName);
 
             // set some aspect-specific variables

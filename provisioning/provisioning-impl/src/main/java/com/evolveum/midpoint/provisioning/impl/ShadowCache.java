@@ -79,7 +79,6 @@ import com.evolveum.midpoint.provisioning.ucf.api.ConnectorInstance;
 import com.evolveum.midpoint.provisioning.ucf.api.GenericFrameworkException;
 import com.evolveum.midpoint.provisioning.ucf.api.PropertyModificationOperation;
 import com.evolveum.midpoint.provisioning.ucf.api.ResultHandler;
-import com.evolveum.midpoint.provisioning.util.ProvisioningUtil;
 import com.evolveum.midpoint.repo.api.RepositoryService;
 import com.evolveum.midpoint.schema.DeltaConvertor;
 import com.evolveum.midpoint.schema.GetOperationOptions;
@@ -702,12 +701,12 @@ public abstract class ShadowCache {
 	
 
 	public SearchResultMetadata searchObjectsIterative(ObjectQuery query,
-			Collection<SelectorOptions<GetOperationOptions>> options, final ShadowHandler<ShadowType> handler,
-			final boolean readFromRepository, final OperationResult parentResult) throws SchemaException,
+													   Collection<SelectorOptions<GetOperationOptions>> options, final ShadowHandler<ShadowType> handler,
+													   final boolean readFromRepository, Task task, final OperationResult parentResult) throws SchemaException,
 			ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException {
 
 		ResourceShadowDiscriminator coordinates = ObjectQueryUtil.getCoordinates(query.getFilter());
-		final ProvisioningContext ctx = ctxFactory.create(coordinates, null, parentResult);
+		final ProvisioningContext ctx = ctxFactory.create(coordinates, task, parentResult);
 		ctx.assertDefinition();
 		applyDefinition(ctx, query);
 		
@@ -934,7 +933,7 @@ public abstract class ShadowCache {
 		return repoShadow;
 	}
 	
-	public Integer countObjects(ObjectQuery query, final OperationResult result) throws SchemaException,
+	public Integer countObjects(ObjectQuery query, Task task, final OperationResult result) throws SchemaException,
 			ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException {
 
 		ResourceShadowDiscriminator coordinates = ObjectQueryUtil.getCoordinates(query.getFilter());
@@ -959,7 +958,7 @@ public abstract class ShadowCache {
                     ObjectQuery attributeQuery = createAttributeQuery(query);
                     int count;
                     try {
-                    	count = connector.count(objectClassDef.getObjectClassDefinition(), attributeQuery, objectClassDef.getPagedSearches(), result);
+                    	count = connector.count(objectClassDef.getObjectClassDefinition(), attributeQuery, objectClassDef.getPagedSearches(), ctx, result);
                     } catch (CommunicationException | GenericFrameworkException| SchemaException | UnsupportedOperationException e) {
                     	result.recordFatalError(e);
                         throw e;
@@ -999,7 +998,7 @@ public abstract class ShadowCache {
 						SelectorOptions.createCollection(new ItemPath(ShadowType.F_ASSOCIATION), GetOperationOptions.createRetrieve(RetrieveOption.EXCLUDE));
 				SearchResultMetadata resultMetadata;
 				try {
-					resultMetadata = searchObjectsIterative(query, options, handler, false, result);
+					resultMetadata = searchObjectsIterative(query, options, handler, false, task, result);
 				} catch (SchemaException | ObjectNotFoundException | ConfigurationException | SecurityViolationException e) {
 					result.recordFatalError(e);
                     throw e;
@@ -1026,7 +1025,7 @@ public abstract class ShadowCache {
 	
 				Collection<SelectorOptions<GetOperationOptions>> options =
 						SelectorOptions.createCollection(new ItemPath(ShadowType.F_ASSOCIATION), GetOperationOptions.createRetrieve(RetrieveOption.EXCLUDE));
-	            searchObjectsIterative(query, options, handler, false, result);
+	            searchObjectsIterative(query, options, handler, false, task, result);
 	            // TODO: better error handling
 	            result.computeStatus();
 	            result.cleanupResult();
@@ -1104,6 +1103,7 @@ public abstract class ShadowCache {
 					PrismProperty<?> newToken = change.getToken();
 					task.setExtensionProperty(newToken);
 					processedChanges++;
+					task.setProgress(task.getProgress()+1);		// because processedChanges are reflected into task only at task run finish
 					LOGGER.debug("Skipping processing change. Can't find appropriate shadow (e.g. the object was deleted on the resource meantime).");
 					continue;
 				}
@@ -1116,6 +1116,7 @@ public abstract class ShadowCache {
 					PrismProperty<?> newToken = change.getToken();
 					task.setExtensionProperty(newToken);
 					processedChanges++;
+					task.setProgress(task.getProgress()+1);		// because processedChanges are reflected into task only at task run finish
 				}
 			}
 			
@@ -1213,8 +1214,8 @@ public abstract class ShadowCache {
 		shadowChangeDescription.setOldShadow(change.getOldShadow());
 		shadowChangeDescription.setCurrentShadow(change.getCurrentShadow());
 		if (null == channel){
-		shadowChangeDescription.setSourceChannel(QNameUtil.qNameToUri(SchemaConstants.CHANGE_CHANNEL_LIVE_SYNC));
-		} else{
+			shadowChangeDescription.setSourceChannel(QNameUtil.qNameToUri(SchemaConstants.CHANGE_CHANNEL_LIVE_SYNC));
+		} else {
 			shadowChangeDescription.setSourceChannel(channel);
 		}
 		return shadowChangeDescription;
@@ -1356,7 +1357,7 @@ public abstract class ShadowCache {
 		ResourceAttributeContainer newSecondaryIdentifiers = ShadowUtil.getAttributesContainer(currentShadowType);
 		
 		//remember name before normalizing attributes
-		PolyString currentShadowName = ProvisioningUtil.determineShadowName(currentShadowType);
+		PolyString currentShadowName = ShadowUtil.determineShadowName(currentShadowType);
 		currentShadowType.setName(new PolyStringType(currentShadowName));
 		
 		Iterator<ResourceAttribute<?>> oldSecondaryIterator = oldSecondaryIdentifiers.iterator();
@@ -1585,7 +1586,7 @@ public abstract class ShadowCache {
 			resultShadowType.setObjectClass(resourceAttributesContainer.getDefinition().getTypeName());
 		}
 		if (resultShadowType.getName() == null) {
-			resultShadowType.setName(new PolyStringType(ProvisioningUtil.determineShadowName(resourceShadow)));
+			resultShadowType.setName(new PolyStringType(ShadowUtil.determineShadowName(resourceShadow)));
 		}
 		if (resultShadowType.getResource() == null) {
 			resultShadowType.setResourceRef(ObjectTypeUtil.createObjectRef(ctx.getResource()));

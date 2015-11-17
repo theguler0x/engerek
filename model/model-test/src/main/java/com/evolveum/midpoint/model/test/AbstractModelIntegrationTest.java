@@ -141,6 +141,7 @@ import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
 
 import org.apache.commons.lang.StringUtils;
 import org.opends.server.types.DirectoryException;
+import org.opends.server.types.Entry;
 import org.opends.server.types.SearchResultEntry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.ConfigAttribute;
@@ -175,6 +176,7 @@ import static org.testng.AssertJUnit.assertFalse;
 import static org.testng.AssertJUnit.assertNotNull;
 import static org.testng.AssertJUnit.assertNull;
 import static org.testng.AssertJUnit.assertTrue;
+import static org.testng.AssertJUnit.fail;
 
 /**
  * Abstract framework for an integration test that is placed on top of a model API.
@@ -1233,10 +1235,29 @@ public abstract class AbstractModelIntegrationTest extends AbstractIntegrationTe
 		PrismObject<UserType> user = repositoryService.getObject(UserType.class, userOid, null, result);
 		assertAssignedRole(user, roleOid);
 	}
-	
+
+	protected <F extends FocusType> void assertAssignedRole(PrismObject<F> focus, String roleOid, Task task, OperationResult result) throws ObjectNotFoundException, SchemaException {
+		assertAssignedRole(focus, roleOid);
+	}
+
 	protected <F extends FocusType> void assertAssignedRole(PrismObject<F> user, String roleOid) {
 		MidPointAsserts.assertAssignedRole(user, roleOid);
 	}
+	
+	protected <F extends FocusType> void assertRoleMembershipRef(PrismObject<F> focus, String... roleOids) {
+		List<String> refOids = new ArrayList<String>();
+		for (ObjectReferenceType ref: focus.asObjectable().getRoleMembershipRef()) {
+			refOids.add(ref.getOid());
+			assertNotNull("Missing type in roleMembershipRef "+ref.getOid()+" in "+focus, ref.getType());
+			// Name is not stored now
+//			assertNotNull("Missing name in roleMembershipRef "+ref.getOid()+" in "+focus, ref.getTargetName());
+		}
+		PrismAsserts.assertSets("Wrong values in roleMembershipRef in "+focus, refOids, roleOids);
+	}
+
+    protected <F extends FocusType> void assertNotAssignedRole(PrismObject<F> focus, String roleOid, Task task, OperationResult result) throws ObjectNotFoundException, SchemaException {
+        MidPointAsserts.assertNotAssignedRole(focus, roleOid);
+    }
 
     protected void assertNotAssignedRole(String userOid, String roleOid, Task task, OperationResult result) throws ObjectNotFoundException, SchemaException {
         PrismObject<UserType> user = repositoryService.getObject(UserType.class, userOid, null, result);
@@ -1395,17 +1416,21 @@ public abstract class AbstractModelIntegrationTest extends AbstractIntegrationTe
 		assertAssignedNo(user, OrgType.COMPLEX_TYPE);
 	}
 	
+	protected <F extends FocusType> void assertAssignedNoRole(PrismObject<F> focus, Task task, OperationResult result) throws ObjectNotFoundException, SchemaException {
+		assertAssignedNoRole(focus);
+	}
+	
 	protected void assertAssignedNoRole(String userOid, Task task, OperationResult result) throws ObjectNotFoundException, SchemaException {
 		PrismObject<UserType> user = repositoryService.getObject(UserType.class, userOid, null, result);
 		assertAssignedNoRole(user);
 	}
 	
-	protected void assertAssignedNoRole(PrismObject<UserType> user) {
+	protected <F extends FocusType> void assertAssignedNoRole(PrismObject<F> user) {
 		assertAssignedNo(user, RoleType.COMPLEX_TYPE);
 	}
 		
-	protected void assertAssignedNo(PrismObject<UserType> user, QName refType) {
-		UserType userType = user.asObjectable();
+	protected <F extends FocusType> void assertAssignedNo(PrismObject<F> user, QName refType) {
+		F userType = user.asObjectable();
 		for (AssignmentType assignmentType: userType.getAssignment()) {
 			ObjectReferenceType targetRef = assignmentType.getTargetRef();
 			if (targetRef != null) {
@@ -2016,7 +2041,7 @@ public abstract class AbstractModelIntegrationTest extends AbstractIntegrationTe
 		// There may be metadata modification, we tolerate that
 		Collection<? extends ItemDelta<?,?>> metadataDelta = focusDelta.findItemDeltasSubPath(new ItemPath(UserType.F_METADATA));
 		if (metadataDelta != null && !metadataDelta.isEmpty()) {
-			expectedModifications++;
+			expectedModifications+=metadataDelta.size();
 		}
 		if (focusDelta.findItemDelta(new ItemPath(FocusType.F_ACTIVATION, ActivationType.F_ENABLE_TIMESTAMP)) != null) {
 			expectedModifications++;
@@ -2032,6 +2057,9 @@ public abstract class AbstractModelIntegrationTest extends AbstractIntegrationTe
 			expectedModifications++;
 		}
 		if (focusDelta.findItemDelta(new ItemPath(FocusType.F_ITERATION)) != null) {
+			expectedModifications++;
+		}
+		if (focusDelta.findItemDelta(new ItemPath(FocusType.F_ROLE_MEMBERSHIP_REF)) != null) {
 			expectedModifications++;
 		}
 		if (focusDelta.findItemDelta(new ItemPath(FocusType.F_ITERATION_TOKEN)) != null) {
@@ -2068,6 +2096,9 @@ public abstract class AbstractModelIntegrationTest extends AbstractIntegrationTe
 		if (effectiveStatusDelta != null) {
 			expectedModifications++;
 			PrismAsserts.assertReplace(effectiveStatusDelta, expectedEfficientActivation);
+		}
+		if (focusDelta.findItemDelta(new ItemPath(FocusType.F_ROLE_MEMBERSHIP_REF)) != null) {
+			expectedModifications++;
 		}
 		if (focusDelta.findItemDelta(new ItemPath(FocusType.F_ITERATION)) != null) {
 			expectedModifications++;
@@ -2319,8 +2350,8 @@ public abstract class AbstractModelIntegrationTest extends AbstractIntegrationTe
 			return;
 		}
 		assertNotNull("No values for attribute "+attributeName+" of "+dummyInstanceName+" dummy account "+username, values);
-		assertEquals("Unexpected number of values for attribute " + attributeName + " of dummy account " + username + 
-				". Expected: " + Arrays.toString(expectedAttributeValues) + ", was: " + values, 
+		assertEquals("Unexpected number of values for attribute " + attributeName + " of dummy account " + username +
+				". Expected: " + Arrays.toString(expectedAttributeValues) + ", was: " + values,
 				expectedAttributeValues.length, values.size());
 		for (Object expectedValue: expectedAttributeValues) {
 			if (!values.contains(expectedValue)) {
@@ -2432,18 +2463,18 @@ public abstract class AbstractModelIntegrationTest extends AbstractIntegrationTe
 		assertTrue("Unexpected values for attribute " + attributeName + " of dummy account " + username + ": " + values, values == null || values.isEmpty());
 	}
     
-	protected String assertOpenDjAccount(String uid, String cn, Boolean active) throws DirectoryException {
-		SearchResultEntry entry = openDJController.searchByUid(uid);
+	protected Entry assertOpenDjAccount(String uid, String cn, Boolean active) throws DirectoryException {
+		Entry entry = openDJController.searchByUid(uid);
 		assertNotNull("OpenDJ accoun with uid "+uid+" not found", entry);
 		openDJController.assertAttribute(entry, "cn", cn);
 		if (active != null) {
 			openDJController.assertActive(entry, active);
 		}
-		return entry.getDN().toString();
+		return entry;
 	}
 	
 	protected void assertNoOpenDjAccount(String uid) throws DirectoryException {
-		SearchResultEntry entry = openDJController.searchByUid(uid);
+		Entry entry = openDJController.searchByUid(uid);
 		assertNull("Expected that OpenDJ account with uid " + uid + " will be gone, but it is still there", entry);
 	}
 	
@@ -2622,6 +2653,16 @@ public abstract class AbstractModelIntegrationTest extends AbstractIntegrationTe
 		} else {
 			AssertJUnit.fail("Expected logged in user '"+username+"' but there was unknown principal in the spring security context: "+principal);
 		}
+	}
+	
+	protected void resetAuthentication() {
+		SecurityContext securityContext = SecurityContextHolder.getContext();
+		securityContext.setAuthentication(null);
+	}
+	
+	protected void assertNoAuthentication() {
+		SecurityContext securityContext = SecurityContextHolder.getContext();
+		assertNull("Unexpected authentication", securityContext.getAuthentication());
 	}
 	
 	protected void displayAllUsers() throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException {
@@ -2875,7 +2916,11 @@ public abstract class AbstractModelIntegrationTest extends AbstractIntegrationTe
 	protected void assertRoleTypes(RoleSelectionSpecification roleSpec, String... expectedRoleTypes) {
 		assertNotNull("Null role spec", roleSpec);
         display("Role spec", roleSpec);
-        List<DisplayableValue<String>> roleTypes = roleSpec.getRoleTypes();
+        List<? extends DisplayableValue<String>> roleTypes = roleSpec.getRoleTypes();
+        if ((roleTypes == null || roleTypes.isEmpty()) && expectedRoleTypes.length == 0) {
+        	return;
+        }
+        assertNotNull("Null roleTypes in roleSpec "+roleSpec, roleTypes);
         if (roleTypes.size() != expectedRoleTypes.length) {
         	AssertJUnit.fail("Expected role types "+Arrays.toString(expectedRoleTypes)+" but got "+roleTypes);
         }
@@ -2925,4 +2970,15 @@ public abstract class AbstractModelIntegrationTest extends AbstractIntegrationTe
 		result.computeStatus();
 		TestUtil.assertSuccess(result);
 	}
+
+	protected void assertRefEquals(String message, ObjectReferenceType expected, ObjectReferenceType actual) {
+		if (expected == null && actual == null) {
+			return;
+		}
+		if (expected == null || actual == null) {
+			fail(message + ": expected=" + expected + ", actual=" + actual);
+		}
+		PrismAsserts.assertRefEquivalent(message, expected.asReferenceValue(), actual.asReferenceValue());
+	}
+
 }

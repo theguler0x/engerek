@@ -41,6 +41,14 @@
                     <exclude>**/org.identityconnectors.common.logging</exclude>
                 </excludes>
             </resource>
+            <!-- LOCALIZATION -->
+            <resource>
+                <filtering>true</filtering>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>localization/Midpoint*.properties</include>
+                </includes>
+            </resource>
             <!--  ICF LOGGING CONFIGURATION -->
             <resource>
             	<targetPath>../midpoint/META-INF/services</targetPath>
@@ -94,6 +102,33 @@
 			<artifactId>jcaptcha-integration-simple-servlet</artifactId>
 			<version>2.0-alpha-1</version>
 		</dependency>
+        <!-- webjars -->
+        <dependency>
+            <groupId>org.webjars.bower</groupId>
+            <artifactId>adminlte</artifactId>
+            <version>2.3.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.webjars</groupId>
+            <artifactId>respond</artifactId>
+            <version>1.4.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.webjars</groupId>
+            <artifactId>html5shiv</artifactId>
+            <version>3.7.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.webjars</groupId>
+            <artifactId>font-awesome</artifactId>
+            <version>4.3.0-2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.webjars</groupId>
+            <artifactId>ionicons</artifactId>
+            <version>2.0.1</version>
+        </dependency>
+
         <!-- WRO4J-->
         <dependency>
             <groupId>ro.isdc.wro4j</groupId>
@@ -171,34 +206,6 @@
                     <artifactId>gson</artifactId>
                 </exclusion>
             </exclusions>
-        </dependency>
-
-
-	 <!-- MIDPOINT LOCALIZATION -->
-        <dependency>
-            <groupId>com.evolveum.midpoint.gui</groupId>
-            <artifactId>admin-gui-en-US</artifactId>
-            <version>3.3-SNAPSHOT</version>
-        </dependency>
-	    <dependency>
-            <groupId>com.evolveum.midpoint.gui</groupId>
-            <artifactId>admin-gui-sk-SK</artifactId>
-            <version>3.3-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.evolveum.midpoint.gui</groupId>
-            <artifactId>admin-gui-tr-TR</artifactId>
-            <version>3.3-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.evolveum.midpoint.gui</groupId>
-            <artifactId>admin-gui-es-ES</artifactId>
-            <version>3.3-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.evolveum.midpoint.gui</groupId>
-            <artifactId>admin-gui-cs-CZ</artifactId>
-            <version>3.3-SNAPSHOT</version>
         </dependency>
 
         <!-- JDBC DRIVERS -->
@@ -326,8 +333,7 @@
             		<groupId>com.sun.xml.bind</groupId>
             	</exclusion>
             </exclusions>
-        </dependency>
-        
+        </dependency>       
         <dependency>
             <groupId>com.evolveum.midpoint.model</groupId>
             <artifactId>certification-impl</artifactId>
@@ -369,25 +375,14 @@
             <artifactId>report-impl</artifactId>
             <version>3.3-SNAPSHOT</version>
             <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.evolveum.midpoint.model</groupId>
-            <artifactId>report-ds-impl</artifactId>
-            <version>3.3-SNAPSHOT</version>
-			<scope>runtime</scope>
-			 <exclusions>
+			<exclusions>
             	<exclusion>
             		<artifactId>jaxb-impl</artifactId>
             		<groupId>com.sun.xml.bind</groupId>
             	</exclusion>
             </exclusions>
-<!-- 			<exclusions> -->
-<!-- 				<exclusion> -->
-<!-- 					<groupId>*</groupId> -->
-<!-- 					<artifactId>*</artifactId> -->
-<!-- 				</exclusion> -->
-<!--     		</exclusions> -->
         </dependency>
+       
 	<dependency>
             <groupId>com.evolveum.midpoint.infra</groupId>
             <artifactId>common</artifactId>
@@ -450,6 +445,12 @@
         <dependency>
             <groupId>org.apache.wicket</groupId>
             <artifactId>wicket-datetime</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.ocpsoft.prettytime</groupId>
+            <artifactId>prettytime</artifactId>
+            <version>4.0.0.Final</version>
         </dependency>
 
         <!-- Xtext DSL
@@ -558,30 +559,25 @@
             <artifactId>log4j-over-slf4j</artifactId>
             <scope>runtime</scope>
         </dependency>
-        <dependency>
-            <groupId>com.lowagie</groupId>
-            <artifactId>itext</artifactId>
-            <version>2.1.7</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>bouncycastle</groupId>
-                    <artifactId>bcmail-jdk14</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>bouncycastle</groupId>
-                    <artifactId>bcprov-jdk14</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>bouncycastle</groupId>
-                    <artifactId>bctsp-jdk14</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
         <!-- Jasper reports -->
         <dependency>
-			<groupId>net.sf.jasperreports</groupId>
-			<artifactId>jasperreports</artifactId>
-		</dependency>
+    			<groupId>net.sf.jasperreports</groupId>
+    			<artifactId>jasperreports</artifactId>
+           <exclusions> <!-- we dont want bouncy castle to include into midPoint -->
+                <exclusion>
+                    <groupId>bouncycastle</groupId>
+			               <artifactId>bcmail-jdk14</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>bouncycastle</groupId>
+			              <artifactId>bcprov-jdk14</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>bouncycastle</groupId>
+			              <artifactId>bctsp-jdk14</artifactId>
+                </exclusion>
+            </exclusions>                  
+    		</dependency>
 		<!-- report dependency (needed for microsoft office formats) -->
             <dependency>
 				<groupId>org.apache.poi</groupId>
@@ -603,10 +599,14 @@
             <artifactId>servlet-api</artifactId>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+			<groupId>javax.mail</groupId>
+			<artifactId>javax.mail-api </artifactId>
+		</dependency>
 		
 		<!-- Uncomment following if you want midpoint to be a part of SSO using CAS server-->
 		<!-- SSO CAS Client dependencies -->
-	<!--	<dependency>
+<!-- 		<dependency>
 			<groupId>org.jasig.cas.client</groupId>
 			<artifactId>cas-client-integration-tomcat-v7</artifactId>
 			<version>3.3.3</version>
@@ -634,7 +634,7 @@
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-cas</artifactId>
 			<version>3.2.5.RELEASE</version>
-        </dependency>  -->
+        </dependency>   -->
         
         <!-- testing dependencies -->
         <dependency>

@@ -51,8 +51,8 @@ http://www.springframework.org/schema/security/spring-security-3.2.xsd">
 	</beans:bean>
 	
 	<beans:bean id="fontGenRandom" class="com.octo.captcha.component.image.fontgenerator.RandomFontGenerator">
-		<beans:constructor-arg index="0"> <beans:value>40</beans:value></beans:constructor-arg> 
-		<beans:constructor-arg index="1"> <beans:value>50</beans:value></beans:constructor-arg>
+		<beans:constructor-arg index="0"> <beans:value>20</beans:value></beans:constructor-arg> 
+		<beans:constructor-arg index="1"> <beans:value>30</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="2">
 			<beans:list>
 				<beans:ref bean="fontArial" />
@@ -83,7 +83,7 @@ http://www.springframework.org/schema/security/spring-security-3.2.xsd">
 	
         
     <beans:bean id="backGenUni" class="com.octo.captcha.component.image.backgroundgenerator.UniColorBackgroundGenerator">
-		<beans:constructor-arg index="0"><beans:value>300</beans:value></beans:constructor-arg>
+		<beans:constructor-arg index="0"><beans:value>240</beans:value></beans:constructor-arg>
 		<beans:constructor-arg index="1"><beans:value>100</beans:value></beans:constructor-arg>
 	</beans:bean>
 	

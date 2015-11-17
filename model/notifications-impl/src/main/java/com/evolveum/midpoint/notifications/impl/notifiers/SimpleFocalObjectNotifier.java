@@ -157,30 +157,26 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
 
         String attemptedTo = event.isSuccess() ? "" : "(attempted to be) ";
         body.append(typeNameLower).append("-ilgili işlemin bildirimi (durum: " + status + ")\n\n") ;
-        //body.append("Notification about ").append(typeNameLower).append("-related operation (durum: " + status + ")\n\n");
         body.append(typeName).append(": " + fullName + " (" + userType.getName() + ", oid " + oid + ")\n");
         body.append("Bildirim oluşturulma tarihi: " + new Date() + "\n\n");
 
         List<ItemPath> hiddenPaths = isWatchAuxiliaryAttributes(generalNotifierType) ? new ArrayList<ItemPath>() : auxiliaryPaths;
         if (delta.isAdd()) {
 		    body.append(typeNameLower).append(" kaydı " + attemptedTo + "aşağıdaki verilerle oluşturuldu:\n");
-            //body.append("The ").append(typeNameLower).append(" record was " + attemptedTo + "created with the following data:\n");
             body.append(textFormatter.formatObject(delta.getObjectToAdd(), hiddenPaths, isWatchAuxiliaryAttributes(generalNotifierType)));
             body.append("\n");
         } else if (delta.isModify()) {
 		    body.append(typeNameLower).append(" kaydı" + attemptedTo + "değiştirildi. Değiştirilen öznitelikler:\n");
-            //body.append("The ").append(typeNameLower).append(" record was " + attemptedTo + "modified. Modified attributes are:\n");
             body.append(textFormatter.formatObjectModificationDelta(delta, hiddenPaths, isWatchAuxiliaryAttributes(generalNotifierType), focusContext.getObjectOld(), focusContext.getObjectNew()));
             body.append("\n");
         } else if (delta.isDelete()) {
 		    body.append(typeNameLower).append(" kaydı " + attemptedTo + "silindi.\n\n");
-            //body.append("The ").append(typeNameLower).append(" record was " + attemptedTo + "removed.\n\n");
         }
 
         if (!event.isSuccess()) {
 		    body.append("Yapılan istemin durumu hakkında daha fazla bilgisi gösterilmiştir ve/veya log dosyalarında mevcuttur.\n\n");
-            //body.append("More information about the status of the request was displayed and/or is present in log files.\n\n");
         }
+
         if (event.getRequester() != null) {
         	body.append("Requester: ");
         	try {
@@ -199,6 +195,11 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
         }
         body.append("Channel: ").append(modelContext.getChannel()).append("\n\n");
         
+
+
+        notificationsUtil.addRequesterAndChannelInformation(body, event, result);
+
+
         if (techInfo) {
             body.append("----------------------------------------\n");
             body.append("Teknik bilgi:\n\n");

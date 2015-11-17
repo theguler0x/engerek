@@ -144,6 +144,8 @@ public interface RepositoryService {
     String SEARCH_OBJECTS_ITERATIVE = CLASS_NAME_WITH_DOT + "searchObjectsIterative";
     String CLEANUP_TASKS = CLASS_NAME_WITH_DOT + "cleanupTasks";
     String SEARCH_SHADOW_OWNER = CLASS_NAME_WITH_DOT + "searchShadowOwner";
+	String ADVANCE_SEQUENCE = CLASS_NAME_WITH_DOT + "advanceSequence";
+	String RETURN_UNUSED_VALUES_TO_SEQUENCE = CLASS_NAME_WITH_DOT + "returnUnusedValuesToSequence";
 
 	/**
 	 * Returns object for provided OID.
@@ -286,6 +288,9 @@ public interface RepositoryService {
 	 *            search query
 	 * @param handler
 	 *            result handler
+	 * @param strictlySequential
+	 * 			  takes care not to skip any object nor to process objects more than once;
+	 * 			  currently requires paging NOT to be used - uses its own paging
 	 * @param parentResult
 	 *            parent OperationResult (in/out)
 	 * @return all objects of specified type that match search criteria (subject
@@ -298,7 +303,8 @@ public interface RepositoryService {
 	 */
 
 	<T extends ObjectType> SearchResultMetadata searchObjectsIterative(Class<T> type, ObjectQuery query,
-			ResultHandler<T> handler, Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult)
+			ResultHandler<T> handler, Collection<SelectorOptions<GetOperationOptions>> options, boolean strictlySequential,
+			OperationResult parentResult)
 			throws SchemaException;
 
 	/**
@@ -474,6 +480,31 @@ public interface RepositoryService {
 	<T extends ShadowType> List<PrismObject<T>> listResourceObjectShadows(String resourceOid,
 			Class<T> resourceObjectShadowType, OperationResult parentResult) throws ObjectNotFoundException,
             SchemaException;
+	
+	/**
+	 * 
+	 * This operation is guaranteed to be atomic. If two threads or even two nodes request a value from
+	 * the same sequence at the same time then different values will be returned.
+	 * 
+	 * @param oid sequence OID
+	 * @param parentResult
+	 * @return next unallocated counter value
+	 * @throws ObjectNotFoundException the sequence does not exist
+	 * @throws SchemaException the sequence cannot produce a value (e.g. maximum counter reached)
+	 */
+	long advanceSequence(String oid, OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
+	
+	/**
+	 * 
+	 * The sequence may ignore the values, e.g. if value re-use is disabled or when the list of
+	 * unused values is full. In such a case the values will be ignored silently and no error is indicated.
+	 * 
+	 * @param oid
+	 * @param unusedValues
+	 * @param parentResult
+	 * @throws ObjectNotFoundException
+	 */
+	void returnUnusedValuesToSequence(String oid, Collection<Long> unusedValues, OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
 	
     /**
 	 * Provide repository run-time configuration and diagnostic information.

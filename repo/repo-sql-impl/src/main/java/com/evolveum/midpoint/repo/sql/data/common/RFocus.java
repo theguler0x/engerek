@@ -30,10 +30,7 @@ import com.evolveum.midpoint.repo.sql.util.IdGeneratorResult;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
-import org.hibernate.annotations.Cascade;
-import org.hibernate.annotations.ForeignKey;
-import org.hibernate.annotations.Index;
-import org.hibernate.annotations.Where;
+import org.hibernate.annotations.*;
 
 import javax.persistence.Embedded;
 import javax.persistence.Entity;
@@ -59,8 +56,12 @@ import java.util.Set;
 public abstract class RFocus<T extends FocusType> extends RObject<T> {
 
     private Set<RObjectReference> linkRef;
+    private Set<RObjectReference> roleMembershipRef;
     private Set<RAssignment> assignments;
     private RActivation activation;
+    //photo
+    private boolean hasPhoto;
+    private Set<RFocusPhoto> jpegPhoto;
 
     @Where(clause = RObjectReference.REFERENCE_TYPE + "= 1")
     @OneToMany(mappedBy = "owner", orphanRemoval = true)
@@ -71,6 +72,17 @@ public abstract class RFocus<T extends FocusType> extends RObject<T> {
             linkRef = new HashSet<>();
         }
         return linkRef;
+    }
+
+    @Where(clause = RObjectReference.REFERENCE_TYPE + "= 8")
+    @OneToMany(mappedBy = "owner", orphanRemoval = true)
+    @ForeignKey(name = "none")
+    @Cascade({org.hibernate.annotations.CascadeType.ALL})
+    public Set<RObjectReference> getRoleMembershipRef() {
+        if (roleMembershipRef == null) {
+            roleMembershipRef = new HashSet<>();
+        }
+        return roleMembershipRef;
     }
 
     @Transient
@@ -120,6 +132,10 @@ public abstract class RFocus<T extends FocusType> extends RObject<T> {
         this.linkRef = linkRef;
     }
 
+    public void setRoleMembershipRef(Set<RObjectReference> roleMembershipRef) {
+        this.roleMembershipRef = roleMembershipRef;
+    }
+
     public void setActivation(RActivation activation) {
         this.activation = activation;
     }
@@ -134,6 +150,7 @@ public abstract class RFocus<T extends FocusType> extends RObject<T> {
 
         if (assignments != null ? !assignments.equals(other.assignments) : other.assignments != null) return false;
         if (linkRef != null ? !linkRef.equals(other.linkRef) : other.linkRef != null) return false;
+        if (roleMembershipRef != null ? !roleMembershipRef.equals(other.roleMembershipRef) : other.roleMembershipRef != null) return false;
         if (activation != null ? !activation.equals(other.activation) : other.activation != null) return false;
 
         return true;
@@ -155,6 +172,9 @@ public abstract class RFocus<T extends FocusType> extends RObject<T> {
         repo.getLinkRef().addAll(
                 RUtil.safeListReferenceToSet(jaxb.getLinkRef(), prismContext, repo, RReferenceOwner.USER_ACCOUNT));
 
+        repo.getRoleMembershipRef().addAll(
+                RUtil.safeListReferenceToSet(jaxb.getRoleMembershipRef(), prismContext, repo, RReferenceOwner.ROLE_MEMBER));
+
         for (AssignmentType assignment : jaxb.getAssignment()) {
             RAssignment rAssignment = new RAssignment(repo, RAssignmentOwner.FOCUS);
             RAssignment.copyFromJAXB(assignment, rAssignment, jaxb, prismContext, generatorResult);
@@ -166,7 +186,42 @@ public abstract class RFocus<T extends FocusType> extends RObject<T> {
             RActivation activation = new RActivation();
             RActivation.copyFromJAXB(jaxb.getActivation(), activation, prismContext);
             repo.setActivation(activation);
+        }
 
+        if (jaxb.getJpegPhoto() != null) {
+            RFocusPhoto photo = new RFocusPhoto();
+            photo.setOwner(repo);
+            photo.setPhoto(jaxb.getJpegPhoto());
+
+            repo.getJpegPhoto().add(photo);
+            repo.setHasPhoto(true);
         }
     }
+
+    @ColumnDefault("false")
+    public boolean isHasPhoto() {
+        return hasPhoto;
+    }
+
+    // setting orphanRemoval = false prevents:
+    //   (1) deletion of photos for RUsers that have no photos fetched (because fetching is lazy)
+    //   (2) even querying of m_focus_photo table on RFocus merge
+    // (see comments in SqlRepositoryServiceImpl.modifyObjectAttempt)
+    @OneToMany(mappedBy = "owner", orphanRemoval = false)
+    @Cascade({org.hibernate.annotations.CascadeType.ALL})
+    public Set<RFocusPhoto> getJpegPhoto() {
+        if (jpegPhoto == null) {
+            jpegPhoto = new HashSet<>();
+        }
+        return jpegPhoto;
+    }
+
+    public void setHasPhoto(boolean hasPhoto) {
+        this.hasPhoto = hasPhoto;
+    }
+
+    public void setJpegPhoto(Set<RFocusPhoto> jpegPhoto) {
+        this.jpegPhoto = jpegPhoto;
+    }
+
 }

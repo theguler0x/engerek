@@ -16,48 +16,24 @@
 
 package com.evolveum.midpoint.web.component.prism;
 
-import com.evolveum.midpoint.prism.*;
-import com.evolveum.midpoint.prism.delta.ObjectDelta;
-import com.evolveum.midpoint.prism.path.ItemPath;
-import com.evolveum.midpoint.prism.query.InOidFilter;
-import com.evolveum.midpoint.prism.query.NotFilter;
-import com.evolveum.midpoint.prism.query.ObjectFilter;
-import com.evolveum.midpoint.prism.query.ObjectQuery;
-import com.evolveum.midpoint.prism.util.PrismUtil;
-import com.evolveum.midpoint.prism.xml.XsdTypeMapper;
-import com.evolveum.midpoint.schema.DeltaConvertor;
-import com.evolveum.midpoint.schema.GetOperationOptions;
-import com.evolveum.midpoint.schema.RetrieveOption;
-import com.evolveum.midpoint.schema.SelectorOptions;
-import com.evolveum.midpoint.schema.constants.SchemaConstants;
-import com.evolveum.midpoint.schema.processor.ResourceAttribute;
-import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
-import com.evolveum.midpoint.schema.util.ShadowUtil;
-import com.evolveum.midpoint.util.DOMUtil;
-import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.web.component.form.ValueChoosePanel;
-import com.evolveum.midpoint.web.component.form.multivalue.MultiValueChoosePanel;
-import com.evolveum.midpoint.web.component.input.*;
-import com.evolveum.midpoint.web.component.model.delta.DeltaDto;
-import com.evolveum.midpoint.web.component.model.delta.ModificationsPanel;
-import com.evolveum.midpoint.web.component.util.LookupPropertyModel;
-import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
-import com.evolveum.midpoint.web.page.PageBase;
-import com.evolveum.midpoint.web.util.DateValidator;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
-import com.evolveum.midpoint.web.util.WebModelUtils;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-import com.evolveum.midpoint.xml.ns.model.workflow.common_forms_3.AssignmentCreationApprovalFormType;
-import com.evolveum.prism.xml.ns._public.types_3.ObjectDeltaType;
-import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+
+import javax.xml.datatype.XMLGregorianCalendar;
+import javax.xml.namespace.QName;
 
 import org.apache.commons.lang.ClassUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.form.AjaxFormComponentUpdatingBehavior;
+import org.apache.wicket.ajax.form.OnChangeAjaxBehavior;
 import org.apache.wicket.ajax.markup.html.AjaxLink;
+import org.apache.wicket.extensions.ajax.markup.html.autocomplete.AutoCompleteTextField;
 import org.apache.wicket.extensions.yui.calendar.DateTimeField;
 import org.apache.wicket.feedback.ComponentFeedbackMessageFilter;
 import org.apache.wicket.markup.html.WebMarkupContainer;
@@ -69,17 +45,61 @@ import org.apache.wicket.markup.html.panel.FeedbackPanel;
 import org.apache.wicket.markup.html.panel.Panel;
 import org.apache.wicket.model.AbstractReadOnlyModel;
 import org.apache.wicket.model.IModel;
-import org.apache.wicket.model.Model;
 import org.apache.wicket.model.PropertyModel;
-import org.apache.wicket.model.util.ListModel;
 
-import javax.xml.datatype.XMLGregorianCalendar;
-import javax.xml.namespace.QName;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
+import com.evolveum.midpoint.prism.Item;
+import com.evolveum.midpoint.prism.ItemDefinition;
+import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.prism.PrismProperty;
+import com.evolveum.midpoint.prism.PrismPropertyDefinition;
+import com.evolveum.midpoint.prism.PrismPropertyValue;
+import com.evolveum.midpoint.prism.PrismReference;
+import com.evolveum.midpoint.prism.PrismReferenceDefinition;
+import com.evolveum.midpoint.prism.PrismReferenceValue;
+import com.evolveum.midpoint.prism.delta.ObjectDelta;
+import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.prism.xml.XsdTypeMapper;
+import com.evolveum.midpoint.schema.DeltaConvertor;
+import com.evolveum.midpoint.schema.GetOperationOptions;
+import com.evolveum.midpoint.schema.RetrieveOption;
+import com.evolveum.midpoint.schema.SelectorOptions;
+import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.processor.ResourceAttribute;
+import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.util.ShadowUtil;
+import com.evolveum.midpoint.task.api.Task;
+import com.evolveum.midpoint.util.DOMUtil;
+import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.web.component.form.ValueChoosePanel;
+import com.evolveum.midpoint.web.component.input.AutoCompleteTextPanel;
+import com.evolveum.midpoint.web.component.input.DatePanel;
+import com.evolveum.midpoint.web.component.input.PasswordPanel;
+import com.evolveum.midpoint.web.component.input.TextAreaPanel;
+import com.evolveum.midpoint.web.component.input.TextDetailsPanel;
+import com.evolveum.midpoint.web.component.input.TextPanel;
+import com.evolveum.midpoint.web.component.input.TriStateComboPanel;
+import com.evolveum.midpoint.web.component.input.UploadDownloadPanel;
+import com.evolveum.midpoint.web.component.model.delta.DeltaDto;
+import com.evolveum.midpoint.web.component.model.delta.ModificationsPanel;
+import com.evolveum.midpoint.web.component.util.LookupPropertyModel;
+import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
+import com.evolveum.midpoint.web.page.PageBase;
+import com.evolveum.midpoint.web.util.DateValidator;
+import com.evolveum.midpoint.web.util.WebMiscUtil;
+import com.evolveum.midpoint.web.util.WebModelUtils;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationStatusType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.LockoutStatusType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.LookupTableRowType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.LookupTableType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
+import com.evolveum.midpoint.xml.ns.model.workflow.common_forms_3.AssignmentCreationApprovalFormType;
+import com.evolveum.prism.xml.ns._public.types_3.ObjectDeltaType;
+import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
 
 /**
  * @author lazyman
@@ -406,16 +426,19 @@ public class PrismValuePanel extends Panel {
                   return WebMiscUtil.createEnumPanel(ActivationStatusType.class, id, new PropertyModel<ActivationStatusType>(model, baseExpression), this);
               } else if(ActivationType.F_LOCKOUT_STATUS.equals(definition.getName())){
                   return WebMiscUtil.createEnumPanel(LockoutStatusType.class, id, new PropertyModel<LockoutStatusType>(model, baseExpression), this);
-              } else{
-              	
+              } else {
+              	// nothing to do
               }
               
               if (DOMUtil.XSD_DATETIME.equals(valueType)) {
                   panel = new DatePanel(id, new PropertyModel<XMLGregorianCalendar>(model, baseExpression));
+                  
               } else if (ProtectedStringType.COMPLEX_TYPE.equals(valueType)) {
-                  panel = new PasswordPanel(id, new PropertyModel<String>(model, baseExpression + ".clearValue"));
+                  panel = new PasswordPanel(id, new PropertyModel<ProtectedStringType>(model, baseExpression));
+                  
               } else if (DOMUtil.XSD_BOOLEAN.equals(valueType)) {
                   panel = new TriStateComboPanel(id, new PropertyModel<Boolean>(model, baseExpression));
+                  
               } else if (SchemaConstants.T_POLY_STRING_TYPE.equals(valueType)) {
                   InputPanel inputPanel;
                   PrismPropertyDefinition def = property.getDefinition();
@@ -423,12 +446,13 @@ public class PrismValuePanel extends Panel {
                   if(def.getValueEnumerationRef() != null){
                       PrismReferenceValue valueEnumerationRef = def.getValueEnumerationRef();
                       String lookupTableUid = valueEnumerationRef.getOid();
-                      OperationResult result = new OperationResult("loadLookupTable");
+                      Task task = pageBase.createSimpleTask("loadLookupTable");
+                      OperationResult result = task.getResult();
 
                       Collection<SelectorOptions<GetOperationOptions>> options = SelectorOptions.createCollection(LookupTableType.F_ROW,
                               GetOperationOptions.createRetrieve(RetrieveOption.INCLUDE));
                       final PrismObject<LookupTableType> lookupTable = WebModelUtils.loadObject(LookupTableType.class,
-                              lookupTableUid, options, result, pageBase);
+                              lookupTableUid, options, pageBase, task, result);
 
                       inputPanel = new AutoCompleteTextPanel<String>(id, new LookupPropertyModel<String>(model, baseExpression + ".orig",
                               lookupTable.asObjectable()), String.class) {
@@ -440,6 +464,7 @@ public class PrismValuePanel extends Panel {
                       };
 
                   } else {
+                	  
                       inputPanel = new TextPanel<>(id, new PropertyModel<String>(model, baseExpression + ".orig"), String.class);
                   }
 
@@ -447,9 +472,17 @@ public class PrismValuePanel extends Panel {
                       inputPanel.getBaseFormComponent().setRequired(true);
                   }
                   panel = inputPanel;
-              } else if(DOMUtil.XSD_BASE64BINARY.equals(valueType)){
-                  panel = new UploadPanel(id){
+                  
+              } else if(DOMUtil.XSD_BASE64BINARY.equals(valueType)) {
+                  panel = new UploadDownloadPanel(id){
 
+                	  
+                	  @Override
+                	public InputStream getStream() {
+                		return new ByteArrayInputStream((byte[]) ((PrismPropertyValue) model.getObject().getValue()).getValue());
+//                		return super.getStream();
+                	}
+                	  
                       @Override
                       public void updateValue(byte[] file) {
                           ((PrismPropertyValue) model.getObject().getValue()).setValue(file);
@@ -513,14 +546,16 @@ public class PrismValuePanel extends Panel {
                   if(def.getValueEnumerationRef() != null){
                       PrismReferenceValue valueEnumerationRef = def.getValueEnumerationRef();
                       String lookupTableUid = valueEnumerationRef.getOid();
-                      OperationResult result = new OperationResult("loadLookupTable");
+                      Task task = pageBase.createSimpleTask("loadLookupTable");
+                      OperationResult result = task.getResult();
 
                       Collection<SelectorOptions<GetOperationOptions>> options = SelectorOptions.createCollection(LookupTableType.F_ROW,
                               GetOperationOptions.createRetrieve(RetrieveOption.INCLUDE));
                       final PrismObject<LookupTableType> lookupTable = WebModelUtils.loadObject(LookupTableType.class,
-                              lookupTableUid, options, result, pageBase);
+                              lookupTableUid, options, pageBase, task, result);
 
                       panel = new AutoCompleteTextPanel<String>(id, new LookupPropertyModel<String>(model, baseExpression, lookupTable.asObjectable()), type) {
+
 
                           @Override
                           public Iterator<String> getIterator(String input) {
@@ -528,6 +563,38 @@ public class PrismValuePanel extends Panel {
                           }
                       };
 
+                      final AutoCompleteTextField component = (AutoCompleteTextField)panel.get(0);
+                      component.add(new OnChangeAjaxBehavior(){
+                          @Override
+                          protected void onUpdate(AjaxRequestTarget target) {
+                                            ValueWrapper valueWrapper = model.getObject();
+                                            valueWrapper.getItem();
+                                            Iterator<String> lookupTableValuesIterator = prepareAutoCompleteList("", lookupTable).iterator();
+
+                                            String value = component.getInput();
+                                            boolean isValueExist = false;
+                                            if (value != null) {
+                                                if (value.trim().equals("")){
+                                                    isValueExist = true;
+                                                } else {
+                                                    while (lookupTableValuesIterator.hasNext()) {
+                                                        String lookupTableValue = lookupTableValuesIterator.next();
+                                                        if (value.trim().equals(lookupTableValue)) {
+                                                            isValueExist = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            if (isValueExist){
+                                                component.setModelValue(new String[]{value});
+                                                target.add(PrismValuePanel.this.get(ID_FEEDBACK));
+                                            } else {
+                                                component.error("Entered value doesn't match any of available values and will not be saved.");
+                                                target.add(PrismValuePanel.this.get(ID_FEEDBACK));
+                                            }
+                                        }
+                      });
                   } else {
                       panel = new TextPanel<>(id, new PropertyModel<String>(model, baseExpression), type);
                   }
@@ -536,49 +603,17 @@ public class PrismValuePanel extends Panel {
 //        	((PrismReferenceDefinition) item.getDefinition()).
         	Class typeFromName = null;
         	PrismContext prismContext = item.getPrismContext();
-        	if (((PrismReferenceDefinition)item.getDefinition()).getTargetTypeName() != null){
-        		 typeFromName = prismContext.getSchemaRegistry().determineCompileTimeClass(((PrismReferenceDefinition) item.getDefinition()).getTargetTypeName());
+            if (prismContext == null) {
+                prismContext = pageBase.getPrismContext();
+            }
+            QName targetTypeName = ((PrismReferenceDefinition) item.getDefinition()).getTargetTypeName();
+            if (targetTypeName != null && prismContext != null) {
+                typeFromName = prismContext.getSchemaRegistry().determineCompileTimeClass(targetTypeName);
         	}
         	final Class typeClass = typeFromName != null ? typeFromName : (item.getDefinition().getTypeClassIfKnown() != null ? item.getDefinition().getTypeClassIfKnown() : FocusType.class);
         	panel = new ValueChoosePanel(id,
-    				new PropertyModel<>(model, "value"), false, typeClass) {
-
-    			@Override
-    					protected ObjectType createNewEmptyItem() throws InstantiationException, IllegalAccessException {
-    						return (ObjectType) typeClass.newInstance();
-    					}
-    			
-    			@Override
-    			protected ObjectQuery createChooseQuery() {
-    				ArrayList<String> oidList = new ArrayList<>();
-    				ObjectQuery query = new ObjectQuery();
-
-    				for (PrismReferenceValue ref : (List<PrismReferenceValue>)item.getValues()) {
-    					if (ref != null) {
-    						if (ref.getOid() != null && !ref.getOid().isEmpty()) {
-    							oidList.add(ref.getOid());
-    						}
-    					}
-    				}
-
-//    				if (isediting) {
-//    					oidList.add(orgModel.getObject().getObject().asObjectable().getOid());
-//    				}
-
-    				if (oidList.isEmpty()) {
-    					return null;
-    				}
-
-    				ObjectFilter oidFilter = InOidFilter.createInOid(oidList);
-    				query.setFilter(NotFilter.createNot(oidFilter));
-
-    				return query;
-    			}
-
-    			
-    		};
-        }
-      
+    				new PropertyModel<>(model, "value"), item.getValues(), false, typeClass);
+        } 
 
         return panel;
     }

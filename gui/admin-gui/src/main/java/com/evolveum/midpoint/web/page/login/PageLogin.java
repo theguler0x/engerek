@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2015 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,26 +19,27 @@ package com.evolveum.midpoint.web.page.login;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.rmi.server.UID;
-
 import javax.imageio.ImageIO;
-
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.security.api.AuthorizationConstants;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.web.application.AuthorizationAction;
+import com.evolveum.midpoint.util.logging.Trace;
+import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.application.PageDescriptor;
-import com.evolveum.midpoint.web.component.menu.top.LocalePanel;
-import com.evolveum.midpoint.web.component.menu.top.TopMenuBar;
 import com.evolveum.midpoint.web.page.PageBase;
 import com.evolveum.midpoint.web.page.admin.home.PageDashboard;
 import com.evolveum.midpoint.web.page.forgetpassword.PageForgetPassword;
+import com.evolveum.midpoint.web.page.self.PageSelfDashboard;
+import com.evolveum.midpoint.web.security.MidPointApplication;
 import com.evolveum.midpoint.web.security.MidPointAuthWebSession;
+import com.evolveum.midpoint.web.security.SecurityUtils;
+import com.evolveum.midpoint.web.util.WebMiscUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.CredentialsPolicyType;
+
 import com.octo.captcha.service.multitype.GenericManageableCaptchaService;
 import com.octo.captcha.service.*;
-
 import org.apache.wicket.Session;
 import org.apache.wicket.markup.ComponentTag;
 import org.apache.wicket.markup.html.form.Form;
@@ -63,8 +64,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 @PageDescriptor(url = "/login")
 public class PageLogin extends PageBase {
 
-	PageBase page = getPageBase();
-	private static final String ID_LOGIN_FORM = "loginForm";
+	private static final Trace LOGGER = TraceManager.getTrace(PageLogin.class);
+	
+    PageBase page = getPageBase();
+    private static final String ID_LOGIN_FORM = "loginForm";
 
 	private static final String ID_USERNAME = "username";
 	private static final String ID_PASSWORD = "password";
@@ -79,59 +82,53 @@ public class PageLogin extends PageBase {
 	// DefaultManageableImageCaptchaService();
 
 	public PageLogin() {
-		TopMenuBar menuBar = getTopMenuBar();
-		menuBar.addOrReplace(new LocalePanel(TopMenuBar.ID_RIGHT_PANEL));
+		//TopMenuBar menuBar = getTopMenuBar();
+		//menuBar.addOrReplace(new LocalePanel(TopMenuBar.ID_RIGHT_PANEL));
+        if (SecurityUtils.getPrincipalUser() != null) {
+            MidPointApplication app = getMidpointApplication();
+            setResponsePage(app.getHomePage());
+        }
 
 		Form form = new Form(ID_LOGIN_FORM) {
 
 			
 			@Override
 			protected void onSubmit() {
-				MidPointAuthWebSession session = MidPointAuthWebSession
-						.getSession();
+				MidPointAuthWebSession session = MidPointAuthWebSession.getSession();
 
 				RequiredTextField<String> username = (RequiredTextField) get(ID_USERNAME);
 				PasswordTextField password = (PasswordTextField) get(ID_PASSWORD);
-				 info(getLocalizer().getString("captcha.validation.succeeded",
-				          this));
-				if (session.authenticate(username.getModelObject(),
-						password.getModelObject())) {
+				info(getLocalizer().getString("PageLogin.captcha.validation.succeeded",this));
+				if (session.authenticate(username.getModelObject(),password.getModelObject())) {
 					setResponsePage(PageDashboard.class);
-
 				}
-			}
-
-			
+			}			
 		};
 
-		OperationResult parentResult = new OperationResult(
-				OPERATION_LOAD_RESET_PASSWORD_POLICY);
+		OperationResult parentResult = new OperationResult(OPERATION_LOAD_RESET_PASSWORD_POLICY);
+		
 
+		
 		try {
-			CredentialsPolicyType creds = getModelInteractionService()
-					.getCredentialsPolicy(null, parentResult);
-			BookmarkablePageLink<String> link = new BookmarkablePageLink<String>(
-					"forgetpassword", PageForgetPassword.class);
-			boolean linkIsVisible = false;
-			if (creds != null) {
-				if (creds.getSecurityQuestions().getQuestionNumber() != null) {
-					linkIsVisible = true;
-
-				}
-
+		      	CredentialsPolicyType creds=	getModelInteractionService().getCredentialsPolicy(null, (Task) null, parentResult);
+		      	//creds = getModelInteractionService().getCredentialsPolicy(null, parentResult);
+		      	BookmarkablePageLink<String> link = new BookmarkablePageLink<String>("forgetpassword", PageForgetPassword.class);
+		      	boolean linkIsVisible = false;
+			if(creds!=null ){
+					if(creds.getSecurityQuestions().getQuestionNumber()!=null){
+						linkIsVisible=true;
+					}
+					
 			}
 			link.setVisible(linkIsVisible);
 			form.add(link);
-		} catch (ObjectNotFoundException | SchemaException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		
-		
-
-		DynamicImageResource res = new DynamicImageResource() {
+			 } catch (ObjectNotFoundException | SchemaException e) {
+				//LOGGER.warn("Cannot read credentials policy: "+e.getMessage(), e);
+				e.printStackTrace();
+        }
 			
-		
+			
+		DynamicImageResource res = new DynamicImageResource() {
 			
 			@Override
 			protected byte[] getImageData(Attributes attributes) {
@@ -155,8 +152,7 @@ public class PageLogin extends PageBase {
 		form.add(new RequiredTextField(ID_USERNAME, new Model<String>()));
 		form.add(new PasswordTextField(ID_PASSWORD, new Model<String>()));
 		form.add(new Image("captchaImage",res));
-		form.add(new RequiredTextField("response", new PropertyModel(this,
-		          "challengeResponse")) {
+		form.add(new RequiredTextField("response", new PropertyModel(this,"challengeResponse")) {
 			@Override
 			  protected final void onComponentTag(final ComponentTag tag) {
 		          super.onComponentTag(tag);
@@ -173,7 +169,7 @@ public class PageLogin extends PageBase {
 				}
 			 @Override
 		        protected String resourceKey() {
-		          return "captcha.validation.failed";
+		          return "PageLogin.captcha.validation.failed";
 		        }
 		}));
 			
@@ -181,6 +177,7 @@ public class PageLogin extends PageBase {
 
 		add(form);
 	}
+	
 	public String getChallengeResponse() {
 	      return challengeResponse;
 	    }

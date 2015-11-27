@@ -96,6 +96,13 @@
             </testResource>
         </testResources>
     </build>
+    <repositories>
+    <repository>
+        <id>sourceforge-releases</id>
+        <name>Sourceforge Releases</name>
+        <url>https://oss.sonatype.org/content/repositories/sourceforge-releases</url>
+    </repository>
+    </repositories>
     <dependencies>
 		<dependency>
 			<groupId>com.octo.captcha</groupId>

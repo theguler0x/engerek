@@ -52,7 +52,8 @@ public class SimpleWorkflowNotifier extends GeneralNotifier {
     @Override
     protected boolean quickCheckApplicability(Event event, GeneralNotifierType generalNotifierType, OperationResult result) {
         if (!(event instanceof WorkflowEvent)) {
-            LOGGER.trace("SimpleWorkflowNotifier is not applicable for this kind of event, continuing in the handler chain; event class = " + event.getClass());
+            //LOGGER.trace("SimpleWorkflowNotifier is not applicable for this kind of event, continuing in the handler chain; event class = " + event.getClass());
+			LOGGER.trace("Bu tip olay için SimpleWorkflowNotifier uygulanamaz, işleyici zincirine devam ediliyor; olay sınıfı = "+ event.getClass());
             return false;
         }
         return true;
@@ -63,15 +64,15 @@ public class SimpleWorkflowNotifier extends GeneralNotifier {
 
         if (event.isAdd()) {
             if (event instanceof WorkItemEvent) {
-                return "A new work item has been created";
+                return "Yeni bir iş akışı görevi oluşturuldu.";
             } else {
-                return "Workflow process instance has been started";
+                return "İş akışı süreci başlatıldı.";
             }
         } else {
             if (event instanceof WorkItemEvent) {
-                return "Work item has been completed";
+                return "İş akışı görevi tamamlandı.";
             } else {
-                return "Workflow process instance has finished";
+                return "İş akışı süreci bitti.";
             }
         }
     }
@@ -88,24 +89,24 @@ public class SimpleWorkflowNotifier extends GeneralNotifier {
         body.append(getSubject(event, generalNotifierType, transport, task, result));
         body.append("\n\n");
 
-        body.append("Process instance name: " + workflowEvent.getProcessInstanceName() + "\n");
+        body.append("Süreç örneği adı: " + workflowEvent.getProcessInstanceName() + "\n");
         if (workflowEvent instanceof WorkItemEvent) {
             WorkItemEvent workItemEvent = (WorkItemEvent) workflowEvent;
-            body.append("Work item: ").append(workItemEvent.getWorkItemName()).append("\n");
+            body.append("İş akışı öğesi: ").append(workItemEvent.getWorkItemName()).append("\n");
             ObjectType assigneeType = notificationsUtil.getObjectType(workItemEvent.getAssignee(), result);
             if (assigneeType != null) {
-                body.append("Assignee: ").append(assigneeType.getName()).append("\n");
+                body.append("Devralan: ").append(assigneeType.getName()).append("\n");
             }
         }
         body.append("\n");
         if (event.isDelete() && workflowEvent.isResultKnown()) {
-            body.append("Result: ").append(workflowEvent.isApproved() ? "APPROVED" : "REJECTED").append("\n\n");
+            body.append("Sonuç: ").append(workflowEvent.isApproved() ? "ONAYLANDI" : "REDDEDİLDİ").append("\n\n");
         }
-        body.append("Notification created on: ").append(new Date()).append("\n\n");
+        body.append("Bildirim oluşturma tarihi: ").append(new Date()).append("\n\n");
 
         if (techInfo) {
             body.append("----------------------------------------\n");
-            body.append("Technical information:\n\n");
+            body.append("Teknik bilgi:\n\n");
             body.append(workflowEvent.getProcessInstanceState().debugDump());
         }
 

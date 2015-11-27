@@ -241,6 +241,7 @@ public class PageSelfCredentials extends PageSelf {
                 onSavePerformed(target);
             }
         };
+        mainForm.setDefaultButton(save);
         mainForm.add(save);
 
         AjaxSubmitButton cancel = new AjaxSubmitButton(ID_CANCEL_BUTTON, createStringResource("PageBase.button.cancel")) {
@@ -259,7 +260,7 @@ public class PageSelfCredentials extends PageSelf {
     }
 
     private PasswordAccountDto createDefaultPasswordAccountDto(PrismObject<UserType> user) {
-        return new PasswordAccountDto(user.getOid(), getString("PageSelfCredentials.accountMidpoint"),
+        return new PasswordAccountDto(user.getOid(), user.getName().getNorm(),
                 getString("PageSelfCredentials.resourceMidpoint"), WebMiscUtil.isActivationEnabled(user), true);
     }
 

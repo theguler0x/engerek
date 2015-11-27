@@ -1,12 +1,27 @@
+/*
+ * Copyright (c) 2010-2015 Evolveum
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.evolveum.midpoint.web.page.admin;
 
 import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
 import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismPropertyValue;
+import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.query.*;
+import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.security.api.AuthorizationConstants;
 import com.evolveum.midpoint.util.exception.SchemaException;
@@ -456,88 +471,105 @@ public abstract class BaseFocusPanel<F extends FocusType> extends Panel {
 
 	private List<InlineMenuItem> createShadowMenu() {
 		List<InlineMenuItem> items = new ArrayList<InlineMenuItem>();
-		InlineMenuItem item = new InlineMenuItem(createStringResource("pageAdminFocus.button.addShadow"),
-				new InlineMenuItemAction() {
 
-					@Override
-					public void onClick(AjaxRequestTarget target) {
-						showModalWindow(MODAL_ID_RESOURCE, target);
-					}
-				});
-		items.add(item);
-		items.add(new InlineMenuItem());
-		item = new InlineMenuItem(createStringResource("pageAdminFocus.button.enable"),
-				new InlineMenuItemAction() {
+        PrismObjectDefinition def = focusModel.getObject().getObject().getDefinition();
+        PrismReferenceDefinition ref = def.findReferenceDefinition(UserType.F_LINK_REF);
+        InlineMenuItem item ;
+        if (ref.canRead() && ref.canAdd()){
+            item = new InlineMenuItem(createStringResource("pageAdminFocus.button.addShadow"),
+                    new InlineMenuItemAction() {
 
-					@Override
-					public void onClick(AjaxRequestTarget target) {
-						updateShadowActivation(target, getSelectedProjections(shadowModel), true);
-					}
-				});
-		items.add(item);
-		item = new InlineMenuItem(createStringResource("pageAdminFocus.button.disable"),
-				new InlineMenuItemAction() {
+                        @Override
+                        public void onClick(AjaxRequestTarget target) {
+                            showModalWindow(MODAL_ID_RESOURCE, target);
+                        }
+                    });
+            items.add(item);
+            items.add(new InlineMenuItem());
+        }
+        PrismPropertyDefinition prop = def.findPropertyDefinition(SchemaConstants.PATH_ACTIVATION_ADMINISTRATIVE_STATUS);
+        if (prop.canRead() && prop.canModify()) {
+            item = new InlineMenuItem(createStringResource("pageAdminFocus.button.enable"),
+                    new InlineMenuItemAction() {
 
-					@Override
-					public void onClick(AjaxRequestTarget target) {
-						updateShadowActivation(target, getSelectedProjections(shadowModel), false);
-					}
-				});
-		items.add(item);
-		item = new InlineMenuItem(createStringResource("pageAdminFocus.button.unlink"),
-				new InlineMenuItemAction() {
+                        @Override
+                        public void onClick(AjaxRequestTarget target) {
+                            updateShadowActivation(target, getSelectedProjections(shadowModel), true);
+                        }
+                    });
+            items.add(item);
+            item = new InlineMenuItem(createStringResource("pageAdminFocus.button.disable"),
+                    new InlineMenuItemAction() {
 
-					@Override
-					public void onClick(AjaxRequestTarget target) {
-						unlinkProjectionPerformed(target, shadowModel, getSelectedProjections(shadowModel), ID_SHADOWS);
-					}
-				});
-		items.add(item);
-		item = new InlineMenuItem(createStringResource("pageAdminFocus.button.unlock"),
-				new InlineMenuItemAction() {
+                        @Override
+                        public void onClick(AjaxRequestTarget target) {
+                            updateShadowActivation(target, getSelectedProjections(shadowModel), false);
+                        }
+                    });
+            items.add(item);
+        }
+        if (ref.canRead() && ref.canAdd()) {
+            item = new InlineMenuItem(createStringResource("pageAdminFocus.button.unlink"),
+                    new InlineMenuItemAction() {
 
-					@Override
-					public void onClick(AjaxRequestTarget target) {
-						unlockShadowPerformed(target, shadowModel, getSelectedProjections(shadowModel));
-					}
-				});
-		items.add(item);
-		items.add(new InlineMenuItem());
-		item = new InlineMenuItem(createStringResource("pageAdminFocus.button.delete"),
-				new InlineMenuItemAction() {
+                        @Override
+                        public void onClick(AjaxRequestTarget target) {
+                            unlinkProjectionPerformed(target, shadowModel, getSelectedProjections(shadowModel), ID_SHADOWS);
+                        }
+                    });
+            items.add(item);
+        }
+        prop = def.findPropertyDefinition(SchemaConstants.PATH_ACTIVATION_LOCKOUT_STATUS);
+        if (prop.canRead() && prop.canModify()) {
+            item = new InlineMenuItem(createStringResource("pageAdminFocus.button.unlock"),
+                    new InlineMenuItemAction() {
 
-					@Override
-					public void onClick(AjaxRequestTarget target) {
-						deleteProjectionPerformed(target, shadowModel);
-					}
-				});
-		items.add(item);
+                        @Override
+                        public void onClick(AjaxRequestTarget target) {
+                            unlockShadowPerformed(target, shadowModel, getSelectedProjections(shadowModel));
+                        }
+                    });
+            items.add(item);
+        }
+        prop = def.findPropertyDefinition(SchemaConstants.PATH_ACTIVATION_ADMINISTRATIVE_STATUS);
+        if (prop.canRead() && prop.canModify()) {
+            items.add(new InlineMenuItem());
+            item = new InlineMenuItem(createStringResource("pageAdminFocus.button.delete"),
+                    new InlineMenuItemAction() {
+
+                        @Override
+                        public void onClick(AjaxRequestTarget target) {
+                            deleteProjectionPerformed(target, shadowModel);
+                        }
+                    });
+            items.add(item);
+        }
 
 		return items;
 	}
 
 	private List<InlineMenuItem> createOrgMenu() {
 		List<InlineMenuItem> items = new ArrayList<InlineMenuItem>();
-		InlineMenuItem item = new InlineMenuItem(createStringResource("pageAdminFocus.button.addToOrg"),
-				new InlineMenuItemAction() {
-
-					@Override
-					public void onClick(AjaxRequestTarget target) {
-						showModalWindow(MODAL_ID_ADD_ORG, target);
-					}
-				});
-		items.add(item);
-		items.add(new InlineMenuItem());
-		item = new InlineMenuItem(createStringResource("pageAdminFocus.button.unlink"),
-				new InlineMenuItemAction() {
-
-					@Override
-					public void onClick(AjaxRequestTarget target) {
-						unlinkProjectionPerformed(target, orgModel, getSelectedProjections(orgModel), ID_ORGS);
-					}
-				});
-		items.add(item);
-		items.add(new InlineMenuItem());
+//		InlineMenuItem item = new InlineMenuItem(createStringResource("pageAdminFocus.button.addToOrg"),
+//				new InlineMenuItemAction() {
+//
+//					@Override
+//					public void onClick(AjaxRequestTarget target) {
+//						showModalWindow(MODAL_ID_ADD_ORG, target);
+//					}
+//				});
+//		items.add(item);
+//		items.add(new InlineMenuItem());
+//		item = new InlineMenuItem(createStringResource("pageAdminFocus.button.unlink"),
+//				new InlineMenuItemAction() {
+//
+//					@Override
+//					public void onClick(AjaxRequestTarget target) {
+//						unlinkProjectionPerformed(target, orgModel, getSelectedProjections(orgModel), ID_ORGS);
+//					}
+//				});
+//		items.add(item);
+//		items.add(new InlineMenuItem());
 		
 
 		return items;

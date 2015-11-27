@@ -41,9 +41,11 @@ import com.evolveum.midpoint.web.component.menu.MainMenuItem;
 import com.evolveum.midpoint.web.component.menu.MenuItem;
 import com.evolveum.midpoint.web.component.menu.SideBarMenuItem;
 import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
+import com.evolveum.midpoint.web.page.admin.PageAdmin;
 import com.evolveum.midpoint.web.page.admin.PageAdminFocus;
 import com.evolveum.midpoint.web.page.admin.certification.PageCertCampaigns;
 import com.evolveum.midpoint.web.page.admin.certification.PageCertDecisions;
+import com.evolveum.midpoint.web.page.admin.certification.PageCertDefinition;
 import com.evolveum.midpoint.web.page.admin.certification.PageCertDefinitions;
 import com.evolveum.midpoint.web.page.admin.configuration.*;
 import com.evolveum.midpoint.web.page.admin.home.PageDashboard;
@@ -51,6 +53,8 @@ import com.evolveum.midpoint.web.page.admin.reports.PageCreatedReports;
 import com.evolveum.midpoint.web.page.admin.reports.PageNewReport;
 import com.evolveum.midpoint.web.page.admin.reports.PageReport;
 import com.evolveum.midpoint.web.page.admin.reports.PageReports;
+import com.evolveum.midpoint.web.page.admin.resources.PageImportResource;
+import com.evolveum.midpoint.web.page.admin.resources.PageResource;
 import com.evolveum.midpoint.web.page.admin.resources.PageResourceWizard;
 import com.evolveum.midpoint.web.page.admin.resources.PageResources;
 import com.evolveum.midpoint.web.page.admin.roles.PageRole;
@@ -326,7 +330,9 @@ public abstract class PageBase extends PageTemplate {
         }
 
         if (WebMiscUtil.isAuthorized(AuthorizationConstants.AUTZ_UI_RESOURCES_URL,
-                AuthorizationConstants.AUTZ_UI_RESOURCES_ALL_URL, AuthorizationConstants.AUTZ_GUI_ALL_URL, AuthorizationConstants.AUTZ_GUI_ALL_DEPRECATED_URL)) {
+                AuthorizationConstants.AUTZ_UI_RESOURCES_ALL_URL, AuthorizationConstants.AUTZ_GUI_ALL_URL, 
+                AuthorizationConstants.AUTZ_GUI_ALL_DEPRECATED_URL, AuthorizationConstants.AUTZ_UI_RESOURCE_URL, 
+                AuthorizationConstants.AUTZ_UI_RESOURCE_EDIT_URL)) {
             items.add(createResourcesItems());
         }
 
@@ -349,12 +355,17 @@ public abstract class PageBase extends PageTemplate {
         }
 
         if (WebMiscUtil.isAuthorized(AuthorizationConstants.AUTZ_UI_REPORTS_URL,
-                AuthorizationConstants.AUTZ_GUI_ALL_DEPRECATED_URL)) {
+                AuthorizationConstants.AUTZ_UI_REPORTS_ALL_URL, AuthorizationConstants.AUTZ_GUI_ALL_DEPRECATED_URL)) {
             items.add(createReportsItems());
         }
 
         if (WebMiscUtil.isAuthorized(AuthorizationConstants.AUTZ_UI_CONFIGURATION_URL,
-                AuthorizationConstants.AUTZ_UI_CONFIGURATION_ALL_URL, AuthorizationConstants.AUTZ_GUI_ALL_URL, AuthorizationConstants.AUTZ_GUI_ALL_DEPRECATED_URL)) {
+        		AuthorizationConstants.AUTZ_UI_CONFIGURATION_DEBUG_URL, AuthorizationConstants.AUTZ_UI_CONFIGURATION_DEBUGS_URL,
+        		AuthorizationConstants.AUTZ_UI_CONFIGURATION_IMPORT_URL, AuthorizationConstants.AUTZ_UI_CONFIGURATION_LOGGING_URL,
+        		AuthorizationConstants.AUTZ_UI_CONFIGURATION_SYSTEM_CONFIG_URL, AuthorizationConstants.AUTZ_UI_CONFIGURATION_ABOUT_URL,
+        		AuthorizationConstants.AUTZ_UI_CONFIGURATION_SYNCHRONIZATION_ACCOUNTS_URL,
+                AuthorizationConstants.AUTZ_UI_CONFIGURATION_ALL_URL, AuthorizationConstants.AUTZ_GUI_ALL_URL, 
+                AuthorizationConstants.AUTZ_GUI_ALL_DEPRECATED_URL)) {
             items.add(createConfigurationItems());
         }
 
@@ -415,11 +426,11 @@ public abstract class PageBase extends PageTemplate {
         MenuItem list = new MenuItem(createStringResource("PageAdmin.menu.top.resources.list"),
                 PageResources.class);
         submenu.add(list);
-        MenuItem created = new MenuItem(createStringResource("PageAdmin.menu.top.resources.new"),
-                PageResourceWizard.class);
-        submenu.add(created);
+        createFocusPageViewMenu(submenu, "PageAdmin.menu.top.resources.view", PageResource.class);
+        createFocusPageNewEditMenu(submenu, "PageAdmin.menu.top.resources.new",
+                "PageAdmin.menu.top.resources.edit", PageResourceWizard.class);
         MenuItem n = new MenuItem(createStringResource("PageAdmin.menu.top.resources.import"),
-                PageImportObject.class);
+                PageImportResource.class);
         submenu.add(n);
 
         return item;
@@ -457,6 +468,7 @@ public abstract class PageBase extends PageTemplate {
         MenuItem menu = new MenuItem(createStringResource("PageAdmin.menu.top.certification.definitions"),
                 PageCertDefinitions.class);
         submenu.add(menu);
+        createFocusPageViewMenu(submenu, "PageAdmin.menu.top.certification.viewDefinition", PageCertDefinition.class);
         menu = new MenuItem(createStringResource("PageAdmin.menu.top.certification.newDefinition"),
                 PageImportObject.class);
         submenu.add(menu);
@@ -628,7 +640,7 @@ public abstract class PageBase extends PageTemplate {
     }
 
     private void createFocusPageNewEditMenu(List<MenuItem> submenu, String newKey, String editKey,
-                                            final Class<? extends PageAdminFocus> newPageType) {
+                                            final Class<? extends PageAdmin> newPageType) {
         MenuItem edit = new MenuItem(createStringResource(editKey), newPageType,
                 null, new VisibleEnableBehaviour() {
 
@@ -643,8 +655,15 @@ public abstract class PageBase extends PageTemplate {
                     return false;
                 }
 
-                PageAdminFocus page = (PageAdminFocus) getPage();
-                return page.isEditingFocus();
+                if (getPage() instanceof PageAdminFocus) {
+                    PageAdminFocus page = (PageAdminFocus) getPage();
+                    return page.isEditingFocus();
+                } else if (getPage() instanceof PageResourceWizard){
+                    PageResourceWizard page = (PageResourceWizard) getPage();
+                    return !page.isNewResource();
+                } else {
+                    return false;
+                }
             }
         });
         submenu.add(edit);
@@ -656,11 +675,40 @@ public abstract class PageBase extends PageTemplate {
                     return false;
                 }
 
-                PageAdminFocus page = (PageAdminFocus) PageBase.this.getPage();
-                return !page.isEditingFocus();
+                if (PageBase.this.getPage() instanceof PageAdminFocus) {
+                    PageAdminFocus page = (PageAdminFocus) PageBase.this.getPage();
+                    return !page.isEditingFocus();
+                } else if (PageBase.this.getPage() instanceof PageResourceWizard){
+                    PageResourceWizard page = (PageResourceWizard) PageBase.this.getPage();
+                    return page.isNewResource();
+                } else {
+                    return false;
+                }
             }
         };
         submenu.add(newMenu);
+    }
+
+    private void createFocusPageViewMenu(List<MenuItem> submenu, String viewKey,
+                                            final Class<? extends PageBase> newPageType) {
+        MenuItem view = new MenuItem(createStringResource(viewKey), newPageType,
+                null, new VisibleEnableBehaviour() {
+
+            @Override
+            public boolean isEnabled() {
+                return false;
+            }
+
+            @Override
+            public boolean isVisible() {
+                if (!getPage().getClass().equals(newPageType)) {
+                    return false;
+                }
+
+                return true;
+            }
+        });
+        submenu.add(view);
     }
 
     private MainMenuItem createOrganizationsMenu() {

@@ -29,6 +29,7 @@ import javax.xml.namespace.QName;
 import org.apache.commons.lang.ClassUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.wicket.AttributeModifier;
+import org.apache.wicket.Component;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.form.AjaxFormComponentUpdatingBehavior;
 import org.apache.wicket.ajax.form.OnChangeAjaxBehavior;
@@ -107,6 +108,7 @@ import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
 public class PrismValuePanel extends Panel {
 
     private static final String ID_FEEDBACK = "feedback";
+    private static final String ID_INPUT = "input";
     private static final String ID_VALUE_CONTAINER = "valueContainer";
 
     private IModel<ValueWrapper> model;
@@ -136,7 +138,7 @@ public class PrismValuePanel extends Panel {
         add(feedback);
 
         //input
-        Panel input = createInputComponent("input", label, form);
+        Panel input = createInputComponent(ID_INPUT, label, form);
         input.add(new AttributeModifier("class", inputCssClass));
         if (input instanceof InputPanel) {
             initAccessBehaviour((InputPanel) input);
@@ -280,6 +282,15 @@ public class PrismValuePanel extends Panel {
 
     private boolean isRemoveButtonVisible() {
         ValueWrapper valueWrapper = model.getObject();
+
+        if (valueWrapper.isReadonly()){
+            return false;
+        }
+        Component inputPanel = this.get(ID_VALUE_CONTAINER).get(ID_INPUT);
+        if (inputPanel instanceof  ValueChoosePanel){
+            return true;
+        }
+
         ItemWrapper propertyWrapper = valueWrapper.getItem();
         ItemDefinition definition = propertyWrapper.getItem().getDefinition();
         int min = definition.getMinOccurs();
@@ -294,6 +305,11 @@ public class PrismValuePanel extends Panel {
 
     private boolean isAddButtonVisible() {
         ValueWrapper valueWrapper = model.getObject();
+
+        if (valueWrapper.isReadonly()){
+            return false;
+        }
+
         ItemWrapper propertyWrapper = valueWrapper.getItem();
         Item property = propertyWrapper.getItem();
 
@@ -434,7 +450,8 @@ public class PrismValuePanel extends Panel {
                   panel = new DatePanel(id, new PropertyModel<XMLGregorianCalendar>(model, baseExpression));
                   
               } else if (ProtectedStringType.COMPLEX_TYPE.equals(valueType)) {
-                  panel = new PasswordPanel(id, new PropertyModel<ProtectedStringType>(model, baseExpression));
+                  panel = new PasswordPanel(id, new PropertyModel<ProtectedStringType>(model, baseExpression),
+                          model.getObject().isReadonly());
                   
               } else if (DOMUtil.XSD_BOOLEAN.equals(valueType)) {
                   panel = new TriStateComboPanel(id, new PropertyModel<Boolean>(model, baseExpression));
@@ -474,7 +491,7 @@ public class PrismValuePanel extends Panel {
                   panel = inputPanel;
                   
               } else if(DOMUtil.XSD_BASE64BINARY.equals(valueType)) {
-                  panel = new UploadDownloadPanel(id){
+                  panel = new UploadDownloadPanel(id, model.getObject().isReadonly()){
 
                 	  
                 	  @Override
@@ -554,47 +571,44 @@ public class PrismValuePanel extends Panel {
                       final PrismObject<LookupTableType> lookupTable = WebModelUtils.loadObject(LookupTableType.class,
                               lookupTableUid, options, pageBase, task, result);
 
-                      panel = new AutoCompleteTextPanel<String>(id, new LookupPropertyModel<String>(model, baseExpression, lookupTable.asObjectable()), type) {
+                      panel = new AutoCompleteTextPanel<String>(id, new LookupPropertyModel<String>(model, baseExpression,
+                              lookupTable == null ? null : lookupTable.asObjectable()), type) {
 
 
                           @Override
                           public Iterator<String> getIterator(String input) {
                               return prepareAutoCompleteList(input, lookupTable).iterator();
                           }
+
+                          @Override
+                      public void checkInputValue(AutoCompleteTextField input, AjaxRequestTarget target, LookupPropertyModel model){
+                              Iterator<String> lookupTableValuesIterator = prepareAutoCompleteList("", lookupTable).iterator();
+
+                              String value = input.getInput();
+                              boolean isValueExist = false;
+                              if (value != null) {
+                                  if (value.trim().equals("")){
+                                      isValueExist = true;
+                                  } else {
+                                      while (lookupTableValuesIterator.hasNext()) {
+                                          String lookupTableValue = lookupTableValuesIterator.next();
+                                          if (value.trim().equals(lookupTableValue)) {
+                                              isValueExist = true;
+                                              break;
+                                          }
+                                      }
+                                  }
+                              }
+                              if (isValueExist){
+                                  input.setModelValue(new String[]{value});
+                                  target.add(PrismValuePanel.this.get(ID_FEEDBACK));
+                              } else {
+                                  input.error("Entered value doesn't match any of available values and will not be saved.");
+                                  target.add(PrismValuePanel.this.get(ID_FEEDBACK));
+                              }
+                          }
                       };
 
-                      final AutoCompleteTextField component = (AutoCompleteTextField)panel.get(0);
-                      component.add(new OnChangeAjaxBehavior(){
-                          @Override
-                          protected void onUpdate(AjaxRequestTarget target) {
-                                            ValueWrapper valueWrapper = model.getObject();
-                                            valueWrapper.getItem();
-                                            Iterator<String> lookupTableValuesIterator = prepareAutoCompleteList("", lookupTable).iterator();
-
-                                            String value = component.getInput();
-                                            boolean isValueExist = false;
-                                            if (value != null) {
-                                                if (value.trim().equals("")){
-                                                    isValueExist = true;
-                                                } else {
-                                                    while (lookupTableValuesIterator.hasNext()) {
-                                                        String lookupTableValue = lookupTableValuesIterator.next();
-                                                        if (value.trim().equals(lookupTableValue)) {
-                                                            isValueExist = true;
-                                                            break;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            if (isValueExist){
-                                                component.setModelValue(new String[]{value});
-                                                target.add(PrismValuePanel.this.get(ID_FEEDBACK));
-                                            } else {
-                                                component.error("Entered value doesn't match any of available values and will not be saved.");
-                                                target.add(PrismValuePanel.this.get(ID_FEEDBACK));
-                                            }
-                                        }
-                      });
                   } else {
                       panel = new TextPanel<>(id, new PropertyModel<String>(model, baseExpression), type);
                   }
@@ -726,6 +740,7 @@ public class PrismValuePanel extends Panel {
         ItemWrapper propertyWrapper = wrapper.getItem();
 
         List<ValueWrapper> values = propertyWrapper.getValues();
+        Component inputPanel = this.get(ID_VALUE_CONTAINER).get(ID_INPUT);
 
         switch (wrapper.getStatus()) {
             case ADDED:
@@ -741,9 +756,12 @@ public class PrismValuePanel extends Panel {
 
         int count = countUsableValues(propertyWrapper);
         if (count == 0 && !hasEmptyPlaceholder(propertyWrapper)) {
-            values.add(new ValueWrapper(propertyWrapper, new PrismPropertyValue(null), ValueStatus.ADDED));
+            if (inputPanel instanceof ValueChoosePanel) {
+                values.add(new ValueWrapper(propertyWrapper, new PrismReferenceValue(null), ValueStatus.ADDED));
+            } else {
+                values.add(new ValueWrapper(propertyWrapper, new PrismPropertyValue(null), ValueStatus.ADDED));
+            }
         }
-
         ListView parent = findParent(ListView.class);
         target.add(parent.getParent());
     }

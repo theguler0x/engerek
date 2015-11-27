@@ -210,9 +210,9 @@ public class PageSelfDashboard extends PageSelf {
 
         try {
             List<WfProcessInstanceType> processInstanceTypes = getWorkflowService().listProcessInstancesRelatedToUser(user.getOid(),
-             false, false, false, 0, MAX_REQUESTS, result);
+             true, false, false, 0, MAX_REQUESTS, result);
             List<WfProcessInstanceType> processInstanceTypesFinished = getWorkflowService().listProcessInstancesRelatedToUser(user.getOid(),
-             false, false, true, 0, MAX_REQUESTS, result);
+             true, false, true, 0, MAX_REQUESTS, result);
             if (processInstanceTypes != null && processInstanceTypesFinished != null){
                 processInstanceTypes.addAll(processInstanceTypesFinished);
             }
@@ -225,6 +225,7 @@ public class PageSelfDashboard extends PageSelf {
                         shadowTask = getTaskManager().getTask(shadowTaskOid, result);
                     } catch (ObjectNotFoundException e) {
                         // task is already deleted, no problem here
+                        result.muteLastSubresultError();
                     }
                 }
 

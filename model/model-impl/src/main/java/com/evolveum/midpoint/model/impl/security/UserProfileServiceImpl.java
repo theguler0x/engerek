@@ -145,7 +145,7 @@ public class UserProfileServiceImpl implements UserProfileService, UserDetailsSe
 
     private PrismObject<UserType> findByUsername(String username) throws SchemaException, ObjectNotFoundException {
         PolyString usernamePoly = new PolyString(username);
-        ObjectQuery query = ObjectQueryUtil.createNameQuery(usernamePoly, prismContext);
+        ObjectQuery query = ObjectQueryUtil.createNormNameQuery(usernamePoly, prismContext);
         LOGGER.trace("Looking for user, query:\n" + query.debugDump());
 
         List<PrismObject<UserType>> list = repositoryService.searchObjects(UserType.class, query, null, 
@@ -248,12 +248,7 @@ public class UserProfileServiceImpl implements UserProfileService, UserDetailsSe
 		if (shadow == null || shadow.getOid() == null) {
 			return null;
 		}
-		PrismObject<F> owner;
-		try {
-			owner = repositoryService.searchShadowOwner(shadow.getOid(), null, new OperationResult(UserProfileServiceImpl.class+".resolveOwner"));
-		} catch (ObjectNotFoundException e) {
-			throw new SystemException(e.getMessage(), e);
-		}
+		PrismObject<F> owner = repositoryService.searchShadowOwner(shadow.getOid(), null, new OperationResult(UserProfileServiceImpl.class+".resolveOwner"));
 		if (owner == null) {
 			return null;
 		}

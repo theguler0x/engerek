@@ -810,7 +810,8 @@ public class TreeTablePanel extends AbstractTreeTablePanel {
 //            ref.setType(OrgType.COMPLEX_TYPE);
 //            ref.setTargetName(WebMiscUtil.createPolyFromOrigString(selected.getObject().getName()));
             org.getParentOrgRef().add(ref);
-			AssignmentType newOrgAssignment = new AssignmentType();
+            AssignmentType newOrgAssignment = new AssignmentType();
+
             newOrgAssignment.setTargetRef(ref);
             org.getAssignment().add(newOrgAssignment);
 

@@ -104,11 +104,6 @@
     </repository>
     </repositories>
     <dependencies>
-		<dependency>
-			<groupId>com.octo.captcha</groupId>
-			<artifactId>jcaptcha-integration-simple-servlet</artifactId>
-			<version>2.0-alpha-1</version>
-		</dependency>
         <!-- webjars -->
         <dependency>
             <groupId>org.webjars.bower</groupId>

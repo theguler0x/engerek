@@ -25,7 +25,7 @@
     <parent>
         <groupId>com.evolveum.midpoint</groupId>
         <artifactId>midpoint</artifactId>
-        <version>3.3-SNAPSHOT</version>
+        <version>3.4-SNAPSHOT</version>
     </parent>
     <pluginRepositories>
         <pluginRepository>
@@ -74,7 +74,7 @@
         <activiti-spring.version>5.17.0</activiti-spring.version>
         <commons-email.version>1.3</commons-email.version>
         <xmlsec.version>2.0.1</xmlsec.version>
-        <connid.version>1.4.1.23</connid.version>
+        <connid.version>1.4.2.0</connid.version>
         <jasper.version>6.1.1</jasper.version>
         <derby.version>10.11.1.1</derby.version>
         <wro4j.version>1.7.1</wro4j.version>
@@ -463,7 +463,7 @@
             <dependency>
                 <groupId>com.evolveum.polygon</groupId>
                 <artifactId>connector-ldap</artifactId>
-                <version>1.4.2.0-SNAPSHOT</version>
+                <version>1.4.2.0</version>
                 <exclusions>
 					<exclusion> <!-- Version in dependency of org.apache.servicemix.bundles:org.apache.servicemix.bundles.dom4j conflicts with xalan -->
                         <groupId>xml-apis</groupId>
@@ -875,7 +875,7 @@
 			<dependency>
 				<groupId>org.apache.directory.api</groupId>
 				<artifactId>api-all</artifactId>
-				<version>1.0.0-M32-SNAPSHOT</version>
+				<version>1.0.0-M32-e1</version>
 				<exclusions>
 	                <exclusion>
 	                    <artifactId>slf4j-api</artifactId>

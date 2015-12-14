@@ -24,7 +24,7 @@ public class AssignRoleToUsersTask implements TaskHandler {
     
     private static String credentialUsername = "administrator";
 	private static String credentialsPassword = "5ecr3t";
-	private static String csvFilePath = "C:\\midpoint\\resources\\addrolestousers.csv"; // "C:/Users/gurer.onder/workspacekisisel/utilities/resources/modifyusersalldisabled.csv"
+	private static String csvFilePath = "/home/biznet/engerek/resources/addrolestousers.csv"; // "C:/Users/gurer.onder/workspacekisisel/utilities/resources/modifyusersalldisabled.csv"
  
     @Autowired(required=true)
     private TaskManager taskManager;

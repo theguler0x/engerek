@@ -324,7 +324,7 @@
             <groupId>com.evolveum.midpoint.model</groupId>
             <artifactId>model-impl</artifactId>
             <version>3.4-SNAPSHOT</version>
-            <scope>runtime</scope>
+            <scope>compile</scope>
             <exclusions>
             	<exclusion>
             		<artifactId>jaxb-impl</artifactId>

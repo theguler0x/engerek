@@ -4,13 +4,16 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import com.evolveum.midpoint.common.policy.StringPolicyUtils;
 //import com.evolveum.midpoint.model.common.expression.SourceTriple;
 import com.evolveum.midpoint.prism.util.PrismContextFactory;
 import com.evolveum.midpoint.prism.util.PrismTestUtil;
 import com.evolveum.midpoint.prism.util.PrismUtil;
+import com.evolveum.midpoint.web.page.login.PageLogin;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import org.apache.wicket.Component;
 import org.apache.wicket.RestartResponseException;
@@ -222,9 +225,10 @@ public class PageSelfRegistration extends PageBase {
 
                         }
 
-                        else if ( resultcreate == 202 )//
+                        else if ( resultcreate == 202 )
 						{
                             success(this.getString("PageSelfRegistration.succes.createuserreq"));
+
                         }else {
 							error(this.getString("PageSelfRegistration.error.createuser"));
 						}
@@ -255,7 +259,7 @@ public class PageSelfRegistration extends PageBase {
         RequiredTextField password;
         Image captchaImage;
         org.apache.wicket.markup.html.form.Button refreshButton;
-        refreshButton = new Button(ID_REFRESHBUTTON, new Model<String>()){};
+        //refreshButton = new Button(ID_REFRESHBUTTON, new Model<String>()){};
 
 
 
@@ -265,7 +269,7 @@ public class PageSelfRegistration extends PageBase {
         form.add(new RequiredTextField(ID_FIRSTNAME, new Model<String>()).setLabel(new ResourceModel("PageSelfRegistration.firstname")));
         form.add(new RequiredTextField(ID_SURNAME, new Model<String>()).setLabel(new ResourceModel("PageSelfRegistration.surname")));
         form.add(new RequiredTextField(ID_PHONENUMBER, new Model<String>()).setLabel(new ResourceModel("PageSelfRegistration.phoneNumber")));
-        form.add(refreshButton);
+        //form.add(refreshButton);
 
         captchaImageResource = new CaptchaImageResource(imagePassStr);
         //System.out.println("buralar yeniden yüklendi mi2");

@@ -40,7 +40,6 @@
 		<!-- classpath:ctx-camel-imports.xml, -->
             /WEB-INF/ctx-webapp.xml,
             /WEB-INF/ctx-web-security.xml,
-            /WEB-INF/ctx-captcha-service.xml,
             /WEB-INF/ctx-init.xml
         </param-value>
     </context-param>

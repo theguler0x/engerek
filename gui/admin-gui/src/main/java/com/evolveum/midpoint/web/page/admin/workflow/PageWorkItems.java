@@ -234,7 +234,7 @@ public class PageWorkItems extends PageAdminWorkItems {
                 workflowService.approveOrRejectWorkItem(workItemDto.getWorkItem().getWorkItemId(), approve, result);
                 result.computeStatus();
             } catch (Exception e) {
-                result.recordPartialError("Couldn't approve/reject work item due to an unexpected exception.", e);
+                result.recordPartialError("Beklenmeyen hata sonucu iş akışı öğesi onay/ret işlemi gerçekleştirilemedi.", e);
             }
         }
         if (mainResult.isUnknown()) {
@@ -242,7 +242,7 @@ public class PageWorkItems extends PageAdminWorkItems {
         }
 
         if (mainResult.isSuccess()) {
-            mainResult.recordStatus(OperationResultStatus.SUCCESS, "The work item(s) have been successfully " + (approve ? "approved." : "rejected."));
+            mainResult.recordStatus(OperationResultStatus.SUCCESS, "İş akışı öğeleri başarıyla " + (approve ? "onaylandı." : "reddedildi."));
         }
 
         showResult(mainResult);
@@ -266,7 +266,7 @@ public class PageWorkItems extends PageAdminWorkItems {
                 workflowService.claimWorkItem(workItemDto.getWorkItem().getWorkItemId(), result);
                 result.computeStatusIfUnknown();
             } catch (RuntimeException e) {
-                result.recordPartialError("Couldn't claim work item due to an unexpected exception.", e);
+                result.recordPartialError("Beklenmeyen hata yüzünden iş akışı öğesi talep edilemedi.", e);
             }
         }
         if (mainResult.isUnknown()) {
@@ -274,7 +274,7 @@ public class PageWorkItems extends PageAdminWorkItems {
         }
 
         if (mainResult.isSuccess()) {
-            mainResult.recordStatus(OperationResultStatus.SUCCESS, "The work item(s) have been successfully claimed.");
+            mainResult.recordStatus(OperationResultStatus.SUCCESS, "İş akışı öğesi başarıyla talep edildi.");
         }
 
         showResult(mainResult);
@@ -298,7 +298,7 @@ public class PageWorkItems extends PageAdminWorkItems {
                 workflowService.releaseWorkItem(workItemDto.getWorkItem().getWorkItemId(), result);
                 result.computeStatusIfUnknown();
             } catch (RuntimeException e) {
-                result.recordPartialError("Couldn't release work item due to an unexpected exception.", e);
+                result.recordPartialError("İş akışı öğesi beklenmeyen hata sonucu serbest bırakılamadı.", e);
             }
         }
         if (mainResult.isUnknown()) {
@@ -306,7 +306,7 @@ public class PageWorkItems extends PageAdminWorkItems {
         }
 
         if (mainResult.isSuccess()) {
-            mainResult.recordStatus(OperationResultStatus.SUCCESS, "The work item(s) have been successfully released.");
+            mainResult.recordStatus(OperationResultStatus.SUCCESS, "İş akışı öğeleri başarıyla serbest bırakıldı.");
         }
 
         showResult(mainResult);

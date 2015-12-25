@@ -338,7 +338,7 @@ public class PageCertDecisions extends PageAdminCertification {
         if (availableResponses.isAvailable(REVOKE)) {
             items.add(createMenu("PageCertDecisions.menu.revokeSelected", REVOKE));
         }
-        if (availableResponses.isAvailable(REDUCE)) {
+        /*if (availableResponses.isAvailable(REDUCE)) {
             items.add(createMenu("PageCertDecisions.menu.reduceSelected", REDUCE));
         }
         if (availableResponses.isAvailable(NOT_DECIDED)) {
@@ -349,7 +349,7 @@ public class PageCertDecisions extends PageAdminCertification {
         }
         if (availableResponses.isAvailable(NO_RESPONSE)) {
             items.add(createMenu("PageCertDecisions.menu.noResponseSelected", NO_RESPONSE));
-        }
+        } */
         return items;
     }
 

@@ -28,15 +28,15 @@ public enum RAccessCertificationResponse implements SchemaEnum<AccessCertificati
 
     ACCEPT(AccessCertificationResponseType.ACCEPT),
 
-    REVOKE(AccessCertificationResponseType.REVOKE),
+    REVOKE(AccessCertificationResponseType.REVOKE);
 
-    REDUCE(AccessCertificationResponseType.REDUCE),
+    /*REDUCE(AccessCertificationResponseType.REDUCE),
 
     NOT_DECIDED(AccessCertificationResponseType.NOT_DECIDED),
 
     DELEGATE(AccessCertificationResponseType.DELEGATE),
 
-    NO_RESPONSE(AccessCertificationResponseType.NO_RESPONSE);
+    NO_RESPONSE(AccessCertificationResponseType.NO_RESPONSE); */
 
     private AccessCertificationResponseType status;
 

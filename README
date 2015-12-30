@@ -7,8 +7,8 @@ Engerek kapsamlı bir Kimlik Yönetim Sistemidir.  Engerek birden fazla kimlik v
 Engerek aynı zamanda verinin birleşik bir yapıda olmasını sağlar.
  
 Engerek yazılımının başlıca özellikleri:
-   - User provizyonlama ve provizyonu kaldırma
-   - Integration of ConnId connector framework ConnID bağlayıcı çerçevesine entegrasyon
+   - Kullanıcı provizyonlama ve provizyonu kaldırma
+   - ConnID bağlayıcı çerçevesine entegrasyon
    - Yönetici arayüzü
    - Kimlik deposu uygulaması (SQL tabanlı)
    - Özel şema uzatılabilirliği

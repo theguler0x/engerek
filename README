@@ -1,55 +1,48 @@
-midPoint 3.3 "Lincoln"
+Engerek 3.3 "Lincoln"
 -------------------------------
 
-General informations:
+Genel bilgi:
 
-MidPoint is a comprehensive identity provisioning system. MidPoint can synchronize several
-identity repositories, manage and transform data in these repostories to keep them synchronized.
-MidPoint also makes the data available in unified form. 
+Engerek kapsamlı bir Kimlik Yönetim Sistemidir.  Engerek birden fazla kimlik verisi kaynağını senkronize edebilir, bu kaynaklardaki verileri yönetebilir, başka bir veriye dönüştürebilir ve birbirleriyle senkrone olmasını sağlar.
+Engerek aynı zamanda verinin birleşik bir yapıda olmasını sağlar.
+ 
+Engerek yazılımının başlıca özellikleri:
+   - User provizyonlama ve provizyonu kaldırma
+   - Integration of ConnId connector framework ConnID bağlayıcı çerçevesine entegrasyon
+   - Yönetici arayüzü
+   - Kimlik deposu uygulaması (SQL tabanlı)
+   - Özel şema uzatılabilirliği
+   - Kimlik senkronizasyonu (canlı senkronizasyon, hesap eşleme, keşif, içe aktarma)
+   - Senkronizaston eşlemelerinde betik ifadeleri kullanabilme yetisi (Groovy, JavaScript, XPathv2)
+   - Gelişmiş, süre kısıtlamalı, rol tabanlı erişim kontrolü
+   - Kimlik yönetimi süreci otomasyonu (iş akışları, bildirimler)
+   - Şifre politikaları
+   - Şifre sıfırlama
+   - Genel senkronizasyon
+   - Yetkilendirmeler
+   - ConnId ve OpenICF bağlaycıları desteği
+   - Provizyonlama tutarlılığı ve hata işeme
+   - Görevler ayrılığı
+   - Güvenlik denetimi ve raporlama desteği
+   - İş akışı 
+   - Raporlama
+   - Bildirimler
+   - Yerel Java API'leri, Uzak web servisi arayüzü(SOAP), REST API
+   - Yükse bulunurluk(HA) desteği
+   - Gözden geçirme
 
-The most important features of midPoint are:
-   - User provisioning and deprovisioning
-   - Integration of ConnId connector framework
-   - Administration GUI
-   - Identity repository implemention (SQL)
-   - Custom schema extensibility
-   - Identity synchronization (liveSync, reconciliation, discovery, import)
-   - Support for expressions in synchronization mappings (Groovy, JavaScript, XPathv2)
-   - Advanced RBAC support with temporal constraints
-   - Identity management process automation (workflow, notifications)
-   - Password policies
-   - Password reset
-   - Generic synchronization
-   - Entitlements
-   - Support for ConnId and OpenICF connectors
-   - Provisioning consistency and error handling
-   - Segregation of Duties (SoG)
-   - Support for security auditing and reporting
-   - Workflow
-   - Reporting
-   - Notifications
-   - Local Java APIs, Remote web service interface (SOAP), REST API
-   - High availablity (HA) support
-   - Access certification (technology preview)
-
-For more information please go to:
+Daha fazla bilgi için:
 
   http://midpoint.evolveum.com/
 
-For bugtracking system please go to:
+Hata izleme sistemi için:
 
   http://jira.evolveum.com/
 
-MidPoint source code is maintained on github:
-
-  https://github.com/Evolveum/midpoint 
-
-Latest source code can be obtained from our Git repository using one of the 
-following repository locations:
-
+ Ayrıca Engerek (MidPoint) aşağıdaki git depolarından alınabilir.
+ 
   https://github.com/Evolveum/midpoint.git
   git@github.com:Evolveum/midpoint.git
 
-This project is developed under Apache license (version 2.0) You may get copy
-of licence in LICENSE file. Please also see NOTICE file for addtional
-copyright statements.
+Bu proje Apache lisansı (versiyon 2.0) dahilindedir. LICENSE dosyasında bir kopyasını bulabilrsiniz. 
+Ayrıca NOTICE  dosyasında ek  telif hakkı hükümleri görülebilir.

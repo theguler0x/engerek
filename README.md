@@ -1,57 +1,49 @@
-Status: [![Build Status](https://travis-ci.org/Evolveum/midpoint.svg?branch=master)](https://travis-ci.org/Evolveum/midpoint)
+Engerek 3.6 
+-------------------------------
 
-midPoint 3.6 "Comenius"
-------------------------------------
+Genel bilgi:
 
-General information:
+Engerek kapsamlı bir Kimlik Yönetim Sistemidir.  Engerek birden fazla kimlik verisi kaynağını senkronize edebilir, bu kaynaklardaki verileri yönetebilir, başka bir veriye dönüştürebilir ve birbirleriyle senkrone olmasını sağlar.
+Engerek aynı zamanda verinin birleşik bir yapıda olmasını sağlar.
+ 
+Engerek yazılımının başlıca özellikleri:
+   - Kullanıcı provizyonlama ve provizyonu kaldırma
+   - ConnID bağlayıcı çerçevesine entegrasyon
+   - Yönetici arayüzü
+   - Kimlik deposu uygulaması (SQL tabanlı)
+   - Özel şema uzatılabilirliği
+   - Kimlik senkronizasyonu (canlı senkronizasyon, hesap eşleme, keşif, içe aktarma)
+   - Senkronizaston eşlemelerinde betik ifadeleri kullanabilme yetisi (Groovy, JavaScript, XPathv2)
+   - Gelişmiş, süre kısıtlamalı, rol tabanlı erişim kontrolü
+   - Kimlik yönetimi süreci otomasyonu (iş akışları, bildirimler)
+   - Şifre politikaları
+   - Şifre sıfırlama
+   - Genel senkronizasyon
+   - Yetkilendirmeler
+   - ConnId ve OpenICF bağlaycıları desteği
+   - Provizyonlama tutarlılığı ve hata işeme
+   - Görevler ayrılığı
+   - Güvenlik denetimi ve raporlama desteği
+   - İş akışı 
+   - Raporlama
+   - Bildirimler
+   - Yerel Java API'leri, Uzak web servisi arayüzü(SOAP), REST API
+   - Yükse bulunurluk(HA) desteği
+   - Gözden geçirme
 
-MidPoint is a comprehensive Identity Governance and Administration (IGA) platform. It is used by the organizations around the world to deal with Identity Provisioning, Identity Governance & Compliance and also Access Management. As for the identity being a security perimeter, midPoint keeps safe both organization’s internal network and external resources.
-The most important features of midPoint are:
+Daha fazla bilgi için:
 
-- Identity Governance
-- Security auditing and reporting
-- Organizational structure management
-- Credential Management
-- Workflow
-- Entitlement Management 
-
-Read more about these features at https://evolveum.com/midpoint/about-midpoint/
-
-Other features: 
-
-- User provisioning and deprovisioning
-- Administration GUI
-- Identity repository implemention (SQL)
-- Custom schema extensibility
-- Identity synchronization (liveSync, reconciliation, discovery, import)
-- Support for expressions in synchronization mappings (Groovy, JavaScript, Python)
-- Advanced RBAC support with temporal constraints
-- Identity management process automation (workflow, notifications)
-- Password policies
-- Password reset
-- Entitlements
-- Support for ConnId and OpenICF connectors
-- Provisioning consistency and error handling
-- Reporting
-- Notifications
-- Local Java APIs, Remote web service interface (SOAP), REST API
-- High availablity (HA) support
-
-For more information bout midPoint identity manager please go to:
 http://midpoint.evolveum.com/
 
-For bugtracking system please go to:
-http://jira.evolveum.com/
+Hata izleme sistemi için:
 
-MidPoint source code is maintained on github:
-https://github.com/Evolveum/midpoint 
+  http://jira.evolveum.com/
 
-Latest source code can be obtained from our Git repository using one of the 
-following repository locations:
-https://github.com/Evolveum/midpoint.git
+ Ayrıca Engerek (MidPoint) aşağıdaki git depolarından alınabilir.
+ 
+  https://github.com/Evolveum/midpoint.git
+  
+  git@github.com:Evolveum/midpoint.git
 
-git@github.com:Evolveum/midpoint.git
-
-This project is developed under Apache license (version 2.0) You may get copy
-of licence in LICENSE file. Please also see NOTICE file for addtional
-copyright statements.
+Bu proje Apache lisansı (versiyon 2.0) dahilindedir. LICENSE dosyasında bir kopyasını bulabilrsiniz. 
+Ayrıca NOTICE dosyasında ek telif hakkı hükümleri görülebilir.

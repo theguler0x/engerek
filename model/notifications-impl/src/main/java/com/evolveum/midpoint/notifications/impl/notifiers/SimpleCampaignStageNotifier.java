@@ -29,7 +29,6 @@ import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationStageType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.GeneralNotifierType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SimpleCampaignNotifierType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SimpleCampaignStageNotifierType;
 import org.apache.commons.lang.time.DurationFormatUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,9 +46,6 @@ import java.util.Date;
 public class SimpleCampaignStageNotifier extends GeneralNotifier {
 
     private static final Trace LOGGER = TraceManager.getTrace(SimpleCampaignStageNotifier.class);
-
-    @Autowired
-    private MidpointFunctions midpointFunctions;
 
     @Autowired
     private CertHelper certHelper;
@@ -109,15 +105,15 @@ public class SimpleCampaignStageNotifier extends GeneralNotifier {
         body.append("\n\nTime: ").append(new Date());     // the event is generated in the real time
         AccessCertificationStageType stage = CertCampaignTypeUtil.getCurrentStage(campaign);
         if (stage != null) {
-            body.append("\n\nStage start time: ").append(XmlTypeConverter.toDate(stage.getStart()));
-            body.append("\nStage end time: ").append(XmlTypeConverter.toDate(stage.getEnd()));
-            if (csEvent.isModify() && stage.getEnd() != null) {
-                long delta = XmlTypeConverter.toMillis(stage.getEnd()) - System.currentTimeMillis();
+            body.append("\n\nStage start time: ").append(XmlTypeConverter.toDate(stage.getStartTimestamp()));
+            body.append("\nStage deadline time: ").append(XmlTypeConverter.toDate(stage.getDeadline()));
+            if (csEvent.isModify() && stage.getDeadline() != null) {
+                long delta = XmlTypeConverter.toMillis(stage.getDeadline()) - System.currentTimeMillis();
                 if (delta > 0) {
                     body.append("\n\nStage ends in ");
                     body.append(DurationFormatUtils.formatDurationWords(delta, true, true));
                 } else if (delta < 0) {
-                    body.append("\n\nStage ended ");
+                    body.append("\n\nStage should have ended ");
                     body.append(DurationFormatUtils.formatDurationWords(-delta, true, true));
                     body.append(" ago");
                 }
@@ -127,13 +123,14 @@ public class SimpleCampaignStageNotifier extends GeneralNotifier {
         if (csEvent.isAdd() || csEvent.isDelete()) {
             body.append("\nRequester: ").append(formatRequester(event, result));
             body.append("\nOperation status: ").append(certHelper.formatStatus(csEvent));
+            body.append("\n");
         }
 
         body.append("\n");
         certHelper.appendStatistics(body, campaign, task, result);
 
         body.append("\n\n");
-        notificationsUtil.addRequesterAndChannelInformation(body, event, result);
+        functions.addRequesterAndChannelInformation(body, event, result);
 
         return body.toString();
     }

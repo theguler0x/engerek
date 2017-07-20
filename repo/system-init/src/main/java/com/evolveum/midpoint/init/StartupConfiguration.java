@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2014 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 
 import org.apache.commons.configuration.*;
-import org.apache.wss4j.dom.WSSConfig;
+import org.apache.wss4j.dom.engine.WSSConfig;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 
@@ -41,18 +41,23 @@ import java.text.SimpleDateFormat;
 import java.util.Iterator;
 
 public class StartupConfiguration implements MidpointConfiguration {
-
-    private static final Trace LOGGER = TraceManager.getTrace(StartupConfiguration.class);
-    private static final String USER_HOME = "user.home";
-    private static final String MIDPOINT_HOME = "midpoint.home";
-    private static final String MIDPOINT_SECTION = "midpoint";
-    private static final String SAFE_MODE = "safeMode";
     
+    private static final String USER_HOME_SYSTEM_PROPERTY_NAME = "user.home";
+    private static final String MIDPOINT_HOME_SYSTEM_PROPERTY_NAME = "midpoint.home";
+    private static final String MIDPOINT_CONFIGURATION_SECTION = "midpoint";
+    private static final String SAFE_MODE = "safeMode";
+    private static final String PROFILING_ENABLED = "profilingEnabled";
+
     private static final String DEFAULT_CONFIG_FILE_NAME = "config.xml";
 	private static final String LOGBACK_CONFIG_FILENAME = "logback.xml";
+	private static final String LOGBACK_EXTRA_CONFIG_FILENAME = "logback-extra.xml";
+	
+	private static final Trace LOGGER = TraceManager.getTrace(StartupConfiguration.class);
+	private static final Trace LOGGER_WELCOME = TraceManager.getTrace("com.evolveum.midpoint.init.welcome");
 
     private CompositeConfiguration config = null;
     private Document xmlConfigAsDocument = null;        // just in case when we need to access original XML document
+    private String midPointHomePath = null;
     private String configFilename = null;
 
     /**
@@ -63,18 +68,15 @@ public class StartupConfiguration implements MidpointConfiguration {
     }
 
     /**
-     * Constructor
-     *
-     * @param configFilename alternative configuration file
+     * Alternative constructor for use in the tests.
      */
-    public StartupConfiguration(String configFilename) {
+    public StartupConfiguration(String midPointHome, String configFilename) {
+    	this.midPointHomePath = midPointHome;
         this.configFilename = configFilename;
     }
 
     /**
      * Get current configuration file name
-     *
-     * @return
      */
     public String getConfigFilename() {
         return this.configFilename;
@@ -82,8 +84,6 @@ public class StartupConfiguration implements MidpointConfiguration {
 
     /**
      * Set configuration filename
-     *
-     * @param configFilename
      */
     public void setConfigFilename(String configFilename) {
         this.configFilename = configFilename;
@@ -91,7 +91,7 @@ public class StartupConfiguration implements MidpointConfiguration {
 
     @Override
     public String getMidpointHome() {
-        return System.getProperty(MIDPOINT_HOME);
+        return midPointHomePath;
     }
 
     @Override
@@ -103,14 +103,14 @@ public class StartupConfiguration implements MidpointConfiguration {
         // Insert replacement for relative path to midpoint.home else clean
         // replace
         if (getMidpointHome() != null) {
-            sub.addProperty(MIDPOINT_HOME, getMidpointHome());
+            sub.addProperty(MIDPOINT_HOME_SYSTEM_PROPERTY_NAME, getMidpointHome());
         } else {
             @SuppressWarnings("unchecked")
             Iterator<String> i = sub.getKeys();
             while (i.hasNext()) {
                 String key = i.next();
-                sub.setProperty(key, sub.getString(key).replace("${" + MIDPOINT_HOME + "}/", ""));
-                sub.setProperty(key, sub.getString(key).replace("${" + MIDPOINT_HOME + "}", ""));
+                sub.setProperty(key, sub.getString(key).replace("${" + MIDPOINT_HOME_SYSTEM_PROPERTY_NAME + "}/", ""));
+                sub.setProperty(key, sub.getString(key).replace("${" + MIDPOINT_HOME_SYSTEM_PROPERTY_NAME + "}", ""));
             }
         }
 
@@ -120,7 +120,7 @@ public class StartupConfiguration implements MidpointConfiguration {
             Iterator<String> i = sub.getKeys();
             while (i.hasNext()) {
                 String key = i.next();
-                LOGGER.debug("    {} = {}", key, sub.getString(key));
+                LOGGER.debug("    {} = {}", key, sub.getProperty(key));
             }
         }
         return sub;
@@ -130,46 +130,40 @@ public class StartupConfiguration implements MidpointConfiguration {
      * Initialize system configuration
      */
     public void init() {
-        welcome();    
-        if (System.getProperty(MIDPOINT_HOME) == null || System.getProperty(MIDPOINT_HOME).isEmpty()) {
-            LOGGER.warn("*****************************************************************************************");
-            LOGGER.warn(MIDPOINT_HOME
-                    + " is not set ! Using default configuration, for more information see http://wiki.evolveum.com/display/midPoint/");
-            LOGGER.warn("*****************************************************************************************");
+              
+        if (midPointHomePath == null) {
+        	
+	        if (System.getProperty(MIDPOINT_HOME_SYSTEM_PROPERTY_NAME) == null || System.getProperty(MIDPOINT_HOME_SYSTEM_PROPERTY_NAME).isEmpty()) {
+	            LOGGER.info("{} system property is not set, using default configuration", MIDPOINT_HOME_SYSTEM_PROPERTY_NAME);
 
-            System.out.println("*******************************************************************************");
-            System.out.println(MIDPOINT_HOME + " is not set ! Using default configuration, for more information");
-            System.out.println("                 see http://wiki.evolveum.com/display/midPoint/");
-            System.out.println("*******************************************************************************");
-
-			if (getConfigFilename().startsWith("test")) {
-				String midpointHome = "./target/midpoint-home";
-				System.setProperty(MIDPOINT_HOME, midpointHome);
-				System.out.println("Using " + MIDPOINT_HOME + " for test runs: '" + midpointHome + "'.");
-			} else {
-
-				String userHome = System.getProperty(USER_HOME);
-				if (!userHome.endsWith("/")) {
-					userHome += "/";
+	            midPointHomePath = System.getProperty(USER_HOME_SYSTEM_PROPERTY_NAME);
+				if (!midPointHomePath.endsWith("/")) {
+					midPointHomePath += "/";
 				}
-				userHome += "midpoint";
-				System.setProperty(MIDPOINT_HOME, userHome);
-				LOGGER.warn("Setting {} to '{}'.", new Object[] { MIDPOINT_HOME, userHome });
-				System.out.println("Setting " + MIDPOINT_HOME + " to '" + userHome + "'.");
+				midPointHomePath += "midpoint";
+				
+			} else {
+	
+				midPointHomePath = System.getProperty(MIDPOINT_HOME_SYSTEM_PROPERTY_NAME);
 			}
-		}
-
-    	String midpointHomeString = System.getProperty(MIDPOINT_HOME);
-        if (midpointHomeString != null) {
+        }
+        
+        if (midPointHomePath != null) {
                 //Fix missing last slash in path
-                if (!midpointHomeString.endsWith("/")) {
-                	midpointHomeString = midpointHomeString + "/";
-                    System.setProperty(MIDPOINT_HOME, midpointHomeString);
+                if (!midPointHomePath.endsWith("/")) {
+                	midPointHomePath = midPointHomePath + "/";
                 }
         }
 
-        File midpointHome = new File(midpointHomeString);
+        // This is not really good practice. But some components such as reports rely on well-formatted midpoint.home system property.
+        System.setProperty(MIDPOINT_HOME_SYSTEM_PROPERTY_NAME, midPointHomePath);
+        
+        File midpointHome = new File(midPointHomePath);
+        
         setupInitialLogging(midpointHome);
+        
+        welcome();
+        
         loadConfiguration(midpointHome);
 
         if (isSafeMode()) {
@@ -196,24 +190,29 @@ public class StartupConfiguration implements MidpointConfiguration {
         DocumentBuilder documentBuilder = DOMUtil.createDocumentBuilder();          // we need namespace-aware document builder (see GeneralChangeProcessor.java)
 
         if (midpointHome != null) {
-        /* configuration logic */
-        	File f = new File(midpointHome, this.getConfigFilename());
-        	System.out.println("Loading midPoint configuration from file "+f);
-        	LOGGER.info("Loading midPoint configuration from file {}", f);
+        	
+            ApplicationHomeSetup ah = new ApplicationHomeSetup();
+            ah.init(MIDPOINT_HOME_SYSTEM_PROPERTY_NAME);
+
+        	File configFile = new File(midpointHome, this.getConfigFilename());
+        	System.out.println("Loading midPoint configuration from file "+configFile);
+        	LOGGER.info("Loading midPoint configuration from file {}", configFile);
         	try {
-                if (!f.exists()) {
-                    LOGGER.warn("Configuration file {} does not exists. Need to do extraction ...", f);
-
-                    ApplicationHomeSetup ah = new ApplicationHomeSetup();
-                    ah.init(MIDPOINT_HOME);
-                    ClassPathUtil.extractFileFromClassPath(this.getConfigFilename(), f.getPath());
-
+                if (!configFile.exists()) {
+                    LOGGER.warn("Configuration file {} does not exists. Need to do extraction ...", configFile);
+                    boolean success = ClassPathUtil.extractFileFromClassPath(this.getConfigFilename(), configFile.getPath());
+                    if (!success || !configFile.exists()) {
+                    	String message = "Unable to extract configuration file " + this.getConfigFilename() + " from classpath";
+                        LOGGER.error(message);
+                        System.out.println(message);
+                        throw new SystemException(message);
+                    }
                 }
                 //Load and parse properties
-                config.addProperty(MIDPOINT_HOME, System.getProperty(MIDPOINT_HOME));
-                createXmlConfiguration(documentBuilder, f.getPath());
+                config.addProperty(MIDPOINT_HOME_SYSTEM_PROPERTY_NAME, midPointHomePath);
+                createXmlConfiguration(documentBuilder, configFile.getPath());
             } catch (ConfigurationException e) {
-                String message = "Unable to read configuration file [" + f + "]: " + e.getMessage();
+                String message = "Unable to read configuration file [" + configFile + "]: " + e.getMessage();
                 LOGGER.error(message);
                 System.out.println(message);
                 throw new SystemException(message, e);      // there's no point in continuing with midpoint initialization
@@ -234,19 +233,30 @@ public class StartupConfiguration implements MidpointConfiguration {
     
 	private void setupInitialLogging(File midpointHome) {
 		File logbackConfigFile = new File(midpointHome, LOGBACK_CONFIG_FILENAME);
-		if (!logbackConfigFile.exists()) {
-			return;
+		boolean clear = false;
+		if (logbackConfigFile.exists()) {
+			clear = true;
+		} else {
+			logbackConfigFile = new File(midpointHome, LOGBACK_EXTRA_CONFIG_FILENAME);
+			if (!logbackConfigFile.exists()) {
+				return;
+			}
 		}
-		LOGGER.info("Loading additional logging configuration from {}", logbackConfigFile);
+		LOGGER.info("Loading logging configuration from {} ({})", logbackConfigFile,
+				clear?"clearing default configuration":"extending defalt configuration");
 		LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+		if (clear) {
+			context.reset();
+		}
 		try {
 		  JoranConfigurator configurator = new JoranConfigurator();
 		  configurator.setContext(context);
-		configurator.doConfigure(logbackConfigFile);
-		} catch (JoranException je) {
-		  // StatusPrinter will handle this
-		} catch (Exception ex) {
-		  ex.printStackTrace();
+		  configurator.doConfigure(logbackConfigFile);
+		} catch (Exception e) {
+			// This will logged by defalt logging configuration
+			LOGGER.error("Error loading additional logging configuration: {}", e.getMessage(), e);
+			// If normal logging fail make sure it is logged by web container
+			e.printStackTrace();
 		}
 		StatusPrinter.printInCaseOfErrorsOrWarnings(context);
     }
@@ -268,12 +278,21 @@ public class StartupConfiguration implements MidpointConfiguration {
 
     @Override
     public boolean isSafeMode() {
-        Configuration c = getConfiguration(MIDPOINT_SECTION);
+        Configuration c = getConfiguration(MIDPOINT_CONFIGURATION_SECTION);
         if (c == null) {
             return false;           // should not occur
         }
         return c.getBoolean(SAFE_MODE, false);
     }
+
+	@Override
+	public boolean isProfilingEnabled() {
+		Configuration c = getConfiguration(MIDPOINT_CONFIGURATION_SECTION);
+		if (c == null) {
+			return false;           // should not occur
+		}
+		return c.getBoolean(PROFILING_ENABLED, false);
+	}
 
     @Override
     public String toString() {
@@ -294,25 +313,25 @@ public class StartupConfiguration implements MidpointConfiguration {
         try {
             Configuration info = new PropertiesConfiguration("midpoint.info");
             DateFormat formatter = new SimpleDateFormat("dd/MM/yyyy hh:mm:ss.SSS");
-            LOGGER.info("+--------------------------------------------------------------------------------------------+");
-            LOGGER.info("|             _    | |  _  \\     _     _| |_");
-            LOGGER.info("|   ___ ____ (_) __| | |_) |___ (_)___|_   _|");
-            LOGGER.info("|  |  _ ` _ `| |/ _  |  __/  _ \\| |  _` | |");
-            LOGGER.info("|  | | | | | | | (_| | |  | (_) | | | | | |_");
-            LOGGER.info("|  |_| |_| |_|_|\\____|_|  \\____/|_|_| |_|\\__|  by Evolveum and partners");
-            LOGGER.info("|");
-            LOGGER.info("|  Licensed under the Apache License, Version 2.0 see: http://www.apache.org/licenses/LICENSE-2.0");
-            LOGGER.info("|  Version :  " + info.getString("midpoint.version"));
+            LOGGER_WELCOME.info("+--------------------------------------------------------------------------------------------+");
+            LOGGER_WELCOME.info("|             _    | |  _  \\     _     _| |_");
+            LOGGER_WELCOME.info("|   ___ ____ (_) __| | |_) |___ (_)___|_   _|");
+            LOGGER_WELCOME.info("|  |  _ ` _ `| |/ _  |  __/  _ \\| |  _` | |");
+            LOGGER_WELCOME.info("|  | | | | | | | (_| | |  | (_) | | | | | |_");
+            LOGGER_WELCOME.info("|  |_| |_| |_|_|\\____|_|  \\____/|_|_| |_|\\__|  by Evolveum and partners");
+            LOGGER_WELCOME.info("|");
+            LOGGER_WELCOME.info("|  Licensed under the Apache License, Version 2.0 see: http://www.apache.org/licenses/LICENSE-2.0");
+            LOGGER_WELCOME.info("|  Version :  " + info.getString("midpoint.version"));
 //			try {
-//				LOGGER.info("|  Build   :  " + info.getString("midpoint.build") + " at "
+//				LOGGER_WELCOME.info("|  Build   :  " + info.getString("midpoint.build") + " at "
 //						+ formatter.format(new Date(info.getLong("midpoint.timestamp"))));
 //			} catch (NumberFormatException ex) {
-//				LOGGER.info("|  Build   :  " + info.getString("midpoint.build"));
+//				LOGGER_WELCOME.info("|  Build   :  " + info.getString("midpoint.build"));
 //			}
-            LOGGER.info("|  Sources :  " + info.getString("midpoint.scm") + "  branch:  " + info.getString("midpoint.branch"));
-            LOGGER.info("|  Bug reporting system : " + info.getString("midpoint.jira"));
-            LOGGER.info("|  Product information : http://wiki.evolveum.com/display/midPoint");
-            LOGGER.info("+---------------------------------------------------------------------------------------------+");
+            LOGGER_WELCOME.info("|  Sources :  " + info.getString("midpoint.scm") + "  branch:  " + info.getString("midpoint.branch"));
+            LOGGER_WELCOME.info("|  Bug reporting system : " + info.getString("midpoint.jira"));
+            LOGGER_WELCOME.info("|  Product information : http://wiki.evolveum.com/display/midPoint");
+            LOGGER_WELCOME.info("+---------------------------------------------------------------------------------------------+");
         } catch (ConfigurationException e) {
             //NOTHING just skip
         }

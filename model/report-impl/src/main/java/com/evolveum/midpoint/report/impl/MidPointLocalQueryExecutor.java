@@ -1,27 +1,37 @@
+/*
+ * Copyright (c) 2010-2017 Evolveum
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.evolveum.midpoint.report.impl;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 
 import javax.xml.namespace.QName;
 
+import com.evolveum.midpoint.prism.Containerable;
+import com.evolveum.midpoint.prism.PrismContainerValue;
 import net.sf.jasperreports.engine.JRDataSource;
 import net.sf.jasperreports.engine.JRDataset;
-import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.JRParameter;
 import net.sf.jasperreports.engine.JRValueParameter;
 import net.sf.jasperreports.engine.JasperReportsContext;
-import net.sf.jasperreports.engine.base.JRBaseParameter;
-import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
 import net.sf.jasperreports.engine.fill.JRFillParameter;
-
-import org.apache.commons.lang.StringUtils;
 
 import com.evolveum.midpoint.audit.api.AuditEventRecord;
 import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.report.api.ReportService;
 import com.evolveum.midpoint.schema.GetOperationOptions;
@@ -36,7 +46,7 @@ import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 
-public class MidPointLocalQueryExecutor extends MidPointQueryExecutor{
+public class MidPointLocalQueryExecutor extends MidPointQueryExecutor {
 	
 	private static final Trace LOGGER = TraceManager.getTrace(MidPointLocalQueryExecutor.class);
 	private ObjectQuery query;
@@ -54,8 +64,8 @@ public class MidPointLocalQueryExecutor extends MidPointQueryExecutor{
 			Map<String, ? extends JRValueParameter> parametersMap) {
 		super(jasperReportsContext, dataset, parametersMap);
 		
-		JRFillParameter fillparam = (JRFillParameter) parametersMap.get(JRParameter.REPORT_PARAMETERS_MAP);
-		Map reportParams = (Map) fillparam.getValue();
+		//JRFillParameter fillparam = (JRFillParameter) parametersMap.get(JRParameter.REPORT_PARAMETERS_MAP);
+		//Map reportParams = (Map) fillparam.getValue();
 		reportService = (ReportService) parametersMap.get(ReportService.PARAMETER_REPORT_SERVICE).getValue();
 
 		parseQuery();
@@ -68,13 +78,14 @@ public class MidPointLocalQueryExecutor extends MidPointQueryExecutor{
 	}
 	
 	@Override
-	protected Collection searchObjects(Object query, Collection<SelectorOptions<GetOperationOptions>> options) throws SchemaException, ObjectNotFoundException, SecurityViolationException, CommunicationException, ConfigurationException{
+	protected Collection<PrismObject<? extends ObjectType>> searchObjects(Object query, Collection<SelectorOptions<GetOperationOptions>> options) throws SchemaException, ObjectNotFoundException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException{
 		return reportService.searchObjects((ObjectQuery) query, SelectorOptions.createCollection(GetOperationOptions.createRaw()));
 	}
 	
 	@Override
-	protected Collection evaluateScript(String script,
-			Map<QName, Object> parameters) throws SchemaException, ObjectNotFoundException,
+	protected Collection<PrismContainerValue<? extends Containerable>>
+	evaluateScript(String script,
+				   Map<QName, Object> parameters) throws SchemaException, ObjectNotFoundException,
 			SecurityViolationException, CommunicationException, ConfigurationException,
 			ExpressionEvaluationException {
 		return reportService.evaluateScript(script, getParameters());
@@ -86,7 +97,20 @@ public class MidPointLocalQueryExecutor extends MidPointQueryExecutor{
 	}
 	
 	@Override
-	protected JRDataSource createDataSource(Collection results) {
+	protected JRDataSource createDataSourceFromObjects(Collection<PrismObject<? extends ObjectType>> results) {
+		return new MidPointDataSource(toPcvList(results));
+	}
+
+	private Collection<PrismContainerValue<? extends Containerable>> toPcvList(Collection<PrismObject<? extends ObjectType>> objects) {
+		ArrayList<PrismContainerValue<? extends Containerable>> pcvList = new ArrayList<>(objects.size());
+		for (PrismObject object : objects) {
+			pcvList.add(object.asObjectable().asPrismContainerValue());
+		}
+		return pcvList;
+	}
+
+	@Override
+	protected JRDataSource createDataSourceFromContainerValues(Collection<PrismContainerValue<? extends Containerable>> results) {
 		return new MidPointDataSource(results);
 	}
 	

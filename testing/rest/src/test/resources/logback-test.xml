@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -31,7 +31,8 @@
 	<logger name="com.evolveum.midpoint" level="DEBUG" />
 	<logger name="com.evolveum.midpoint.provisioning" level="TRACE" />
 	<logger name="com.evolveum.midpoint.model" level="DEBUG" />
-	<logger name="org.apache.cxf" level="TRACE" />
+	<logger name="com.evolveum.midpoint.model.impl.security.MidpointRestAuthenticationHandler" level="TRACE" />
+	<logger name="org.apache.cxf" level="FINE" />
 	<!--<logger name="com.evolveum.midpoint.provisioning" level="TRACE" />-->
 	<!--<logger name="com.evolveum.midpoint.common" level="TRACE" />-->
 	
@@ -44,6 +45,7 @@
 	<!-- Projector traces are just too much info. DEBUG is enough. Also, clockwork will dump the context at important points. -->
 	<logger name="com.evolveum.midpoint.model.lens.projector" level="DEBUG" />
 	
+	<logger name="com.evolveum.midpoint.model.impl.rest" level="TRACE" />
 	<logger name="com.evolveum.midpoint.testing.rest" level="TRACE" />
 	<logger name="com.evolveum.midpoint.test" level="TRACE" />
 	<logger name="PROFILING" level="TRACE" />

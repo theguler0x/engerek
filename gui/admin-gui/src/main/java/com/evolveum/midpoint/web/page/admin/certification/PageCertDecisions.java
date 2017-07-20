@@ -16,10 +16,10 @@
 
 package com.evolveum.midpoint.web.page.admin.certification;
 
-import com.evolveum.midpoint.common.SystemConfigurationHolder;
-import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.security.api.AuthorizationConstants;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.exception.SystemException;
@@ -27,24 +27,22 @@ import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.application.AuthorizationAction;
 import com.evolveum.midpoint.web.application.PageDescriptor;
+import com.evolveum.midpoint.web.component.DateLabelComponent;
 import com.evolveum.midpoint.web.component.data.BoxedTablePanel;
 import com.evolveum.midpoint.web.component.data.Table;
 import com.evolveum.midpoint.web.component.data.column.*;
 import com.evolveum.midpoint.web.component.data.column.DoubleButtonColumn.BUTTON_COLOR_CLASS;
 import com.evolveum.midpoint.web.component.menu.cog.InlineMenuItem;
-import com.evolveum.midpoint.web.page.admin.certification.dto.CertDecisionDto;
-import com.evolveum.midpoint.web.page.admin.certification.dto.CertDecisionDtoProvider;
+import com.evolveum.midpoint.web.page.admin.certification.dto.CertWorkItemDto;
+import com.evolveum.midpoint.web.page.admin.certification.dto.CertWorkItemDtoProvider;
+import com.evolveum.midpoint.web.page.admin.certification.dto.SearchingUtils;
 import com.evolveum.midpoint.web.page.admin.certification.helpers.AvailableResponses;
 import com.evolveum.midpoint.web.page.admin.configuration.component.HeaderMenuAction;
 import com.evolveum.midpoint.web.session.UserProfileStorage;
 import com.evolveum.midpoint.web.util.OnePageParameterEncoder;
 import com.evolveum.midpoint.web.util.TooltipBehavior;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
-import com.evolveum.midpoint.web.util.WebModelUtils;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCaseType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationConfigurationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationDecisionType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.Component;
@@ -73,6 +71,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
+import static com.evolveum.midpoint.web.page.admin.certification.CertDecisionHelper.WhichObject.OBJECT;
+import static com.evolveum.midpoint.web.page.admin.certification.CertDecisionHelper.WhichObject.TARGET;
 import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.*;
 
 /**
@@ -82,12 +82,14 @@ import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertifi
         action = {
                 @AuthorizationAction(actionUri = PageAdminCertification.AUTH_CERTIFICATION_ALL,
                         label = PageAdminCertification.AUTH_CERTIFICATION_ALL_LABEL,
-                        description = PageAdminCertification.AUTH_CERTIFICATION_ALL_DESCRIPTION)})
+                        description = PageAdminCertification.AUTH_CERTIFICATION_ALL_DESCRIPTION),
+                @AuthorizationAction(actionUri = PageAdminCertification.AUTH_CERTIFICATION_DECISIONS,
+                        label = PageAdminCertification.AUTH_CERTIFICATION_DECISIONS_LABEL,
+                        description = PageAdminCertification.AUTH_CERTIFICATION_DECISIONS_DESCRIPTION)})
 
 public class PageCertDecisions extends PageAdminCertification {
 
-    private static final Trace LOGGER = TraceManager
-            .getTrace(PageCertDecisions.class);
+    private static final Trace LOGGER = TraceManager.getTrace(PageCertDecisions.class);
 
     private static final String DOT_CLASS = PageCertDecisions.class.getName() + ".";
     private static final String OPERATION_RECORD_ACTION = DOT_CLASS + "recordAction";
@@ -109,23 +111,21 @@ public class PageCertDecisions extends PageAdminCertification {
     }
 
     //region Data
-    private CertDecisionDtoProvider createProvider() {
-        CertDecisionDtoProvider provider = new CertDecisionDtoProvider(PageCertDecisions.this);
+    private CertWorkItemDtoProvider createProvider() {
+        CertWorkItemDtoProvider provider = new CertWorkItemDtoProvider(PageCertDecisions.this);
         provider.setQuery(createCaseQuery());
         provider.setCampaignQuery(createCampaignQuery());
         provider.setReviewerOid(getCurrentUserOid());
-        provider.setSort(AccessCertificationCaseType.F_REVIEW_DEADLINE.getLocalPart(), SortOrder.ASCENDING);        // default sorting
+        provider.setSort(SearchingUtils.CURRENT_REVIEW_DEADLINE, SortOrder.ASCENDING);        // default sorting
         return provider;
     }
 
     private ObjectQuery createCaseQuery() {
-        ObjectQuery query = new ObjectQuery();
-        return query;
+		return new ObjectQuery();
     }
 
     private ObjectQuery createCampaignQuery() {
-        ObjectQuery query = new ObjectQuery();
-        return query;
+		return new ObjectQuery();
     }
 
     private String getCurrentUserOid() {
@@ -133,19 +133,18 @@ public class PageCertDecisions extends PageAdminCertification {
             return getSecurityEnforcer().getPrincipal().getOid();
         } catch (SecurityViolationException e) {
             // TODO handle more cleanly
-            throw new SystemException("Couldn't get currently logged user OID",
-                    e);
-        }
-    }
+            throw new SystemException("Couldn't get currently logged user OID", e);
+		}
+	}
     //endregion
 
     //region Layout
     private void initLayout() {
         Form mainForm = new Form(ID_MAIN_FORM);
         add(mainForm);
-        CertDecisionDtoProvider provider = createProvider();
+        CertWorkItemDtoProvider provider = createProvider();
         int itemsPerPage = (int) getItemsPerPage(UserProfileStorage.TableId.PAGE_CERT_DECISIONS_PANEL);
-        BoxedTablePanel table = new BoxedTablePanel(ID_DECISIONS_TABLE, provider, initColumns(),
+        BoxedTablePanel<CertWorkItemDto> table = new BoxedTablePanel<CertWorkItemDto>(ID_DECISIONS_TABLE, provider, initColumns(),
                 UserProfileStorage.TableId.PAGE_CERT_DECISIONS_PANEL, itemsPerPage) {
 
             @Override
@@ -172,18 +171,21 @@ public class PageCertDecisions extends PageAdminCertification {
 //		});
 //	}
 
-    private List<IColumn<CertDecisionDto, String>> initColumns() {
-        List<IColumn<CertDecisionDto, String>> columns = new ArrayList<>();
+    private List<IColumn<CertWorkItemDto, String>> initColumns() {
+        List<IColumn<CertWorkItemDto, String>> columns = new ArrayList<>();
 
-        IColumn column;
+        IColumn<CertWorkItemDto, String> column;
 
         column = new CheckBoxHeaderColumn<>();
         columns.add(column);
 
-        column = helper.createObjectNameColumn(this, "PageCertDecisions.table.objectName");
+		column = helper.createTypeColumn(OBJECT, this);
+		columns.add(column);
+
+		column = helper.createObjectNameColumn(this, "PageCertDecisions.table.objectName");
         columns.add(column);
 
-        column = helper.createTargetTypeColumn(this);
+        column = helper.createTypeColumn(TARGET, this);
         columns.add(column);
 
         column = helper.createTargetNameColumn(this, "PageCertDecisions.table.targetName");
@@ -192,37 +194,57 @@ public class PageCertDecisions extends PageAdminCertification {
         column = helper.createDetailedInfoColumn(this);
         columns.add(column);
 
-        column = new LinkColumn<CertDecisionDto>(
-                createStringResource("PageCertDecisions.table.campaignName"),
-                AccessCertificationCaseType.F_CAMPAIGN_REF.getLocalPart(), CertDecisionDto.F_CAMPAIGN_NAME) {
-            @Override
-            public void populateItem(Item<ICellPopulator<CertDecisionDto>> item, String componentId, IModel<CertDecisionDto> rowModel) {
-                super.populateItem(item, componentId, rowModel);
-                AccessCertificationCampaignType campaign = rowModel.getObject().getCampaign();
-                if (campaign != null && campaign.getDescription() != null) {
-                    item.add(AttributeModifier.replace("title", campaign.getDescription()));
-                    item.add(new TooltipBehavior());
-                }
-            }
-
-            @Override
-            public void onClick(AjaxRequestTarget target, IModel<CertDecisionDto> rowModel) {
-                CertDecisionDto dto = rowModel.getObject();
-                PageParameters parameters = new PageParameters();
-                parameters.add(OnePageParameterEncoder.PARAMETER, dto.getCampaignRef().getOid());
-                setResponsePage(new PageCertCampaign(parameters, PageCertDecisions.this));
-            }
-        };
+        column = helper.createConflictingNameColumn(this, "PageCertDecisions.table.conflictingTargetName");
         columns.add(column);
 
-        column = new AbstractColumn<CertDecisionDto, String>(
+        if (WebComponentUtil.isAuthorized(AuthorizationConstants.AUTZ_UI_CERTIFICATION_ALL_URL,
+				AuthorizationConstants.AUTZ_UI_CERTIFICATION_CAMPAIGN_URL)) {
+
+			column = new LinkColumn<CertWorkItemDto>(
+					createStringResource("PageCertDecisions.table.campaignName"),
+					SearchingUtils.CAMPAIGN_NAME, CertWorkItemDto.F_CAMPAIGN_NAME) {
+				@Override
+				public void populateItem(Item<ICellPopulator<CertWorkItemDto>> item, String componentId, IModel<CertWorkItemDto> rowModel) {
+					super.populateItem(item, componentId, rowModel);
+					AccessCertificationCampaignType campaign = rowModel.getObject().getCampaign();
+					if (campaign != null && campaign.getDescription() != null) {
+						item.add(AttributeModifier.replace("title", campaign.getDescription()));
+						item.add(new TooltipBehavior());
+					}
+				}
+
+				@Override
+				public void onClick(AjaxRequestTarget target, IModel<CertWorkItemDto> rowModel) {
+					CertWorkItemDto dto = rowModel.getObject();
+					PageParameters parameters = new PageParameters();
+					parameters.add(OnePageParameterEncoder.PARAMETER, dto.getCampaignRef().getOid());
+					navigateToNext(PageCertCampaign.class, parameters);
+				}
+			};
+		} else {
+			column = new AbstractColumn<CertWorkItemDto, String>(createStringResource("PageCertDecisions.table.campaignName"), SearchingUtils.CAMPAIGN_NAME) {
+				@Override
+				public void populateItem(Item<ICellPopulator<CertWorkItemDto>> item, String componentId,
+						final IModel<CertWorkItemDto> rowModel) {
+					item.add(new Label(componentId, new AbstractReadOnlyModel<Object>() {
+						@Override
+						public Object getObject() {
+							return rowModel.getObject().getCampaignName();
+						}
+					}));
+				}
+			};
+		}
+        columns.add(column);
+
+        column = new AbstractColumn<CertWorkItemDto, String>(
                 createStringResource("PageCertDecisions.table.campaignStage")) {
             @Override
-            public void populateItem(Item<ICellPopulator<CertDecisionDto>> item, String componentId, final IModel<CertDecisionDto> rowModel) {
+            public void populateItem(Item<ICellPopulator<CertWorkItemDto>> item, String componentId, final IModel<CertWorkItemDto> rowModel) {
                 item.add(new Label(componentId, new AbstractReadOnlyModel<String>() {
                     @Override
                     public String getObject() {
-                        CertDecisionDto dto = rowModel.getObject();
+                        CertWorkItemDto dto = rowModel.getObject();
                         return dto.getCampaignStageNumber() + "/" + dto.getCampaignStageCount();
                     }
                 }));
@@ -235,31 +257,51 @@ public class PageCertDecisions extends PageAdminCertification {
         };
         columns.add(column);
 
-        column = new PropertyColumn<CertDecisionDto, String>(
-                createStringResource("PageCertDecisions.table.requested"),
-                AccessCertificationCaseType.F_REVIEW_REQUESTED_TIMESTAMP.getLocalPart(),
-                CertDecisionDto.F_REVIEW_REQUESTED) {
+        column = new AbstractColumn<CertWorkItemDto, String>(
+                createStringResource("PageCertDecisions.table.escalation")) {
             @Override
-            public void populateItem(Item<ICellPopulator<CertDecisionDto>> item, String componentId, IModel<CertDecisionDto> rowModel) {
-                super.populateItem(item, componentId, rowModel);
-                CertDecisionDto dto = rowModel.getObject();
-                Date started = dto.getStageStarted();
-                if (started != null) {
-                    item.add(AttributeModifier.replace("title", WebMiscUtil.formatDate(started)));
+            public void populateItem(Item<ICellPopulator<CertWorkItemDto>> item, String componentId, final IModel<CertWorkItemDto> rowModel) {
+                item.add(new Label(componentId, new AbstractReadOnlyModel<String>() {
+                    @Override
+                    public String getObject() {
+                        CertWorkItemDto dto = rowModel.getObject();
+                        Integer n = dto.getEscalationLevelNumber();
+                        return n != null ? String.valueOf(n) : null;
+                    }
+                }));
+                String info = rowModel.getObject().getEscalationLevelInfo();
+                if (info != null) {
+                    item.add(AttributeModifier.replace("title", info));
                     item.add(new TooltipBehavior());
                 }
             }
         };
         columns.add(column);
 
-        column = new PropertyColumn<CertDecisionDto, String>(createStringResource("PageCertDecisions.table.deadline"),
-                AccessCertificationCaseType.F_REVIEW_DEADLINE.getLocalPart(), CertDecisionDto.F_DEADLINE_AS_STRING) {
+        column = new PropertyColumn<CertWorkItemDto, String>(
+                createStringResource("PageCertDecisions.table.requested"),
+                SearchingUtils.CURRENT_REVIEW_REQUESTED_TIMESTAMP, CertWorkItemDto.F_REVIEW_REQUESTED) {
             @Override
-            public void populateItem(Item<ICellPopulator<CertDecisionDto>> item, String componentId, final IModel<CertDecisionDto> rowModel) {
+            public void populateItem(Item<ICellPopulator<CertWorkItemDto>> item, String componentId, IModel<CertWorkItemDto> rowModel) {
                 super.populateItem(item, componentId, rowModel);
-                XMLGregorianCalendar deadline = rowModel.getObject().getCertCase().getReviewDeadline();
+                CertWorkItemDto dto = rowModel.getObject();
+                Date started = dto.getStageStarted();
+                if (started != null) {
+                    item.add(AttributeModifier.replace("title", WebComponentUtil.getLocalizedDate(started, DateLabelComponent.LONG_MEDIUM_STYLE)));
+                    item.add(new TooltipBehavior());
+                }
+            }
+        };
+        columns.add(column);
+
+        column = new PropertyColumn<CertWorkItemDto, String>(createStringResource("PageCertDecisions.table.deadline"),
+                SearchingUtils.CURRENT_REVIEW_DEADLINE, CertWorkItemDto.F_DEADLINE_AS_STRING) {
+            @Override
+            public void populateItem(Item<ICellPopulator<CertWorkItemDto>> item, String componentId, final IModel<CertWorkItemDto> rowModel) {
+                super.populateItem(item, componentId, rowModel);
+                XMLGregorianCalendar deadline = rowModel.getObject().getCertCase().getCurrentStageDeadline();
                 if (deadline != null) {
-                    item.add(AttributeModifier.replace("title", WebMiscUtil.formatDate(deadline)));
+                    item.add(AttributeModifier.replace("title", WebComponentUtil.formatDate(deadline)));
                     item.add(new TooltipBehavior());
                 }
             }
@@ -269,7 +311,7 @@ public class PageCertDecisions extends PageAdminCertification {
         final AvailableResponses availableResponses = new AvailableResponses(getPage());
         final int responses = availableResponses.getResponseKeys().size();
 
-        column = new MultiButtonColumn<CertDecisionDto>(new Model(), responses+1) {
+        column = new MultiButtonColumn<CertWorkItemDto>(new Model(), responses+1) {
 
             @Override
             public String getCaption(int id) {
@@ -277,7 +319,7 @@ public class PageCertDecisions extends PageAdminCertification {
             }
 
             @Override
-            public boolean isButtonEnabled(int id, IModel<CertDecisionDto> model) {
+            public boolean isButtonEnabled(int id, IModel<CertWorkItemDto> model) {
                 if (id < responses) {
                     return !decisionEquals(model, availableResponses.getResponseValues().get(id));
                 } else {
@@ -286,7 +328,7 @@ public class PageCertDecisions extends PageAdminCertification {
             }
 
             @Override
-            public boolean isButtonVisible(int id, IModel<CertDecisionDto> model) {
+            public boolean isButtonVisible(int id, IModel<CertWorkItemDto> model) {
                 if (id < responses) {
                     return true;
                 } else {
@@ -305,7 +347,7 @@ public class PageCertDecisions extends PageAdminCertification {
 
             @Override
             public void clickPerformed(int id, AjaxRequestTarget target,
-                                       IModel<CertDecisionDto> model) {
+                                       IModel<CertWorkItemDto> model) {
                 if (id < responses) {      // should be always the case
                     recordActionPerformed(target, model.getObject(), availableResponses.getResponseValues().get(id));
                 }
@@ -314,13 +356,13 @@ public class PageCertDecisions extends PageAdminCertification {
         };
         columns.add(column);
 
-        column = new DirectlyEditablePropertyColumn(
+        column = new DirectlyEditablePropertyColumn<CertWorkItemDto>(
                 createStringResource("PageCertDecisions.table.comment"),
-                CertDecisionDto.F_COMMENT) {
+                CertWorkItemDto.F_COMMENT) {
             @Override
             public void onBlur(AjaxRequestTarget target, IModel model) {
                 // TODO determine somehow if the model.comment was really changed
-                recordActionPerformed(target, (CertDecisionDto) model.getObject(), null);
+                recordActionPerformed(target, (CertWorkItemDto) model.getObject(), null);
             }
         };
         columns.add(column);
@@ -344,9 +386,6 @@ public class PageCertDecisions extends PageAdminCertification {
         if (availableResponses.isAvailable(NOT_DECIDED)) {
             items.add(createMenu("PageCertDecisions.menu.notDecidedSelected", NOT_DECIDED));
         }
-        if (availableResponses.isAvailable(DELEGATE)) {
-            items.add(createMenu("PageCertDecisions.menu.delegateSelected", DELEGATE));
-        }
         if (availableResponses.isAvailable(NO_RESPONSE)) {
             items.add(createMenu("PageCertDecisions.menu.noResponseSelected", NO_RESPONSE));
         } */
@@ -363,7 +402,7 @@ public class PageCertDecisions extends PageAdminCertification {
                 });
     }
 
-    private String getDecisionButtonColor(IModel<CertDecisionDto> model, AccessCertificationResponseType response) {
+    private String getDecisionButtonColor(IModel<CertWorkItemDto> model, AccessCertificationResponseType response) {
         if (decisionEquals(model, response)) {
             return BUTTON_COLOR_CLASS.PRIMARY.toString();
         } else {
@@ -371,7 +410,7 @@ public class PageCertDecisions extends PageAdminCertification {
         }
     }
 
-    private boolean decisionEquals(IModel<CertDecisionDto> model, AccessCertificationResponseType response) {
+    private boolean decisionEquals(IModel<CertWorkItemDto> model, AccessCertificationResponseType response) {
         return model.getObject().getResponse() == response;
     }
 
@@ -383,27 +422,22 @@ public class PageCertDecisions extends PageAdminCertification {
     //region Actions
 
     private void recordActionOnSelected(AccessCertificationResponseType response, AjaxRequestTarget target) {
-        List<CertDecisionDto> certDecisionDtoList = WebMiscUtil.getSelectedData(getDecisionsTable());
-        if (certDecisionDtoList.isEmpty()) {
+        List<CertWorkItemDto> workItemDtoList = WebComponentUtil.getSelectedData(getDecisionsTable());
+        if (workItemDtoList.isEmpty()) {
             warn(getString("PageCertDecisions.message.noItemSelected"));
             target.add(getFeedbackPanel());
             return;
         }
 
-        PrismContext prismContext = getPrismContext();
-
         OperationResult result = new OperationResult(OPERATION_RECORD_ACTION_SELECTED);
         Task task = createSimpleTask(OPERATION_RECORD_ACTION_SELECTED);
-        for (CertDecisionDto certDecisionDto : certDecisionDtoList) {
+        for (CertWorkItemDto workItemDto : workItemDtoList) {
             OperationResult resultOne = result.createSubresult(OPERATION_RECORD_ACTION);
-            AccessCertificationDecisionType newDecision = new AccessCertificationDecisionType(prismContext);
-            newDecision.setResponse(response);
-            newDecision.setStageNumber(0);
-            newDecision.setComment(certDecisionDto.getComment());
             try {
-                getCertificationManager().recordDecision(
-                        certDecisionDto.getCampaignRef().getOid(),
-                        certDecisionDto.getCaseId(), newDecision, task, resultOne);
+                getCertificationService().recordDecision(
+                        workItemDto.getCampaignRef().getOid(),
+                        workItemDto.getCaseId(), workItemDto.getWorkItemId(),
+						response, workItemDto.getComment(), task, resultOne);
             } catch (Exception ex) {
                 resultOne.recordFatalError(ex);
             } finally {
@@ -419,24 +453,19 @@ public class PageCertDecisions extends PageAdminCertification {
         target.add((Component) getDecisionsTable());
     }
 
-    // if response is null this means keep the current one in decisionDto
-    private void recordActionPerformed(AjaxRequestTarget target,
-                                       CertDecisionDto decisionDto, AccessCertificationResponseType response) {
-        PrismContext prismContext = getPrismContext();
-        AccessCertificationDecisionType newDecision = new AccessCertificationDecisionType(prismContext);
-        if (response != null) {
-            newDecision.setResponse(response);
-        } else {
-            newDecision.setResponse(decisionDto.getResponse());
-        }
-        newDecision.setStageNumber(0);
-        newDecision.setComment(decisionDto.getComment());
+    // if response is null this means keep the current one in workItemDto
+    private void recordActionPerformed(AjaxRequestTarget target, CertWorkItemDto workItemDto, AccessCertificationResponseType response) {
         OperationResult result = new OperationResult(OPERATION_RECORD_ACTION);
         try {
             Task task = createSimpleTask(OPERATION_RECORD_ACTION);
-            getCertificationManager().recordDecision(
-                    decisionDto.getCampaignRef().getOid(),
-                    decisionDto.getCaseId(), newDecision, task, result);
+            if (response == null) {
+                response = workItemDto.getResponse();
+            }
+            // TODO work item ID
+            getCertificationService().recordDecision(
+                    workItemDto.getCampaignRef().getOid(),
+                    workItemDto.getCaseId(), workItemDto.getWorkItemId(),
+                    response, workItemDto.getComment(), task, result);
         } catch (Exception ex) {
             result.recordFatalError(ex);
         } finally {
@@ -446,8 +475,8 @@ public class PageCertDecisions extends PageAdminCertification {
         if (!result.isSuccess()) {
             showResult(result);
         }
-        target.add(getFeedbackPanel());
-        target.add((Component) getDecisionsTable());
+        resetCertWorkItemCountModel();
+        target.add(this);
     }
 
     private void searchFilterPerformed(AjaxRequestTarget target) {
@@ -455,7 +484,7 @@ public class PageCertDecisions extends PageAdminCertification {
 
         Table panel = getDecisionsTable();
         DataTable table = panel.getDataTable();
-        CertDecisionDtoProvider provider = (CertDecisionDtoProvider) table.getDataProvider();
+        CertWorkItemDtoProvider provider = (CertWorkItemDtoProvider) table.getDataProvider();
         provider.setQuery(query);
         provider.setNotDecidedOnly(Boolean.TRUE.equals(showNotDecidedOnlyModel.getObject()));
         table.setCurrentPage(0);
@@ -501,7 +530,7 @@ public class PageCertDecisions extends PageAdminCertification {
             add(searchForm);
             searchForm.setOutputMarkupId(true);
 
-            final IModel<Boolean> model = (IModel) getDefaultModel();
+            final IModel<Boolean> model = (IModel<Boolean>) getDefaultModel();
 
             CheckBox showNotDecidedOnlyBox = new CheckBox(ID_SHOW_NOT_DECIDED_ONLY, model);
             showNotDecidedOnlyBox.add(createFilterAjaxBehaviour());
@@ -509,7 +538,7 @@ public class PageCertDecisions extends PageAdminCertification {
         }
 
         private AjaxFormComponentUpdatingBehavior createFilterAjaxBehaviour() {
-            return new AjaxFormComponentUpdatingBehavior("onchange") {
+            return new AjaxFormComponentUpdatingBehavior("change") {
 
                 @Override
                 protected void onUpdate(AjaxRequestTarget target) {

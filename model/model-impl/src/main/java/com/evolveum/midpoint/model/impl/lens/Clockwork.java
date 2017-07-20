@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,41 +20,32 @@ import com.evolveum.midpoint.audit.api.AuditEventStage;
 import com.evolveum.midpoint.audit.api.AuditEventType;
 import com.evolveum.midpoint.audit.api.AuditService;
 import com.evolveum.midpoint.common.Clock;
-import com.evolveum.midpoint.common.InternalsConfig;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.model.api.ModelAuthorizationAction;
 import com.evolveum.midpoint.model.api.ModelExecuteOptions;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
-import com.evolveum.midpoint.model.api.context.EvaluatedAssignment;
 import com.evolveum.midpoint.model.api.context.ModelState;
 import com.evolveum.midpoint.model.api.hooks.ChangeHook;
 import com.evolveum.midpoint.model.api.hooks.HookOperationMode;
 import com.evolveum.midpoint.model.api.hooks.HookRegistry;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
+import com.evolveum.midpoint.model.common.SystemObjectCache;
 import com.evolveum.midpoint.model.common.expression.evaluator.caching.AssociationSearchExpressionEvaluatorCache;
 import com.evolveum.midpoint.model.common.expression.script.ScriptExpression;
 import com.evolveum.midpoint.model.common.expression.script.ScriptExpressionFactory;
+import com.evolveum.midpoint.model.impl.ModelObjectResolver;
 import com.evolveum.midpoint.model.impl.controller.ModelUtils;
 import com.evolveum.midpoint.model.impl.lens.projector.ContextLoader;
 import com.evolveum.midpoint.model.impl.lens.projector.FocusConstraintsChecker;
 import com.evolveum.midpoint.model.impl.lens.projector.Projector;
 import com.evolveum.midpoint.model.impl.sync.RecomputeTaskHandler;
-import com.evolveum.midpoint.prism.Containerable;
-import com.evolveum.midpoint.prism.Item;
-import com.evolveum.midpoint.prism.PrismContainer;
-import com.evolveum.midpoint.prism.PrismContainerDefinition;
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismProperty;
-import com.evolveum.midpoint.prism.PrismPropertyDefinition;
-import com.evolveum.midpoint.prism.PrismReferenceValue;
-import com.evolveum.midpoint.prism.delta.ContainerDelta;
-import com.evolveum.midpoint.prism.delta.DeltaSetTriple;
-import com.evolveum.midpoint.prism.delta.ItemDelta;
-import com.evolveum.midpoint.prism.delta.ObjectDelta;
-import com.evolveum.midpoint.prism.parser.QueryConvertor;
+import com.evolveum.midpoint.model.impl.util.Utils;
+import com.evolveum.midpoint.prism.*;
+import com.evolveum.midpoint.prism.delta.*;
+import com.evolveum.midpoint.prism.delta.builder.DeltaBuilder;
+import com.evolveum.midpoint.prism.marshaller.QueryConvertor;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.query.ObjectFilter;
-import com.evolveum.midpoint.prism.query.RefFilter;
+import com.evolveum.midpoint.prism.query.builder.QueryBuilder;
+import com.evolveum.midpoint.prism.util.CloneUtil;
 import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
 import com.evolveum.midpoint.provisioning.api.ChangeNotificationDispatcher;
 import com.evolveum.midpoint.provisioning.api.ProvisioningService;
@@ -65,8 +56,10 @@ import com.evolveum.midpoint.schema.ObjectDeltaOperation;
 import com.evolveum.midpoint.schema.constants.ExpressionConstants;
 import com.evolveum.midpoint.schema.constants.ObjectTypes;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.internals.InternalsConfig;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.result.OperationResultStatus;
+import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.schema.util.SystemConfigurationTypeUtil;
 import com.evolveum.midpoint.security.api.ObjectSecurityConstraints;
 import com.evolveum.midpoint.security.api.OwnerResolver;
@@ -77,35 +70,27 @@ import com.evolveum.midpoint.task.api.TaskCategory;
 import com.evolveum.midpoint.task.api.TaskExecutionStatus;
 import com.evolveum.midpoint.task.api.TaskManager;
 import com.evolveum.midpoint.util.DebugUtil;
+import com.evolveum.midpoint.util.Holder;
 import com.evolveum.midpoint.util.exception.AuthorizationException;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
 import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
+import com.evolveum.midpoint.util.exception.PolicyViolationException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.exception.SystemException;
+import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationDecisionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationPhaseType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.CredentialsType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.HookListType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.HookType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ModelHooksType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ScriptExpressionEvaluatorType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import com.evolveum.prism.xml.ns._public.query_3.QueryType;
 import com.evolveum.prism.xml.ns._public.query_3.SearchFilterType;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.Validate;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -113,10 +98,7 @@ import org.springframework.stereotype.Component;
 import javax.xml.datatype.XMLGregorianCalendar;
 import javax.xml.namespace.QName;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 
 /**
@@ -126,36 +108,42 @@ import java.util.Map.Entry;
 @Component
 public class Clockwork {
 	
-	public static final int MAX_REWIND_ATTEMPTS = 2;
-	
+	private static final int DEFAULT_NUMBER_OF_RESULTS_TO_KEEP = 5;
+
 	private static final Trace LOGGER = TraceManager.getTrace(Clockwork.class);
 	
-	@Autowired(required = true)
+	@Autowired(required=true)
 	private Projector projector;
 	
 	// This is ugly
 	// TODO: cleanup
-	@Autowired(required = true)
+	@Autowired
 	private ContextLoader contextLoader;
 	
-	@Autowired(required = true)
+	@Autowired(required=true)
 	private ChangeExecutor changeExecutor;
 
     @Autowired(required = false)
     private HookRegistry hookRegistry;
     
-    @Autowired(required = true)
+    @Autowired
 	private AuditService auditService;
     
-    @Autowired(required = true)
+    @Autowired
     private SecurityEnforcer securityEnforcer;
     
-    @Autowired(required = true)
+    @Autowired
     private Clock clock;
     
-    @Autowired(required = true)
+    @Autowired
     @Qualifier("cacheRepositoryService")
     private transient RepositoryService repositoryService;
+    
+    @Autowired
+	private ModelObjectResolver objectResolver;
+    
+    @Autowired
+	private SystemObjectCache systemObjectCache;
 
 	@Autowired
 	private transient ProvisioningService provisioningService;
@@ -163,14 +151,20 @@ public class Clockwork {
 	@Autowired
 	private transient ChangeNotificationDispatcher changeNotificationDispatcher;
 
-    @Autowired(required = true)
+    @Autowired
     private ScriptExpressionFactory scriptExpressionFactory;
     
-    @Autowired(required = true)
+    @Autowired(required=true)
+    private PersonaProcessor personaProcessor;
+    
+    @Autowired
     private PrismContext prismContext;
 
     @Autowired
     private TaskManager taskManager;
+    
+    @Autowired
+    private OperationalDataManager metadataManager;
 
     private LensDebugListener debugListener;
 	
@@ -246,8 +240,8 @@ public class Clockwork {
 	}
 
 	private <F extends ObjectType> int getMaxClicks(LensContext<F> context, OperationResult result) throws SchemaException, ObjectNotFoundException {
-		PrismObject<SystemConfigurationType> sysconfigObject = LensUtil.getSystemConfiguration(context, repositoryService, result);
-		Integer maxClicks = SystemConfigurationTypeUtil.getMaxModelClicks(sysconfigObject);
+		PrismObject<SystemConfigurationType> systemConfiguration = systemObjectCache.getSystemConfiguration(result);
+		Integer maxClicks = SystemConfigurationTypeUtil.getMaxModelClicks(systemConfiguration);
 		if (maxClicks == null) {
 			return DEFAULT_MAX_CLICKS;
 		} else {
@@ -266,18 +260,20 @@ public class Clockwork {
 		
 		try {
 			
+			XMLGregorianCalendar now = clock.currentTimeXMLGregorianCalendar();
+			
 			// We need to determine focus before auditing. Otherwise we will not know user
 			// for the accounts (unless there is a specific delta for it).
 			// This is ugly, but it is the easiest way now (TODO: cleanup).
 			contextLoader.determineFocusContext((LensContext<? extends FocusType>) context, result);
-			
+
 			ModelState state = context.getState();
 			if (state == ModelState.INITIAL) {
 				if (debugListener != null) {
 					debugListener.beforeSync(context);
 				}
-				XMLGregorianCalendar requestTimestamp = clock.currentTimeXMLGregorianCalendar();
-				context.getStats().setRequestTimestamp(requestTimestamp);
+				metadataManager.applyRequestMetadata(context, now, task, result);
+				context.getStats().setRequestTimestamp(now);
 				// We need to do this BEFORE projection. If we would do that after projection
 				// there will be secondary changes that are not part of the request.
 				audit(context, AuditEventStage.REQUEST, task, result);
@@ -289,6 +285,9 @@ public class Clockwork {
 				recompute = true;
 			} else if (context.getExecutionWave() > context.getProjectionWave()) {		// should not occur
 				LOGGER.warn("Execution wave is greater than projection wave -- forcing cleanup and recomputation");
+				recompute = true;
+			} else if (state == ModelState.PRIMARY && ModelExecuteOptions.getInitialPartialProcessing(context.getOptions()) != null) {
+				LOGGER.trace("Initial phase was run with initialPartialProcessing option -- forcing cleanup and recomputation");
 				recompute = true;
 			}
 
@@ -337,34 +336,13 @@ public class Clockwork {
 					}
 					return mode;
 			}		
-			
+			result.recomputeStatus();
+			result.cleanupResult();
 			return invokeHooks(context, task, result);
 			
-		} catch (CommunicationException e) {
-			processClockworkException(context, e, task, result);
-			throw e;
-		} catch (ConfigurationException e) {
-			processClockworkException(context, e, task, result);
-			throw e;
-		} catch (ExpressionEvaluationException e) {
-			processClockworkException(context, e, task, result);
-			throw e;
-		} catch (ObjectAlreadyExistsException e) {
-			processClockworkException(context, e, task, result);
-			throw e;
-		} catch (ObjectNotFoundException e) {
-			processClockworkException(context, e, task, result);
-			throw e;
-		} catch (PolicyViolationException e) {
-			processClockworkException(context, e, task, result);
-			throw e;
-		} catch (SchemaException e) {
-			processClockworkException(context, e, task, result);
-			throw e;
-		} catch (SecurityViolationException e) {
-			processClockworkException(context, e, task, result);
-			throw e;
-		} catch (RuntimeException e) {
+		} catch (CommunicationException | ConfigurationException | ExpressionEvaluationException | ObjectNotFoundException |
+				PolicyViolationException | SchemaException | SecurityViolationException | RuntimeException |
+				ObjectAlreadyExistsException e) {
 			processClockworkException(context, e, task, result);
 			throw e;
 		}
@@ -378,11 +356,11 @@ public class Clockwork {
      *  - BACKGROUND, if any hook reported switching to background; otherwise
      *  - FOREGROUND (if all hooks reported finishing on foreground) 
      */
-    private HookOperationMode invokeHooks(LensContext context, Task task, OperationResult result) throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException {
+    private HookOperationMode invokeHooks(LensContext context, Task task, OperationResult result) throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException, PolicyViolationException {
     	// TODO: following two parts should be merged together in later versions
     	
     	// Execute configured scripting hooks
-    	PrismObject<SystemConfigurationType> systemConfiguration = LensUtil.getSystemConfiguration(context, repositoryService, result);
+    	PrismObject<SystemConfigurationType> systemConfiguration = systemObjectCache.getSystemConfiguration(result);
     	// systemConfiguration may be null in some tests
     	if (systemConfiguration != null) {
 	    	ModelHooksType modelHooks = systemConfiguration.asObjectable().getModelHooks();
@@ -428,13 +406,13 @@ public class Clockwork {
 	    				try {
 							evaluateScriptingHook(context, hookType, scriptExpressionEvaluatorType, shortDesc, task, result);
 						} catch (ExpressionEvaluationException e) {
-							LOGGER.error("Evaluation of {} failed: {}", new Object[]{shortDesc, e.getMessage(), e});
+							LOGGER.error("Evaluation of {} failed: {}", shortDesc, e.getMessage(), e);
 							throw new ExpressionEvaluationException("Evaluation of "+shortDesc+" failed: "+e.getMessage(), e);
 						} catch (ObjectNotFoundException e) {
-							LOGGER.error("Evaluation of {} failed: {}", new Object[]{shortDesc, e.getMessage(), e});
+							LOGGER.error("Evaluation of {} failed: {}", shortDesc, e.getMessage(), e);
 							throw new ObjectNotFoundException("Evaluation of "+shortDesc+" failed: "+e.getMessage(), e);
 						} catch (SchemaException e) {
-							LOGGER.error("Evaluation of {} failed: {}", new Object[]{shortDesc, e.getMessage(), e});
+							LOGGER.error("Evaluation of {} failed: {}", shortDesc, e.getMessage(), e);
 							throw new SchemaException("Evaluation of "+shortDesc+" failed: "+e.getMessage(), e);
 						}
 	    			}
@@ -479,7 +457,8 @@ public class Clockwork {
 		}
 		variables.addVariableDefinition(ExpressionConstants.VAR_FOCUS, focus);
 		
-		LensUtil.evaluateScript(scriptExpression, context, variables, shortDesc, task, result);
+		Utils.evaluateScript(scriptExpression, context, variables, false, shortDesc, task, result);
+		LOGGER.trace("Finished evaluation of {}", shortDesc);
 	}
 
     private <F extends ObjectType> void processInitialToPrimary(LensContext<F> context, Task task, OperationResult result) {
@@ -492,31 +471,45 @@ public class Clockwork {
 		context.setState(ModelState.SECONDARY);
 	}
 	
-	private <F extends ObjectType> void processSecondary(LensContext<F> context, Task task, OperationResult result) throws ObjectAlreadyExistsException, ObjectNotFoundException, SchemaException, CommunicationException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
+	private <F extends ObjectType> void processSecondary(LensContext<F> context, Task task, OperationResult result) throws ObjectAlreadyExistsException, ObjectNotFoundException, SchemaException, CommunicationException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException, PolicyViolationException {
 		if (context.getExecutionWave() > context.getMaxWave() + 1) {
 			context.setState(ModelState.FINAL);
 			return;
 		}
 		
-		boolean restartRequested = changeExecutor.executeChanges(context, task, result);
-
+		Holder<Boolean> restartRequestedHolder = new Holder<>();
+		
+		LensUtil.partialExecute("execution",
+				() -> { 
+					boolean restartRequested = changeExecutor.executeChanges(context, task, result);
+					restartRequestedHolder.setValue(restartRequested);
+				}, 
+				context.getPartialProcessingOptions()::getExecution);
+		
 		audit(context, AuditEventStage.EXECUTION, task, result);
 		
-		rotContext(context);
+		rotContextIfNeeded(context);
 
+		boolean restartRequested = false;
+		if (restartRequestedHolder.getValue() != null) {
+			restartRequested = restartRequestedHolder.getValue();
+		}
+		
 		if (!restartRequested) {
 			// TODO what if restart is requested indefinitely?
 			context.incrementExecutionWave();
+		} else {
+			// explicitly rot context?
 		}
 		
 		LensUtil.traceContext(LOGGER, "CLOCKWORK (" + context.getState() + ")", "change execution", false, context, false);
 	}
 	
 	/**
-	 * Force recompute for the next wave. Recompute only those contexts that were changed.
-	 * This is more inteligent than context.rot()
+	 * Force recompute for the next execution wave. Recompute only those contexts that were changed.
+	 * This is more intelligent than context.rot()
 	 */
-	private <F extends ObjectType> void rotContext(LensContext<F> context) throws SchemaException {
+	private <F extends ObjectType> void rotContextIfNeeded(LensContext<F> context) throws SchemaException {
 		boolean rot = false;
     	for (LensProjectionContext projectionContext: context.getProjectionContexts()) {
     		if (projectionContext.getWave() != context.getExecutionWave()) {
@@ -528,9 +521,9 @@ public class Clockwork {
 //				continue;
 //			}
     		ObjectDelta<ShadowType> execDelta = projectionContext.getExecutableDelta();
-    		if (isSignificant(execDelta)) {
+    		if (isShadowDeltaSignificant(execDelta)) {
     			
-    			LOGGER.trace("Context rot: projection {} rotten because of delta {}", projectionContext, execDelta);
+    			LOGGER.debug("Context rot: projection {} rotten because of executable delta {}", projectionContext, execDelta);
    				projectionContext.setFresh(false);
       			projectionContext.setFullShadow(false);
        			rot = true;
@@ -548,6 +541,7 @@ public class Clockwork {
     	if (focusContext != null) {
     		ObjectDelta<F> execDelta = focusContext.getWaveDelta(context.getExecutionWave());
     		if (execDelta != null && !execDelta.isEmpty()) {
+    			LOGGER.debug("Context rot: context rotten because of focus execution delta {}", execDelta);
     			rot = true;
     		}
     		if (rot) {
@@ -573,7 +567,7 @@ public class Clockwork {
 //		executionWaveDeltaList.clear();
 //	}
 	
-	private <P extends ObjectType> boolean isSignificant(ObjectDelta<P> delta) {
+	private <P extends ObjectType> boolean isShadowDeltaSignificant(ObjectDelta<P> delta) {
 		if (delta == null || delta.isEmpty()) {
 			return false;
 		}
@@ -587,13 +581,225 @@ public class Clockwork {
 		return false;
 	}
 	
-	private <F extends ObjectType> HookOperationMode processFinal(LensContext<F> context, Task task, OperationResult result) throws ObjectAlreadyExistsException, ObjectNotFoundException, SchemaException, CommunicationException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
+	private <F extends ObjectType> HookOperationMode processFinal(LensContext<F> context, Task task, OperationResult result) throws ObjectAlreadyExistsException, ObjectNotFoundException, SchemaException, CommunicationException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException, PolicyViolationException {
 		auditFinalExecution(context, task, result);
 		logFinalReadable(context, task, result);
+		recordOperationExecution(context, null, task, result);
+		
+		HookOperationMode opmode = personaProcessor.processPersonaChanges(context, task, result);
+		if (opmode == HookOperationMode.BACKGROUND) {
+			return opmode;
+		}
+		
         return triggerReconcileAffected(context, task, result);
 	}
 
-    private <F extends ObjectType> HookOperationMode triggerReconcileAffected(LensContext<F> context, Task task, OperationResult result) throws SchemaException {
+	private <F extends ObjectType> void recordOperationExecution(LensContext<F> context, Throwable clockworkException,
+			Task task, OperationResult result)
+			throws SchemaException, ObjectAlreadyExistsException, ObjectNotFoundException {
+		XMLGregorianCalendar now = clock.currentTimeXMLGregorianCalendar();
+		try {
+			LOGGER.trace("recordOperationExecution starting; task = {}, clockworkException = {}", task, clockworkException);
+			recordFocusOperationExecution(context, now, clockworkException, task, result);
+			for (LensProjectionContext projectionContext : context.getProjectionContexts()) {
+				recordProjectionOperationExecution(context, projectionContext, now, task, result);
+			}
+		} catch (Throwable t) {
+			LoggingUtils.logUnexpectedException(LOGGER, "Couldn't record operation execution. Model context:\n{}", t, context.debugDump());
+			// Let us ignore this for the moment. It should not have happened, sure. But it's not that crucial.
+			// Administrator will be able to learn about the problem from the log.
+		}
+	}
+
+	private <F extends ObjectType> void recordFocusOperationExecution(LensContext<F> context, XMLGregorianCalendar now,
+			Throwable clockworkException, Task task, OperationResult result)
+			throws SchemaException, ObjectAlreadyExistsException, ObjectNotFoundException {
+		LensFocusContext<F> focusContext = context.getFocusContext();
+		if (focusContext == null || focusContext.isDelete()) {
+			LOGGER.trace("focusContext is null or 'delete', not recording focus operation execution");
+			return;
+		}
+		PrismObject<F> objectNew = focusContext.getObjectNew();
+		Validate.notNull(objectNew, "No focus object even if the context is not of 'delete' type");
+		List<LensObjectDeltaOperation<F>> executedDeltas;
+		if (clockworkException == null) {
+			executedDeltas = focusContext.getExecutedDeltas();
+		} else {
+			executedDeltas = new ArrayList<>(focusContext.getExecutedDeltas());
+			LensObjectDeltaOperation<F> odo = new LensObjectDeltaOperation<>();
+			ObjectDelta<F> primaryDelta = focusContext.getPrimaryDelta();
+			if (primaryDelta != null) {
+				odo.setObjectDelta(primaryDelta);
+			} else {
+				@SuppressWarnings({"unchecked", "raw"})
+				Class<F> fClass = (Class<F>) objectNew.asObjectable().getClass();
+				ObjectDelta<F> fakeDelta = new ObjectDelta<>(fClass, ChangeType.MODIFY, prismContext);
+				odo.setObjectDelta(fakeDelta);
+			}
+			odo.setExecutionResult(result);		// we rely on the fact that 'result' already contains record of the exception
+			executedDeltas.add(odo);
+		}
+		LOGGER.trace("recordFocusOperationExecution: executedDeltas: {}", executedDeltas.size());
+		recordOperationExecution(objectNew, false, executedDeltas, now, context.getChannel(), task, result);
+	}
+
+	private <F extends ObjectType> void recordProjectionOperationExecution(LensContext<F> context,
+			LensProjectionContext projectionContext, XMLGregorianCalendar now, Task task, OperationResult result)
+			throws SchemaException, ObjectAlreadyExistsException, ObjectNotFoundException {
+		PrismObject<ShadowType> object = projectionContext.getObjectAny();
+		if (object == null) {
+			return;			// this can happen
+		}
+		recordOperationExecution(object, true, projectionContext.getExecutedDeltas(), now,
+				context.getChannel(), task, result);
+	}
+
+	private <F extends ObjectType> void recordOperationExecution(PrismObject<F> object, boolean deletedOk,
+			List<LensObjectDeltaOperation<F>> executedDeltas, XMLGregorianCalendar now,
+			String channel, Task task, OperationResult result)
+			throws ObjectAlreadyExistsException, ObjectNotFoundException, SchemaException {
+		OperationExecutionType operation = new OperationExecutionType(prismContext);
+		OperationResult summaryResult = new OperationResult("dummy");
+		String oid = object.getOid();
+		for (LensObjectDeltaOperation<F> deltaOperation : executedDeltas) {
+			operation.getOperation().add(createObjectDeltaOperation(deltaOperation));
+			if (deltaOperation.getExecutionResult() != null) {
+				summaryResult.addSubresult(deltaOperation.getExecutionResult());
+			}
+			if (oid == null && deltaOperation.getObjectDelta() != null) {
+				oid = deltaOperation.getObjectDelta().getOid();
+			}
+		}
+		if (oid == null) {        // e.g. if there is an exception in provisioning.addObject method
+			LOGGER.trace("recordOperationExecution: skipping because oid is null for object = {}", object);
+			return;
+		}
+		summaryResult.computeStatus();
+		OperationResultStatusType overallStatus = summaryResult.getStatus().createStatusType();
+		setOperationContext(operation, overallStatus, now, channel, task);
+		storeOperationExecution(object, oid, operation, deletedOk, result);
+	}
+
+	private <F extends ObjectType> void storeOperationExecution(@NotNull PrismObject<F> object, @NotNull String oid,
+			@NotNull OperationExecutionType executionToAdd, boolean deletedOk, OperationResult result)
+			throws SchemaException, ObjectAlreadyExistsException, ObjectNotFoundException {
+		Integer recordsToKeep;
+		Long deleteBefore;
+		boolean keepNoExecutions = false;
+		PrismObject<SystemConfigurationType> systemConfiguration = systemObjectCache.getSystemConfiguration(result);
+		if (systemConfiguration != null && systemConfiguration.asObjectable().getCleanupPolicy() != null
+				&& systemConfiguration.asObjectable().getCleanupPolicy().getObjectResults() != null) {
+			CleanupPolicyType policy = systemConfiguration.asObjectable().getCleanupPolicy().getObjectResults();
+			recordsToKeep = policy.getMaxRecords();
+			if (recordsToKeep != null && recordsToKeep == 0) {
+				LOGGER.trace("objectResults.recordsToKeep is 0, will skip storing operationExecutions");
+				keepNoExecutions = true;
+			}
+			if (policy.getMaxAge() != null) {
+				XMLGregorianCalendar limit = XmlTypeConverter.addDuration(
+						XmlTypeConverter.createXMLGregorianCalendar(new Date()), policy.getMaxAge().negate());
+				deleteBefore = XmlTypeConverter.toMillis(limit);
+			} else {
+				deleteBefore = null;
+			}
+		} else {
+			recordsToKeep = DEFAULT_NUMBER_OF_RESULTS_TO_KEEP;
+			deleteBefore = null;
+		}
+		List<OperationExecutionType> executionsToDelete = new ArrayList<>();
+		List<OperationExecutionType> executions = new ArrayList<>(object.asObjectable().getOperationExecution());
+		// delete all executions related to current task and all old ones
+		String taskOid = executionToAdd.getTaskRef() != null ? executionToAdd.getTaskRef().getOid() : null;
+		for (Iterator<OperationExecutionType> iterator = executions.iterator(); iterator.hasNext(); ) {
+			OperationExecutionType execution = iterator.next();
+			if (taskOid != null && execution.getTaskRef() != null && taskOid.equals(execution.getTaskRef().getOid())
+					|| deleteBefore != null && XmlTypeConverter.toMillis(execution.getTimestamp()) < deleteBefore) {
+				executionsToDelete.add(execution);
+				iterator.remove();
+			}
+		}
+		// delete all surplus executions
+		if (recordsToKeep != null && object.asObjectable().getOperationExecution().size() > recordsToKeep - 1) {
+			if (keepNoExecutions) {
+				executionsToDelete.addAll(executions);
+			} else {
+				executions.sort(Comparator.nullsFirst(Comparator.comparing(e -> XmlTypeConverter.toDate(e.getTimestamp()))));
+				executionsToDelete.addAll(executions.subList(0, executions.size() - (recordsToKeep - 1)));
+			}
+		}
+		// construct and execute the delta
+		Class<? extends ObjectType> objectClass = object.asObjectable().getClass();
+		List<ItemDelta<?, ?>> deltas = new ArrayList<>();
+		if (!keepNoExecutions) {
+			deltas.add(DeltaBuilder.deltaFor(objectClass, prismContext)
+					.item(ObjectType.F_OPERATION_EXECUTION)
+					.add(executionToAdd)
+					.asItemDelta());
+		}
+		if (!executionsToDelete.isEmpty()) {
+			deltas.add(DeltaBuilder.deltaFor(objectClass, prismContext)
+					.item(ObjectType.F_OPERATION_EXECUTION)
+					.delete(PrismContainerValue.toPcvList(CloneUtil.cloneCollectionMembers(executionsToDelete)))
+					.asItemDelta());
+		}
+		LOGGER.trace("Operation execution delta:\n{}", DebugUtil.debugDumpLazily(deltas));
+		try {
+			if (!deltas.isEmpty()) {
+				repositoryService.modifyObject(objectClass, oid, deltas, result);
+			}
+		} catch (ObjectNotFoundException e) {
+			if (!deletedOk) {
+				throw e;
+			} else {
+				LOGGER.trace("Object {} deleted but this was expected.", oid);
+				result.deleteLastSubresultIfError();
+			}
+		}
+	}
+
+	private void setOperationContext(OperationExecutionType operation,
+			OperationResultStatusType overallStatus, XMLGregorianCalendar now, String channel, Task task) {
+		if (task.getParentForLightweightAsynchronousTask() != null) {
+			task = task.getParentForLightweightAsynchronousTask();
+		}
+		if (task.isPersistent()) {
+			operation.setTaskRef(ObjectTypeUtil.createObjectRef(task.getTaskPrismObject()));
+		}
+		operation.setStatus(overallStatus);
+		operation.setInitiatorRef(ObjectTypeUtil.createObjectRef(task.getOwner()));		// TODO what if the real initiator is different? (e.g. when executing approved changes)
+		operation.setChannel(channel);
+		operation.setTimestamp(now);
+	}
+
+	private <F extends ObjectType> ObjectDeltaOperationType createObjectDeltaOperation(LensObjectDeltaOperation<F> deltaOperation) {
+		ObjectDeltaOperationType odo;
+		try {
+			odo = simplifyOperation(deltaOperation).toLensObjectDeltaOperationType().getObjectDeltaOperation();
+		} catch (SchemaException e) {
+			LoggingUtils.logUnexpectedException(LOGGER, "Couldn't create operation information", e);
+			odo = new ObjectDeltaOperationType();
+			OperationResult r = new OperationResult(Clockwork.class.getName() + ".createObjectDeltaOperation");
+			r.recordFatalError("Couldn't create operation information: " + e.getMessage(), e);
+			odo.setExecutionResult(r.createOperationResultType());
+		}
+		return odo;
+	}
+
+	private <F extends ObjectType> LensObjectDeltaOperation<F> simplifyOperation(ObjectDeltaOperation<F> operation) {
+		LensObjectDeltaOperation<F> rv = new LensObjectDeltaOperation<>();
+		rv.setObjectDelta(simplifyDelta(operation.getObjectDelta()));
+		rv.setExecutionResult(OperationResult.keepRootOnly(operation.getExecutionResult()));
+		rv.setObjectName(operation.getObjectName());
+		rv.setResourceName(operation.getResourceName());
+		rv.setResourceOid(operation.getResourceOid());
+		return rv;
+	}
+
+	private <F extends ObjectType> ObjectDelta<F> simplifyDelta(ObjectDelta<F> delta) {
+		return new ObjectDelta<>(delta.getObjectTypeClass(), delta.getChangeType(), prismContext);
+	}
+
+	private <F extends ObjectType> HookOperationMode triggerReconcileAffected(LensContext<F> context, Task task, OperationResult result) throws SchemaException {
         // check applicability
         if (!ModelExecuteOptions.isReconcileAffected(context.getOptions())) {
             return HookOperationMode.FOREGROUND;
@@ -625,8 +831,9 @@ public class Clockwork {
         PrismPropertyDefinition propertyDef = prismContext.getSchemaRegistry()
                 .findPropertyDefinitionByElementName(SchemaConstants.MODEL_EXTENSION_OBJECT_QUERY);
         PrismReferenceValue referenceValue = new PrismReferenceValue(context.getFocusContext().getOid(), RoleType.COMPLEX_TYPE);
-        ObjectFilter refFilter = RefFilter.createReferenceEqual(new ItemPath(UserType.F_ASSIGNMENT, AssignmentType.F_TARGET_REF),
-                UserType.class, prismContext, referenceValue);
+        ObjectFilter refFilter = QueryBuilder.queryFor(FocusType.class, prismContext)
+				.item(FocusType.F_ASSIGNMENT, AssignmentType.F_TARGET_REF).ref(referenceValue)
+				.buildFilter();
         SearchFilterType filterType = QueryConvertor.createSearchFilterType(refFilter, prismContext);
         QueryType queryType = new QueryType();
         queryType.setFilter(filterType);
@@ -641,6 +848,7 @@ public class Clockwork {
         reconTask.setHandlerUri(RecomputeTaskHandler.HANDLER_URI);
         reconTask.setCategory(TaskCategory.RECOMPUTATION);
         taskManager.switchToBackground(reconTask, result);
+		result.setBackgroundTaskOid(reconTask.getOid());
         result.recordStatus(OperationResultStatus.IN_PROGRESS, "Reconciliation task switched to background");
         return HookOperationMode.BACKGROUND;
     }
@@ -679,18 +887,20 @@ public class Clockwork {
 		auditEvent(context, AuditEventStage.EXECUTION, null, true, task, result);
 	}
 	
-	private <F extends ObjectType> void processClockworkException(LensContext<F> context, Exception e, Task task, OperationResult result) throws SchemaException {
+	private <F extends ObjectType> void processClockworkException(LensContext<F> context, Exception e, Task task, OperationResult result)
+			throws SchemaException, ObjectAlreadyExistsException, ObjectNotFoundException {
 		LOGGER.trace("Processing clockwork exception {}", e.toString());
 		result.recordFatalError(e);
 		auditEvent(context, AuditEventStage.EXECUTION, null, true, task, result);
+		recordOperationExecution(context, e, task, result);
 		reclaimSequences(context, task, result);
 	}
 
 	private <F extends ObjectType> void auditEvent(LensContext<F> context, AuditEventStage stage, 
 			XMLGregorianCalendar timestamp, boolean alwaysAudit, Task task, OperationResult result) throws SchemaException {
 		
-		PrismObject<? extends ObjectType> primaryObject = null;
-		ObjectDelta<? extends ObjectType> primaryDelta = null;
+		PrismObject<? extends ObjectType> primaryObject;
+		ObjectDelta<? extends ObjectType> primaryDelta;
 		if (context.getFocusContext() != null) {
 			primaryObject = context.getFocusContext().getObjectOld();
 			if (primaryObject == null) {
@@ -713,7 +923,7 @@ public class Clockwork {
 			primaryDelta = projection.getDelta();
 		}
 		
-		AuditEventType eventType = null;
+		AuditEventType eventType;
 		if (primaryDelta == null) {
 			eventType = AuditEventType.SYNCHRONIZATION;
 		} else if (primaryDelta.isAdd()) {
@@ -740,6 +950,9 @@ public class Clockwork {
 			Collection<ObjectDeltaOperation<? extends ObjectType>> clonedDeltas = ObjectDeltaOperation.cloneDeltaCollection(context.getPrimaryChanges());
 			checkNamesArePresent(clonedDeltas, primaryObject);
 			auditRecord.addDeltas(clonedDeltas);
+			if (auditRecord.getTarget() == null) {
+				auditRecord.setTarget(Utils.determineAuditTargetDeltaOps(clonedDeltas));
+			}
 		} else if (stage == AuditEventStage.EXECUTION) {
 			auditRecord.setOutcome(result.getComputeStatus());
 			Collection<ObjectDeltaOperation<? extends ObjectType>> unauditedExecutedDeltas = context.getUnauditedExecutedDeltas();
@@ -947,19 +1160,14 @@ public class Clockwork {
 				sb.toString());
 	}
 	
-	private <F extends ObjectType> void authorizeContextRequest(LensContext<F> context, Task task, OperationResult parentResult) throws SecurityViolationException, SchemaException {
+	private <F extends ObjectType> void authorizeContextRequest(LensContext<F> context, Task task, OperationResult parentResult) throws SecurityViolationException, SchemaException, ObjectNotFoundException {
 		OperationResult result = parentResult.createMinorSubresult(Clockwork.class.getName()+".authorizeRequest");
+		LOGGER.trace("Authorizing request");
 		try {
 			
 			final LensFocusContext<F> focusContext = context.getFocusContext();
-			OwnerResolver ownerResolver = null;
+			OwnerResolver ownerResolver = new LensOwnerResolver<>(context, objectResolver, task, result);
 			if (focusContext != null) {
-				ownerResolver = new OwnerResolver() {
-					@Override
-					public <F extends FocusType> PrismObject<F> resolveOwner(PrismObject<ShadowType> shadow) {
-						return (PrismObject<F>) focusContext.getObjectCurrent();
-					}
-				};
 				authorizeElementContext(context, focusContext, ownerResolver, true, task, result);
 			}
 			for (LensProjectionContext projectionContext: context.getProjectionContexts()) {
@@ -968,24 +1176,32 @@ public class Clockwork {
 			context.setRequestAuthorized(true);
 			result.recordSuccess();
 			
-		} catch (SecurityViolationException | SchemaException e) {
+			LOGGER.trace("Request authorized");
+			
+		} catch (Throwable e) {
 			result.recordFatalError(e);
 			throw e;
 		}
 	}
 	
 	private <F extends ObjectType, O extends ObjectType> ObjectSecurityConstraints authorizeElementContext(LensContext<F> context, LensElementContext<O> elementContext,
-			OwnerResolver ownerResolver, boolean isFocus, Task task, OperationResult result) throws SecurityViolationException, SchemaException {
+			OwnerResolver ownerResolver, boolean isFocus, Task task, OperationResult result) throws SecurityViolationException, SchemaException, ObjectNotFoundException {
 		ObjectDelta<O> primaryDelta = elementContext.getPrimaryDelta();
 		// If there is no delta then there is no request to authorize
 		if (primaryDelta != null) {
 			primaryDelta = primaryDelta.clone();
-			PrismObject<O> object = elementContext.getObjectNew();
-			if (primaryDelta.isDelete()) {
-				object = elementContext.getObjectCurrent();
+			PrismObject<O> object = elementContext.getObjectCurrent();
+			if (object == null) {
+				// This may happen when object is being added. 
+				// But also in cases such as assignment of account and modification of 
+				// the same account in one operation
+				object = elementContext.getObjectNew();
 			}
 			String operationUrl = ModelUtils.getOperationUrlFromDelta(primaryDelta);
 			ObjectSecurityConstraints securityConstraints = securityEnforcer.compileSecurityConstraints(object, ownerResolver);
+			if (securityConstraints == null) {
+				throw new AuthorizationException("Access denied");
+			}
 
 			if (isFocus) {
 				// Process assignments first. If the assignments are allowed then we
@@ -993,23 +1209,29 @@ public class Clockwork {
 				ContainerDelta<Containerable> assignmentDelta = primaryDelta.findContainerDelta(FocusType.F_ASSIGNMENT);
 				if (assignmentDelta != null) {
 					AuthorizationDecisionType assignmentItemDecision = securityConstraints.findItemDecision(new ItemPath(FocusType.F_ASSIGNMENT),
-							operationUrl, AuthorizationPhaseType.REQUEST);
+							operationUrl, getRequestAuthorizationPhase(context));
 					if (assignmentItemDecision == AuthorizationDecisionType.ALLOW) {
 						// Nothing to do, operation is allowed for all values
+						LOGGER.debug("Allow assignment/unassignment to {} becasue access to assignment container is explicitly allowed", object);
 					} else if (assignmentItemDecision == AuthorizationDecisionType.DENY) {
+						LOGGER.debug("Deny assignment/unassignment to {} becasue access to assignment container is explicitly denied", object);
 						throw new AuthorizationException("Access denied");
 					} else {
-						AuthorizationDecisionType actionDecision = securityConstraints.getActionDecision(operationUrl, AuthorizationPhaseType.REQUEST);
+						AuthorizationDecisionType actionDecision = securityConstraints.getActionDecision(operationUrl, getRequestAuthorizationPhase(context));
 						if (actionDecision == AuthorizationDecisionType.ALLOW) {
 							// Nothing to do, operation is allowed for all values
 						} else if (actionDecision == AuthorizationDecisionType.DENY) {
 							throw new AuthorizationException("Access denied");
 						} else {
 							// No explicit decision for assignment modification yet
-							// process each assignment individually
-							DeltaSetTriple<EvaluatedAssignmentImpl> evaluatedAssignmentTriple = context.getEvaluatedAssignmentTriple();
-							authorizeAssignmentRequest(ModelAuthorizationAction.ASSIGN.getUrl(), object, ownerResolver, evaluatedAssignmentTriple.getPlusSet(), result);
-							authorizeAssignmentRequest(ModelAuthorizationAction.UNASSIGN.getUrl(), object, ownerResolver, evaluatedAssignmentTriple.getMinusSet(), result);
+							// process each assignment individually							
+							authorizeAssignmentRequest(context, ModelAuthorizationAction.ASSIGN.getUrl(), 
+									object, ownerResolver, PlusMinusZero.PLUS, true, task, result);
+							
+							// We want to allow unassignment even if there are policies. Otherwise we would not be able to get
+							// rid of that assignment
+							authorizeAssignmentRequest(context, ModelAuthorizationAction.UNASSIGN.getUrl(), 
+									object, ownerResolver,PlusMinusZero.MINUS, false, task, result);
 						}
 					}
 					// assignments were authorized explicitly. Therefore we need to remove them from primary delta to avoid another
@@ -1033,7 +1255,7 @@ public class Clockwork {
 						for (Item<?,?> item: credentialsContainer.getValue().getItems()) {
 							ContainerDelta<?> cdelta = new ContainerDelta(item.getPath(), (PrismContainerDefinition)item.getDefinition(), prismContext);
 							cdelta.addValuesToAdd(((PrismContainer)item).getValue().clone());
-							AuthorizationDecisionType cdecision = evaluateCredentialDecision(securityConstraints, cdelta);
+							AuthorizationDecisionType cdecision = evaluateCredentialDecision(context, securityConstraints, cdelta);
 							LOGGER.trace("AUTZ: credential add {} decision: {}", item.getPath(), cdecision);
 							if (cdecision == AuthorizationDecisionType.ALLOW) {
 								// Remove it from primary delta, so it will not be evaluated later
@@ -1049,7 +1271,7 @@ public class Clockwork {
 					// modify
 					Collection<? extends ItemDelta<?, ?>> credentialChanges = primaryDelta.findItemDeltasSubPath(new ItemPath(UserType.F_CREDENTIALS));
 					for (ItemDelta credentialChange: credentialChanges) {
-						AuthorizationDecisionType cdecision = evaluateCredentialDecision(securityConstraints, credentialChange);
+						AuthorizationDecisionType cdecision = evaluateCredentialDecision(context, securityConstraints, credentialChange);
 						LOGGER.trace("AUTZ: credential delta {} decision: {}", credentialChange.getPath(), cdecision);
 						if (cdecision == AuthorizationDecisionType.ALLOW) {
 							// Remove it from primary delta, so it will not be evaluated later
@@ -1065,7 +1287,7 @@ public class Clockwork {
 
 			if (primaryDelta != null && !primaryDelta.isEmpty()) {
 				// TODO: optimize, avoid evaluating the constraints twice
-				securityEnforcer.authorize(operationUrl, AuthorizationPhaseType.REQUEST, object, primaryDelta, null, ownerResolver, result);
+				securityEnforcer.authorize(operationUrl, getRequestAuthorizationPhase(context) , object, primaryDelta, null, ownerResolver, result);
 			}
 			
 			return securityConstraints;
@@ -1074,19 +1296,79 @@ public class Clockwork {
 		}
 	}
 
-	private AuthorizationDecisionType evaluateCredentialDecision(ObjectSecurityConstraints securityConstraints, ItemDelta credentialChange) {
-		return securityConstraints.findItemDecision(credentialChange.getPath(),
-				ModelAuthorizationAction.CHANGE_CREDENTIALS.getUrl(), AuthorizationPhaseType.REQUEST);
+	private <F extends ObjectType> AuthorizationPhaseType getRequestAuthorizationPhase(LensContext<F> context) {
+		if (context.isExecutionPhaseOnly()) {
+			return AuthorizationPhaseType.EXECUTION;
+		} else {
+			return AuthorizationPhaseType.REQUEST;
+		}
 	}
 
-	private <F extends FocusType> void authorizeAssignmentRequest(String actionUrl, PrismObject object,
-			OwnerResolver ownerResolver, Collection<EvaluatedAssignmentImpl> evaluatedAssignments, OperationResult result) throws SecurityViolationException, SchemaException {
-		if (evaluatedAssignments == null) {
+	private <F extends ObjectType> AuthorizationDecisionType evaluateCredentialDecision(LensContext<F> context, ObjectSecurityConstraints securityConstraints, ItemDelta credentialChange) {
+		return securityConstraints.findItemDecision(credentialChange.getPath(),
+				ModelAuthorizationAction.CHANGE_CREDENTIALS.getUrl(), getRequestAuthorizationPhase(context));
+	}
+
+	private <F extends ObjectType,O extends ObjectType> void authorizeAssignmentRequest(LensContext<F> context, String assignActionUrl, PrismObject<O> object,
+			OwnerResolver ownerResolver, PlusMinusZero plusMinusZero, boolean prohibitPolicies, Task task, OperationResult result) throws SecurityViolationException, SchemaException, ObjectNotFoundException {
+		// This is *request* authorization. Therefore we care only about primary delta.
+		ObjectDelta<F> focusPrimaryDelta = context.getFocusContext().getPrimaryDelta();
+		if (focusPrimaryDelta == null) {
 			return;
 		}
-		for (EvaluatedAssignment<F> evaluatedAssignment: evaluatedAssignments) {
-			PrismObject target = evaluatedAssignment.getTarget();
-			securityEnforcer.authorize(actionUrl, AuthorizationPhaseType.REQUEST, object, null, target, ownerResolver, result);
+		ContainerDelta<AssignmentType> focusAssignmentDelta = focusPrimaryDelta.findContainerDelta(FocusType.F_ASSIGNMENT);
+		if (focusAssignmentDelta == null) {
+			return;
+		}
+		Collection<PrismContainerValue<AssignmentType>> changedAssignmentValues = focusAssignmentDelta.getValueChanges(plusMinusZero);
+		for (PrismContainerValue<AssignmentType> changedAssignmentValue: changedAssignmentValues) {
+			AssignmentType changedAssignment = changedAssignmentValue.getRealValue();
+			ObjectReferenceType targetRef = changedAssignment.getTargetRef();
+			if (targetRef == null || targetRef.getOid() == null) {
+				if (LOGGER.isDebugEnabled()) {
+					LOGGER.debug("{} of non-target assignment denied", 
+							assignActionUrl.substring(assignActionUrl.lastIndexOf('#') + 1));
+				}
+				securityEnforcer.failAuthorization("with assignment", getRequestAuthorizationPhase(context), object, null, null, result);
+			}
+			// We do not worry about performance here too much. The target was already evaluated. This will be retrieved from repo cache anyway.
+			PrismObject<ObjectType> target = objectResolver.resolve(targetRef.asReferenceValue(), "resolving assignment target", task, result);
+			
+			if (prohibitPolicies) {
+				if (changedAssignment.getPolicyRule() != null || !changedAssignment.getPolicyException().isEmpty() || !changedAssignment.getPolicySituation().isEmpty()) {
+					securityEnforcer.failAuthorization("with assignment because of policies in the assignment", getRequestAuthorizationPhase(context), object, null, target, result);
+				}
+			}
+			
+			ObjectDelta<O> assignmentObjectDelta = object.createModifyDelta();
+			ContainerDelta<AssignmentType> assignmentDelta = assignmentObjectDelta.createContainerModification(FocusType.F_ASSIGNMENT);
+			// We do not care if this is add or delete. All that matters for authorization is that it is in a delta.
+			assignmentDelta.addValuesToAdd(changedAssignment.asPrismContainerValue().clone());
+			if (securityEnforcer.isAuthorized(assignActionUrl, getRequestAuthorizationPhase(context), object, assignmentObjectDelta, target, ownerResolver)) {
+				if (LOGGER.isDebugEnabled()) {
+					LOGGER.debug("{} of target {} to {} allowed with {} authorization", 
+							assignActionUrl.substring(assignActionUrl.lastIndexOf('#') + 1),
+							target, object, assignActionUrl);
+				}
+				continue;
+			}
+			QName relation = targetRef.getRelation();
+			if (ObjectTypeUtil.isDelegationRelation(relation)) {
+				if (securityEnforcer.isAuthorized(ModelAuthorizationAction.DELEGATE.getUrl(), getRequestAuthorizationPhase(context), object, assignmentObjectDelta, target, ownerResolver)) {
+					if (LOGGER.isDebugEnabled()) {
+						LOGGER.debug("{} of target {} to {} allowed with {} authorization", 
+							assignActionUrl.substring(assignActionUrl.lastIndexOf('#') + 1),
+							target, object, ModelAuthorizationAction.DELEGATE.getUrl());
+					}
+					continue;
+				}
+			}
+			if (LOGGER.isDebugEnabled()) {
+				LOGGER.debug("{} of target {} to {} denied", 
+						assignActionUrl.substring(assignActionUrl.lastIndexOf('#')),
+						target, object);
+			}
+			securityEnforcer.failAuthorization("with assignment", getRequestAuthorizationPhase(context), object, null, target, result);
 		}
 	}
 
@@ -1105,7 +1387,5 @@ public class Clockwork {
 			}
 		}
 	}
-
-		
 
 }

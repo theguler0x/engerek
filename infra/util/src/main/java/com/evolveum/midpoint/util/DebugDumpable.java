@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +19,10 @@ package com.evolveum.midpoint.util;
  * @author Radovan Semancik
  *
  */
+@FunctionalInterface
 public interface DebugDumpable {
 	
-	public static final Object INDENT_STRING = "  ";
+	String INDENT_STRING = "  ";
 	
 	/**
 	 * Show the content of the object intended for diagnostics by system administrator. The out
@@ -33,8 +34,17 @@ public interface DebugDumpable {
 	 * 
 	 * @return content of the object intended for diagnostics by system administrator.
 	 */
-	public String debugDump();
+	default String debugDump() {
+		return debugDump(0);
+	}
 	
-	public String debugDump(int indent);
+	String debugDump(int indent);
 
+	default Object debugDumpLazily() {
+		return DebugUtil.debugDumpLazily(this);
+	}
+	
+	default Object debugDumpLazily(int index) {
+		return DebugUtil.debugDumpLazily(this, index);
+	}
 }

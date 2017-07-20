@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,36 +16,43 @@
 package com.evolveum.midpoint.model.impl.lens;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import com.evolveum.midpoint.prism.ConsistencyCheckScope;
 import com.evolveum.midpoint.prism.Objectable;
 import com.evolveum.midpoint.schema.DeltaConvertor;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
+import com.evolveum.midpoint.util.exception.PolicyViolationException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-import com.evolveum.midpoint.xml.ns._public.model.model_context_3.LensElementContextType;
-import com.evolveum.midpoint.xml.ns._public.model.model_context_3.LensObjectDeltaOperationType;
+import com.evolveum.prism.xml.ns._public.types_3.ChangeTypeType;
 import com.evolveum.prism.xml.ns._public.types_3.ObjectDeltaType;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 
 import com.evolveum.midpoint.common.crypto.CryptoUtil;
+import com.evolveum.midpoint.repo.common.expression.ObjectDeltaObject;
+import com.evolveum.midpoint.model.api.context.EvaluatedPolicyRule;
+import com.evolveum.midpoint.model.api.context.EvaluatedPolicyRuleTrigger;
 import com.evolveum.midpoint.model.api.context.ModelElementContext;
-import com.evolveum.midpoint.model.api.context.SynchronizationPolicyDecision;
-import com.evolveum.midpoint.model.common.expression.ObjectDeltaObject;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.PrismObjectDefinition;
 import com.evolveum.midpoint.prism.delta.ChangeType;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
-import com.evolveum.midpoint.prism.delta.PropertyDelta;
 import com.evolveum.midpoint.schema.util.ShadowUtil;
+import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.util.logging.Trace;
+import com.evolveum.midpoint.util.logging.TraceManager;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * @author semancik
@@ -54,12 +61,14 @@ import com.evolveum.midpoint.util.exception.SchemaException;
 public abstract class LensElementContext<O extends ObjectType> implements ModelElementContext<O> {
 
     private static final long serialVersionUID = 1649567559396392861L;
+    
+    private static final Trace LOGGER = TraceManager.getTrace(LensElementContext.class);
 
     private PrismObject<O> objectOld;
     private transient PrismObject<O> objectCurrent;
 	private PrismObject<O> objectNew;
 	private ObjectDelta<O> primaryDelta;
-	private List<LensObjectDeltaOperation<O>> executedDeltas = new ArrayList<LensObjectDeltaOperation<O>>();
+	@NotNull private final List<LensObjectDeltaOperation<O>> executedDeltas = new ArrayList<>();
 	private Class<O> objectTypeClass;
 	private String oid = null;
 	private int iteration;
@@ -78,6 +87,9 @@ public abstract class LensElementContext<O extends ObjectType> implements ModelE
 	private LensContext<? extends ObjectType> lensContext;
 	
 	private transient PrismObjectDefinition<O> objectDefinition = null;
+	
+	transient private Collection<EvaluatedPolicyRule> policyRules = new ArrayList<>();
+    transient private Collection<String> policySituations = new ArrayList<>();
 	
 	public LensElementContext(Class<O> objectTypeClass, LensContext<? extends ObjectType> lensContext) {
 		super();
@@ -122,6 +134,10 @@ public abstract class LensElementContext<O extends ObjectType> implements ModelE
 	@Override
     public Class<O> getObjectTypeClass() {
 		return objectTypeClass;
+	}
+	
+	public boolean canRepresent(Class type) {
+		return type.isAssignableFrom(objectTypeClass);
 	}
 	
 	public PrismContext getPrismContext() {
@@ -265,7 +281,18 @@ public abstract class LensElementContext<O extends ObjectType> implements ModelE
 		return false;
 	}
 
-    @Override
+	public SimpleOperationName getOperation() {
+		if (isAdd()) {
+			return SimpleOperationName.ADD;
+		}
+		if (isDelete()) {
+			return SimpleOperationName.DELETE;
+		}
+		return SimpleOperationName.MODIFY;
+	}
+	
+    @NotNull
+	@Override
 	public List<LensObjectDeltaOperation<O>> getExecutedDeltas() {
 		return executedDeltas;
 	}
@@ -305,6 +332,20 @@ public abstract class LensElementContext<O extends ObjectType> implements ModelE
 		return ObjectDelta.union(getFixedPrimaryDelta(), getSecondaryDelta());
 	}
 
+	public <F extends FocusType> boolean wasAddExecuted() {
+		
+		for (LensObjectDeltaOperation<O> executedDeltaOperation : getExecutedDeltas()){
+			ObjectDelta<O> executedDelta = executedDeltaOperation.getObjectDelta();
+			if (!executedDelta.isAdd()){
+				continue;
+			} else if (executedDelta.getObjectToAdd() != null && executedDelta.getObjectTypeClass().equals(getObjectTypeClass())){
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
 	abstract public ObjectDeltaObject<O> getObjectDeltaObject() throws SchemaException;
 
     @Override
@@ -370,6 +411,22 @@ public abstract class LensElementContext<O extends ObjectType> implements ModelE
 		this.isFresh = isFresh;
 	}
 
+	public Collection<EvaluatedPolicyRule> getPolicyRules() {
+		return policyRules;
+	}
+
+	public void addPolicyRule(EvaluatedPolicyRule policyRule) {
+		this.policyRules.add(policyRule);
+	}
+	
+	public void triggerConstraint(EvaluatedPolicyRule rule, EvaluatedPolicyRuleTrigger trigger) throws PolicyViolationException {
+    	LensUtil.triggerConstraint(rule, trigger, policySituations);
+	}
+
+	public Collection<String> getPolicySituations() {
+		return policySituations;
+	}
+
 	public void recompute() throws SchemaException {
 		PrismObject<O> base = objectCurrent;
 		if (base == null) {
@@ -384,16 +441,6 @@ public abstract class LensElementContext<O extends ObjectType> implements ModelE
         objectNew = delta.computeChangedObject(base);
     }
 	
-//	/**
-//	 * Make the context as clean as new. Except for the executed deltas and other "traces" of
-//	 * what was already done and cannot be undone. Also the configuration items that were loaded may remain.
-//	 * This is used to restart the context computation but keep the trace of what was already done.
-//	 */
-//	public void reset() {
-//		secondaryDelta = null;
-//		isFresh = false;
-//	}
-
     public void checkConsistence() {
     	checkConsistence(null);
     }
@@ -515,12 +562,24 @@ public abstract class LensElementContext<O extends ObjectType> implements ModelE
 		return thisObject.clone();
 	}
 
-    public void storeIntoLensElementContextType(LensElementContextType lensElementContextType) throws SchemaException {
-        lensElementContextType.setObjectOld(objectOld != null ? objectOld.asObjectable() : null);
-        lensElementContextType.setObjectNew(objectNew != null ? objectNew.asObjectable() : null);
+    void storeIntoLensElementContextType(LensElementContextType lensElementContextType, boolean reduced) throws SchemaException {
+		if (objectOld != null) {
+			if (reduced) {
+				lensElementContextType.setObjectOldRef(ObjectTypeUtil.createObjectRef(objectOld));
+			} else {
+				lensElementContextType.setObjectOld(objectOld.asObjectable());
+			}
+		}
+		if (objectNew != null) {
+			if (reduced) {
+				lensElementContextType.setObjectNewRef(ObjectTypeUtil.createObjectRef(objectNew));
+			} else {
+				lensElementContextType.setObjectNew(objectNew.asObjectable());
+			}
+		}
         lensElementContextType.setPrimaryDelta(primaryDelta != null ? DeltaConvertor.toObjectDeltaType(primaryDelta) : null);
-        for (LensObjectDeltaOperation executedDelta : executedDeltas) {
-            lensElementContextType.getExecutedDeltas().add(executedDelta.toLensObjectDeltaOperationType());
+        for (LensObjectDeltaOperation<?> executedDelta : executedDeltas) {
+            lensElementContextType.getExecutedDeltas().add(LensContext.simplifyExecutedDelta(executedDelta).toLensObjectDeltaOperationType());
         }
         lensElementContextType.setObjectTypeClass(objectTypeClass != null ? objectTypeClass.getName() : null);
         lensElementContextType.setOid(oid);
@@ -529,26 +588,26 @@ public abstract class LensElementContext<O extends ObjectType> implements ModelE
         lensElementContextType.setSynchronizationIntent(synchronizationIntent != null ? synchronizationIntent.toSynchronizationIntentType() : null);
     }
 
-    public void retrieveFromLensElementContextType(LensElementContextType lensElementContextType, OperationResult result) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException {
+	public void retrieveFromLensElementContextType(LensElementContextType lensElementContextType, Task task, OperationResult result) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException {
 
         ObjectType objectTypeOld = lensElementContextType.getObjectOld();
-        this.objectOld = objectTypeOld != null ? objectTypeOld.asPrismObject() : null;
-        fixProvisioningTypeInObject(this.objectOld, result);
+        this.objectOld = objectTypeOld != null ? (PrismObject) objectTypeOld.asPrismObject() : null;
+        fixProvisioningTypeInObject(this.objectOld, task, result);
 
         ObjectType objectTypeNew = lensElementContextType.getObjectNew();
-        this.objectNew = objectTypeNew != null ? objectTypeNew.asPrismObject() : null;
-        fixProvisioningTypeInObject(this.objectNew, result);
+        this.objectNew = objectTypeNew != null ? (PrismObject) objectTypeNew.asPrismObject() : null;
+        fixProvisioningTypeInObject(this.objectNew, task, result);
 
         ObjectType object = objectTypeNew != null ? objectTypeNew : objectTypeOld;
 
         ObjectDeltaType primaryDeltaType = lensElementContextType.getPrimaryDelta();
         this.primaryDelta = primaryDeltaType != null ? (ObjectDelta) DeltaConvertor.createObjectDelta(primaryDeltaType, lensContext.getPrismContext()) : null;
-        fixProvisioningTypeInDelta(this.primaryDelta, object, result);
+        fixProvisioningTypeInDelta(this.primaryDelta, object, task, result);
 
         for (LensObjectDeltaOperationType eDeltaOperationType : lensElementContextType.getExecutedDeltas()) {
             LensObjectDeltaOperation objectDeltaOperation = LensObjectDeltaOperation.fromLensObjectDeltaOperationType(eDeltaOperationType, lensContext.getPrismContext());
             if (objectDeltaOperation.getObjectDelta() != null) {
-                fixProvisioningTypeInDelta(objectDeltaOperation.getObjectDelta(), object, result);
+                fixProvisioningTypeInDelta(objectDeltaOperation.getObjectDelta(), object, task, result);
             }
             this.executedDeltas.add(objectDeltaOperation);
         }
@@ -558,19 +617,33 @@ public abstract class LensElementContext<O extends ObjectType> implements ModelE
         this.iteration = lensElementContextType.getIteration() != null ? lensElementContextType.getIteration() : 0;
         this.iterationToken = lensElementContextType.getIterationToken();
         this.synchronizationIntent = SynchronizationIntent.fromSynchronizationIntentType(lensElementContextType.getSynchronizationIntent());
-
+        
         // note: objectTypeClass is already converted (used in the constructor)
     }
 
-    protected void fixProvisioningTypeInDelta(ObjectDelta<O> delta, Objectable object, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException {
+	protected void fixProvisioningTypeInDelta(ObjectDelta<O> delta, Objectable object, Task task, OperationResult result)  {
         if (delta != null && delta.getObjectTypeClass() != null && (ShadowType.class.isAssignableFrom(delta.getObjectTypeClass()) || ResourceType.class.isAssignableFrom(delta.getObjectTypeClass()))) {
-            lensContext.getProvisioningService().applyDefinition(delta, object, result);
+            try {
+				lensContext.getProvisioningService().applyDefinition(delta, object, task, result);
+			} catch (Exception e) {
+				LOGGER.warn("Error applying provisioning definitions to delta {}: {}", delta, e.getMessage());
+				// In case of error just go on. Maybe we do not have correct definition here. But at least we can
+				// display the GUI pages and maybe we can also salvage the operation.
+				result.recordWarning(e);
+			}
         }
     }
 
-    private void fixProvisioningTypeInObject(PrismObject<O> object, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException {
+    private void fixProvisioningTypeInObject(PrismObject<O> object, Task task, OperationResult result)  {
         if (object != null && object.getCompileTimeClass() != null && (ShadowType.class.isAssignableFrom(object.getCompileTimeClass()) || ResourceType.class.isAssignableFrom(object.getCompileTimeClass()))) {
-            lensContext.getProvisioningService().applyDefinition(object, result);
+            try {
+				lensContext.getProvisioningService().applyDefinition(object, task, result);
+			} catch (Exception e) {
+				LOGGER.warn("Error applying provisioning definitions to object {}: {}", object, e.getMessage());
+				// In case of error just go on. Maybe we do not have correct definition here. But at least we can
+				// display the GUI pages and maybe we can also salvage the operation.
+				result.recordWarning(e);
+			}
         }
     }
 
@@ -588,6 +661,18 @@ public abstract class LensElementContext<O extends ObjectType> implements ModelE
 			CryptoUtil.checkEncrypted(primaryDelta);
 		}
 	}
+    
+    public boolean operationMatches(ChangeTypeType operation) {
+    	switch (operation) {
+    		case ADD:
+    			return getOperation() == SimpleOperationName.ADD;
+    		case MODIFY:
+    			return getOperation() == SimpleOperationName.MODIFY;
+    		case DELETE:
+    			return getOperation() == SimpleOperationName.DELETE;
+    	}
+    	throw new IllegalArgumentException("Unknown operaiton "+operation);
+    }
     
 	protected abstract String getElementDefaultDesc();
 	

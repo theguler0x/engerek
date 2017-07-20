@@ -32,9 +32,11 @@ import com.evolveum.midpoint.repo.sql.query2.hqm.RootHibernateQuery;
 import com.evolveum.midpoint.repo.sql.query2.hqm.condition.Condition;
 import com.evolveum.midpoint.repo.sql.query2.hqm.condition.OrCondition;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
+import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
+import com.evolveum.prism.xml.ns._public.types_3.RawType;
 import org.apache.commons.lang.ClassUtils;
 import org.apache.commons.lang.Validate;
 
@@ -65,7 +67,7 @@ public class PropertyRestriction extends ItemValueRestriction<PropertyValueFilte
         }
 
         String propertyValuePath = getHqlDataInstance().getHqlPath();
-        if (filter.getRightSidePath() != null) {
+        if (filter.getRightHandSidePath() != null) {
             return createPropertyVsPropertyCondition(propertyValuePath);
         } else {
             Object value = getValueFromFilter(filter);
@@ -75,8 +77,8 @@ public class PropertyRestriction extends ItemValueRestriction<PropertyValueFilte
     }
 
     protected Condition createPropertyVsPropertyCondition(String leftPropertyValuePath) throws QueryException {
-        HqlDataInstance rightItem = getItemPathResolver().resolveItemPath(filter.getRightSidePath(),
-                filter.getRightSideDefinition(), getBaseHqlEntityForChildren(), true);
+        HqlDataInstance rightItem = getItemPathResolver().resolveItemPath(filter.getRightHandSidePath(),
+                filter.getRightHandSideDefinition(), getBaseHqlEntityForChildren(), true);
         String rightHqlPath = rightItem.getHqlPath();
         RootHibernateQuery hibernateQuery = context.getHibernateQuery();
 
@@ -142,7 +144,8 @@ public class PropertyRestriction extends ItemValueRestriction<PropertyValueFilte
         //attempt to fix value type for polystring (if it was string in filter we create polystring from it)
         if (PolyString.class.equals(expectedType) && (value instanceof String)) {
             LOGGER.debug("Trying to query PolyString value but filter contains String '{}'.", filter);
-            value = new PolyString((String) value, (String) value);
+			String orig = (String) value;
+			value = new PolyString(orig, context.getPrismContext().getDefaultPolyStringNormalizer().normalize(orig));
         }
         //attempt to fix value type for polystring (if it was polystringtype in filter we create polystring from it)
         if (PolyString.class.equals(expectedType) && (value instanceof PolyStringType)) {
@@ -154,6 +157,14 @@ public class PropertyRestriction extends ItemValueRestriction<PropertyValueFilte
         if (String.class.equals(expectedType) && (value instanceof QName)) {
             //eg. shadow/objectClass
             value = RUtil.qnameToString((QName) value);
+        }
+
+        if (value instanceof RawType) {     // MID-3850: but it's quite a workaround. Maybe we should treat RawType's earlier than this.
+            try {
+                return ((RawType) value).getParsedRealValue(expectedType);
+            } catch (SchemaException e) {
+                throw new QueryException("Couldn't parse value " + value + " as " + expectedType + ": " + e.getMessage(), e);
+            }
         }
 
         if (!expectedType.isAssignableFrom(value.getClass())) {

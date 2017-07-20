@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,8 @@ package com.evolveum.midpoint.model.common.mapping;
 
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
-import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.util.PrismAsserts;
 import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.CredentialsType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -97,33 +94,6 @@ public class TestMappingStatic {
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
     }
-
-    // We do not have boolean property in the use any more ... but this is covered quite well in dynamic tests
-//    @Test
-//    public void testValueBooleanTrue() throws Exception {
-//        // WHEN
-//    	PrismValueDeltaSetTriple<PrismPropertyValue<String>> outputTriple = evaluator.evaluateMapping(
-//    			"mapping-value-boolean-true.xml",
-//    			"testValue",
-//    			new ItemPath(UserType.F_CREDENTIALS, CredentialsType.F_ALLOWED_IDM_ADMIN_GUI_ACCESS));				// target    	
-//        // THEN
-//    	PrismAsserts.assertTripleZero(outputTriple, Boolean.TRUE);
-//    	PrismAsserts.assertTripleNoPlus(outputTriple);
-//    	PrismAsserts.assertTripleNoMinus(outputTriple);
-//    }
-//    
-//    @Test
-//    public void testValueBooleanFalse() throws Exception {
-//        // WHEN
-//    	PrismValueDeltaSetTriple<PrismPropertyValue<String>> outputTriple = evaluator.evaluateMapping(
-//    			"mapping-value-boolean-false.xml",
-//    			"testValue",
-//    			new ItemPath(UserType.F_CREDENTIALS, CredentialsType.F_ALLOWED_IDM_ADMIN_GUI_ACCESS));				// target    	
-//        // THEN
-//    	PrismAsserts.assertTripleZero(outputTriple, Boolean.FALSE);
-//    	PrismAsserts.assertTripleNoPlus(outputTriple);
-//    	PrismAsserts.assertTripleNoMinus(outputTriple);
-//    }
     
     @Test
     public void testPathNoSource() throws Exception {
@@ -139,4 +109,17 @@ public class TestMappingStatic {
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
     }
     
+    @Test
+    public void testConstFoo() throws Exception {
+        // WHEN
+    	PrismValueDeltaSetTriple<PrismPropertyValue<String>> outputTriple = evaluator.evaluateMapping(
+    			"mapping-const-foo.xml",
+    			"testValue",
+    			"costCenter");				// target
+    	
+        // THEN
+    	PrismAsserts.assertTripleZero(outputTriple, "foobar");
+    	PrismAsserts.assertTripleNoPlus(outputTriple);
+    	PrismAsserts.assertTripleNoMinus(outputTriple);
+    }
 }

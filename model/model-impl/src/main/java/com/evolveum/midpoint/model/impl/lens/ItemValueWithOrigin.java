@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 import com.evolveum.midpoint.model.common.mapping.PrismValueDeltaSetTripleProducer;
+import com.evolveum.midpoint.model.impl.lens.projector.ValueMatcher;
 import com.evolveum.midpoint.prism.ItemDefinition;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.PrismValue;
@@ -26,6 +27,9 @@ import com.evolveum.midpoint.prism.delta.DeltaSetTriple;
 import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
 import com.evolveum.midpoint.util.DebugDumpable;
 import com.evolveum.midpoint.util.DebugUtil;
+import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * @author semancik
@@ -43,11 +47,6 @@ public class ItemValueWithOrigin<V extends PrismValue, D extends ItemDefinition>
 		this.itemValue = propertyValue;
 		this.mapping = mapping;
 		this.construction = accountConstruction;
-	}
-
-    @Deprecated
-	public V getPropertyValue() {
-		return itemValue;
 	}
 
     // the same as above, but with correct name
@@ -68,15 +67,25 @@ public class ItemValueWithOrigin<V extends PrismValue, D extends ItemDefinition>
 		return construction;
 	}
 
+	public ObjectType getSource() {
+		return construction != null ? construction.getSource() : null;
+	}
+
 	public boolean isValid() {
-		return construction.isValid();
+		return construction == null || construction.isValid();
 	}
 	
-	public boolean equalsRealValue(V pvalue) {
+	public <T> boolean equalsRealValue(V pvalue, ValueMatcher<T> valueMatcher) throws SchemaException {
 		if (itemValue == null) {
 			return false;
 		}
-		return itemValue.equalsRealValue(pvalue);
+		if (valueMatcher == null) {
+			return itemValue.equalsRealValue(pvalue);
+		} else {
+			// this must be a property, otherwise there would be no matcher
+			return valueMatcher.match(((PrismPropertyValue<T>)itemValue).getValue(), 
+					((PrismPropertyValue<T>)pvalue).getValue());
+		}
 	}
 	
 	public ItemValueWithOrigin<V,D> clone() {
@@ -106,11 +115,10 @@ public class ItemValueWithOrigin<V extends PrismValue, D extends ItemDefinition>
 		DeltaSetTriple<ItemValueWithOrigin<V,D>> ivwoTriple = new DeltaSetTriple<>(zeroIvwoSet, plusIvwoSet, minusIvwoSet);
 		return ivwoTriple;
 	}
-	
-	private static <V extends PrismValue, D extends ItemDefinition> Collection<ItemValueWithOrigin<V,D>> convertSet(Collection<V> valueSet, PrismValueDeltaSetTripleProducer<V, D> mapping) {
-		if (valueSet == null) {
-			return null;
-		}
+
+	@NotNull
+	private static <V extends PrismValue, D extends ItemDefinition> Collection<ItemValueWithOrigin<V,D>> convertSet(
+			@NotNull Collection<V> valueSet, PrismValueDeltaSetTripleProducer<V, D> mapping) {
 		Collection<ItemValueWithOrigin<V,D>> ivwoSet = new ArrayList<>(valueSet.size());
 		for (V value: valueSet) {
 			ItemValueWithOrigin<V,D> ivwo = new ItemValueWithOrigin<>(value, mapping, null);
@@ -142,5 +150,4 @@ public class ItemValueWithOrigin<V extends PrismValue, D extends ItemDefinition>
 		return "ItemValueWithOrigin(" + itemValue + ", M="
 				+ mapping + ", C=" + construction + ")";
 	}
-
 }

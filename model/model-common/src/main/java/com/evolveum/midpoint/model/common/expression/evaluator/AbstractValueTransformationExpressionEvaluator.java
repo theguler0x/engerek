@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,28 +15,26 @@
  */
 package com.evolveum.midpoint.model.common.expression.evaluator;
 
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluationContext;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluator;
-import com.evolveum.midpoint.model.common.expression.ExpressionSyntaxException;
-import com.evolveum.midpoint.model.common.expression.ExpressionUtil;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
-import com.evolveum.midpoint.model.common.expression.ItemDeltaItem;
-import com.evolveum.midpoint.model.common.expression.ObjectDeltaObject;
-import com.evolveum.midpoint.model.common.expression.Source;
-import com.evolveum.midpoint.model.common.expression.SourceTriple;
 import com.evolveum.midpoint.prism.Item;
 import com.evolveum.midpoint.prism.ItemDefinition;
-import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
+import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.delta.DeltaSetTriple;
+import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.PlusMinusZero;
 import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
-import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluationContext;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluator;
+import com.evolveum.midpoint.repo.common.expression.ExpressionSyntaxException;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
+import com.evolveum.midpoint.repo.common.expression.ItemDeltaItem;
+import com.evolveum.midpoint.repo.common.expression.ObjectDeltaObject;
+import com.evolveum.midpoint.repo.common.expression.Source;
+import com.evolveum.midpoint.repo.common.expression.SourceTriple;
 import com.evolveum.midpoint.schema.constants.ExpressionConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.security.api.MidPointPrincipal;
 import com.evolveum.midpoint.security.api.SecurityEnforcer;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.MiscUtil;
@@ -45,24 +43,14 @@ import com.evolveum.midpoint.util.Processor;
 import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.exception.TunnelException;
-import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.TransformExpressionEvaluatorType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.TransformExpressionRelativityModeType;
 
 import javax.xml.namespace.QName;
-
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 
 /**
@@ -93,9 +81,7 @@ public abstract class AbstractValueTransformationExpressionEvaluator<V extends P
 	public PrismValueDeltaSetTriple<V> evaluate(ExpressionEvaluationContext context) throws SchemaException,
             ExpressionEvaluationException, ObjectNotFoundException {
 		
-        PrismValueDeltaSetTriple<V> outputTriple = new PrismValueDeltaSetTriple<V>();
-
-        ExpressionUtil.addActorVariable(context.getVariables(), securityEnforcer);
+        PrismValueDeltaSetTriple<V> outputTriple;
 
         if (expressionEvaluatorType.getRelativityMode() == TransformExpressionRelativityModeType.ABSOLUTE) {
         	
@@ -128,10 +114,7 @@ public abstract class AbstractValueTransformationExpressionEvaluator<V extends P
 	}
 
 	protected boolean isRelative() {
-		if (expressionEvaluatorType.getRelativityMode() == TransformExpressionRelativityModeType.ABSOLUTE) {
-			return false;
-		}
-		return true;
+		return expressionEvaluatorType.getRelativityMode() != TransformExpressionRelativityModeType.ABSOLUTE;
 	}
 	
 	private List<SourceTriple<?,?>> processSources(Collection<Source<?,?>> sources, Boolean includeNulls,
@@ -285,7 +268,7 @@ public abstract class AbstractValueTransformationExpressionEvaluator<V extends P
 		Collection<V> outputSet = new ArrayList<V>(scriptResults.size());
 		for (V pval: scriptResults) {
 			if (pval instanceof PrismPropertyValue<?>) {
-				if (pval == null || ((PrismPropertyValue<?>)pval).getValue() == null) {
+				if (((PrismPropertyValue<?>) pval).getValue() == null) {
 					continue;
 				}
 				Object realValue = ((PrismPropertyValue<?>)pval).getValue();
@@ -307,7 +290,7 @@ public abstract class AbstractValueTransformationExpressionEvaluator<V extends P
 	}
 
     protected abstract List<V> transformSingleValue(ExpressionVariables variables, PlusMinusZero valueDestination,
-			boolean useNew, ExpressionEvaluationContext params, String contextDescription, Task task, OperationResult result)
+			boolean useNew, ExpressionEvaluationContext context, String contextDescription, Task task, OperationResult result)
 			throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException;
 
 	private Object getRealContent(Item<?,?> item, ItemPath residualPath) {
@@ -332,11 +315,11 @@ public abstract class AbstractValueTransformationExpressionEvaluator<V extends P
 
 	private PrismValueDeltaSetTriple<V> evaluateRelativeExpression(final List<SourceTriple<?,?>> sourceTriples,
 			final ExpressionVariables variables, final boolean skipEvaluationMinus, final boolean skipEvaluationPlus, 
-			final Boolean includeNulls, final ExpressionEvaluationContext params, final String contextDescription, 
+			final Boolean includeNulls, final ExpressionEvaluationContext evaluationContext, final String contextDescription,
 			final Task task, final OperationResult result) 
 					throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException {
 		
-		List<Collection<? extends PrismValue>> valueCollections = new ArrayList<Collection<? extends PrismValue>>(sourceTriples.size());
+		List<Collection<? extends PrismValue>> valueCollections = new ArrayList<>(sourceTriples.size());
 		for (SourceTriple<?,?> sourceTriple: sourceTriples) {
 			Collection<? extends PrismValue> values = sourceTriple.union();
 			if (values.isEmpty()) {
@@ -347,96 +330,93 @@ public abstract class AbstractValueTransformationExpressionEvaluator<V extends P
 			valueCollections.add(values);
 		}
 		
-		final PrismValueDeltaSetTriple<V> outputTriple = new PrismValueDeltaSetTriple<V>();
+		final PrismValueDeltaSetTriple<V> outputTriple = new PrismValueDeltaSetTriple<>();
 		
-		Processor<Collection<? extends PrismValue>> processor = new Processor<Collection<? extends PrismValue>>() {
-			@Override
-			public void process(Collection<? extends PrismValue> pvalues) {
-				if (includeNulls != null && !includeNulls && MiscUtil.isAllNull(pvalues)) {
-					// The case that all the sources are null. There is no point executing the expression.
-					return;
+		Processor<Collection<? extends PrismValue>> processor = pvalues -> {
+			if (includeNulls != null && !includeNulls && MiscUtil.isAllNull(pvalues)) {
+				// The case that all the sources are null. There is no point executing the expression.
+				return;
+			}
+			Map<QName, Object> sourceVariables = new HashMap<>();
+			Iterator<SourceTriple<PrismValue,?>> sourceTriplesIterator = (Iterator)sourceTriples.iterator();
+			boolean hasMinus = false;
+			boolean hasZero = false;
+			boolean hasPlus = false;
+			for (PrismValue pval: pvalues) {
+				SourceTriple<PrismValue,?> sourceTriple = sourceTriplesIterator.next();
+				QName name = sourceTriple.getName();
+				sourceVariables.put(name, getRealContent(pval, sourceTriple.getResidualPath()));
+				// Note: a value may be both in plus and minus sets, e.g. in case that the value is replaced
+				// with the same value. We pretend that this is the same as ADD case.
+				// TODO: maybe we will need better handling in the future. Maybe we would need
+				// to execute the script twice?
+				if (sourceTriple.presentInPlusSet(pval)) {
+					hasPlus = true;
+				} else if (sourceTriple.presentInZeroSet(pval)) {
+					hasZero = true;
+				} else if (sourceTriple.presentInMinusSet(pval)) {
+					hasMinus = true;
 				}
-				Map<QName, Object> sourceVariables = new HashMap<QName, Object>();
-				Iterator<SourceTriple<PrismValue,?>> sourceTriplesIterator = (Iterator)sourceTriples.iterator();
-				boolean hasMinus = false;
-				boolean hasZero = false;
-				boolean hasPlus = false;
-				for (PrismValue pval: pvalues) {
-					SourceTriple<PrismValue,?> sourceTriple = sourceTriplesIterator.next();
-					QName name = sourceTriple.getName();
-					sourceVariables.put(name, getRealContent(pval, sourceTriple.getResidualPath()));
-					// Note: a value may be both in plus and minus sets, e.g. in case that the value is replaced
-					// with the same value. We pretend that this is the same as ADD case.
-					// TODO: maybe we will need better handling in the future. Maybe we would need
-					// to execute the script twice?
-					if (sourceTriple.presentInPlusSet(pval)) {
-						hasPlus = true;
-					} else if (sourceTriple.presentInZeroSet(pval)) {
-						hasZero = true;
-					} else if (sourceTriple.presentInMinusSet(pval)) {
-						hasMinus = true;
-					}
-				}
-				if (!hasPlus && !hasMinus && !hasZero && !MiscUtil.isAllNull(pvalues)) {
-					throw new IllegalStateException("Internal error! The impossible has happened! pvalues="+pvalues+"; source triples: "+sourceTriples+"; in "+contextDescription);
-				}
-				if (hasPlus && hasMinus) {
-					// The combination of values that are both in plus and minus. Evaluating this combination
-					// does not make sense. Just skip it.
-					// Note: There will NOT be a single value that is in both plus and minus (e.g. "replace with itself" case).
-					// That case is handler by the elseif branches above. This case strictly applies to
-					// combination of different values from the plus and minus sets.
-					return;
-				}
-				
-				if (hasPlus && skipEvaluationPlus) {
-					// The results will end up in the plus set, therefore we can skip it
-					return;
-				} else if (hasMinus && skipEvaluationMinus) {
-					// The results will end up in the minus set, therefore we can skip it
-					return;
-				}
-				
-				ExpressionVariables scriptVariables = new ExpressionVariables();
-				scriptVariables.addVariableDefinitions(sourceVariables);
-				PlusMinusZero valueDestination = null;
-				boolean useNew = false;
-				if (hasPlus) {
-					// Pluses and zeroes: Result goes to plus set, use NEW values for variables
-					scriptVariables.addVariableDefinitionsNew(variables);
-					valueDestination = PlusMinusZero.PLUS;
-					useNew = true;
-				} else if (hasMinus) {
-					// Minuses and zeroes: Result goes to minus set, use OLD values for variables
-					scriptVariables.addVariableDefinitionsOld(variables);
-					valueDestination = PlusMinusZero.MINUS;
-				} else {
-					// All zeros: Result goes to zero set, use NEW values for variables
-					scriptVariables.addVariableDefinitionsNew(variables);
-					valueDestination = PlusMinusZero.ZERO;
-					useNew = true;
-				}
-				
-				List<V> scriptResults;
-				try {
-					scriptResults = (List<V>) transformSingleValue(scriptVariables, valueDestination, useNew, params, 
-							contextDescription, task, result);
-				} catch (ExpressionEvaluationException e) {
-					throw new TunnelException(new ExpressionEvaluationException(e.getMessage()+
-							"("+dumpSourceValues(sourceVariables)+") in "+contextDescription,e));
-				} catch (ObjectNotFoundException e) {
-					throw new TunnelException(new ObjectNotFoundException(e.getMessage()+
-							"("+dumpSourceValues(sourceVariables)+") in "+contextDescription,e));
-				} catch (SchemaException e) {
-					throw new TunnelException(new SchemaException(e.getMessage()+
-							"("+dumpSourceValues(sourceVariables)+") in "+contextDescription,e));
-				} catch (RuntimeException e) {
-					throw new TunnelException(new RuntimeException(e.getMessage()+
-							"("+dumpSourceValues(sourceVariables)+") in "+contextDescription,e));
-				}
-				
-				outputTriple.addAllToSet(valueDestination, scriptResults);
-			}			
+			}
+			if (!hasPlus && !hasMinus && !hasZero && !MiscUtil.isAllNull(pvalues)) {
+				throw new IllegalStateException("Internal error! The impossible has happened! pvalues="+pvalues+"; source triples: "+sourceTriples+"; in "+contextDescription);
+			}
+			if (hasPlus && hasMinus) {
+				// The combination of values that are both in plus and minus. Evaluating this combination
+				// does not make sense. Just skip it.
+				// Note: There will NOT be a single value that is in both plus and minus (e.g. "replace with itself" case).
+				// That case is handled by the elseif branches above. This case strictly applies to
+				// combination of different values from the plus and minus sets.
+				return;
+			}
+
+			if (hasPlus && skipEvaluationPlus) {
+				// The results will end up in the plus set, therefore we can skip it
+				return;
+			} else if (hasMinus && skipEvaluationMinus) {
+				// The results will end up in the minus set, therefore we can skip it
+				return;
+			}
+
+			ExpressionVariables scriptVariables = new ExpressionVariables();
+			scriptVariables.addVariableDefinitions(sourceVariables);
+			PlusMinusZero valueDestination;
+			boolean useNew = false;
+			if (hasPlus) {
+				// Pluses and zeroes: Result goes to plus set, use NEW values for variables
+				scriptVariables.addVariableDefinitionsNew(variables);
+				valueDestination = PlusMinusZero.PLUS;
+				useNew = true;
+			} else if (hasMinus) {
+				// Minuses and zeroes: Result goes to minus set, use OLD values for variables
+				scriptVariables.addVariableDefinitionsOld(variables);
+				valueDestination = PlusMinusZero.MINUS;
+			} else {
+				// All zeros: Result goes to zero set, use NEW values for variables
+				scriptVariables.addVariableDefinitionsNew(variables);
+				valueDestination = PlusMinusZero.ZERO;
+				useNew = true;
+			}
+
+			List<V> scriptResults;
+			try {
+				scriptResults = transformSingleValue(scriptVariables, valueDestination, useNew, evaluationContext,
+						contextDescription, task, result);
+			} catch (ExpressionEvaluationException e) {
+				throw new TunnelException(new ExpressionEvaluationException(e.getMessage()+
+						"("+dumpSourceValues(sourceVariables)+") in "+contextDescription,e));
+			} catch (ObjectNotFoundException e) {
+				throw new TunnelException(new ObjectNotFoundException(e.getMessage()+
+						"("+dumpSourceValues(sourceVariables)+") in "+contextDescription,e));
+			} catch (SchemaException e) {
+				throw new TunnelException(new SchemaException(e.getMessage()+
+						"("+dumpSourceValues(sourceVariables)+") in "+contextDescription,e));
+			} catch (RuntimeException e) {
+				throw new TunnelException(new RuntimeException(e.getMessage()+
+						"("+dumpSourceValues(sourceVariables)+") in "+contextDescription,e));
+			}
+
+			outputTriple.addAllToSet(valueDestination, scriptResults);
 		};
 		try {
 			MiscUtil.carthesian((Collection)valueCollections, (Processor)processor);

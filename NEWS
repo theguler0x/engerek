@@ -1,35 +1,29 @@
-midPoint 3.3 "Lincoln"
--------------------------------
+midPoint 3.6 "Comenius"
+----------------------------------
 
-Release 3.3 is a fifteenth midPoint release code-named Lincoln. The 3.3
-release brings major GUI look&feel improvements and miscellaneous new
-features that improve practical usability of midPoint.
+Release 3.6 is twenty first midPoint release code-named Comenius.
+The 3.6 release brings numerous new features especially in the
+field of identity governance, password management and identity
+connectors.
 
-Release date: 1st December 2015
+Release date: 4th July 2017
 
-Changes with respect to version 3.2:
-* Significant GUI look&feel improvements
-* New self-service GUI pages
-    End-user home page (end-user dashboard)
-    End-user profile page
-    End-user credentials change page
-* Sequences
-* Improvement of associationTargetSearch expression
-* Aligned default value for user activation
-* Aligned default value for allowEmptyValues in expressions
-* LDAP-based connector for Active Directory (experimental)
-* Run-time support for Java 8 environment
-* Options for interpretation of expression empty values in queries
-* Option to force legacy object class names in connectors
-* Displaying role members on role details page
-* Expanded audit record table for easier search in deltas
-* Support for storing old values and object names in audit records
-* Improved audit report
-* Localization files switched to UTF-8 and single-file format
-* Using transifex.com to support community localization
-* Support for provisioning of user photo (jpeg binary data)
-* Indirect role membership index (roleMembershipRef)
-* Consistency mechanism improvements (self-healing)
-* Improved reliability of strong mappings
+Changes with respect to version 3.5.1:
+    Major SoD improvements
+    Certificaiton improvements
+    Escalation
+    Other identity governance features
+    Password hashing
+    Manual connectors by ITSM integration
+    Important improvements to mappings, expressions, object templates and other mechanisms
+    Custom forms
+    Quasi-fulltext search
+    Shopping cart and role catalog improvements
+    Numerous GUI improvements
+    Significantly improved Powershell support
+    New CSV connector
+    Other connector improvements
 
-XPath2 scripting is deprecated and it is not supported in Java8 environment.
+Java 7 environment is no longer supported.
+XPath2 scripting is no longer supported.
+CSVFile Connector is no longer supported.

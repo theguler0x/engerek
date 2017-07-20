@@ -16,43 +16,78 @@
 
 package com.evolveum.midpoint.wf.impl.processes;
 
-import com.evolveum.midpoint.wf.impl.messages.ProcessEvent;
+import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.wf.impl.processes.common.ActivitiUtil;
 import com.evolveum.midpoint.wf.impl.processes.common.CommonProcessVariableNames;
-
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.beans.factory.BeanFactoryAware;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.InformationType;
 import org.springframework.beans.factory.BeanNameAware;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /**
  * @author mederly
  */
-public abstract class BaseProcessMidPointInterface implements ProcessMidPointInterface, BeanNameAware{
+@Component
+public abstract class BaseProcessMidPointInterface implements ProcessMidPointInterface, BeanNameAware {
 
-    private String beanName;
+	@Autowired
+	protected PrismContext prismContext;
 
-    // Variable reflecting the process status, like "your request was approved by
-    // engineering group, and is being sent to the management". Stored into wfStatus task extension property.
-    // [String]
-    public static final String VARIABLE_WF_STATE = "wfState";
-
-    // Basic decision returned from a workflow process.
-    // for most work items it is simple __APPROVED__ or __REJECTED__, but in principle this can be any string value
-    public static final String VARIABLE_WF_ANSWER = "wfAnswer";
+	private String beanName;
 
     @Override
-    public String getAnswer(Map<String, Object> variables) {
-        return (String) variables.get(VARIABLE_WF_ANSWER);
+    public String getOutcome(Map<String, Object> variables) {
+        return ActivitiUtil.getVariable(variables, CommonProcessVariableNames.VARIABLE_OUTCOME, String.class);
     }
 
-    @Override
-    public String getState(Map<String, Object> variables) {
-        return (String) variables.get(VARIABLE_WF_STATE);
-    }
+	@Override
+	public Integer getStageNumber(Map<String, Object> variables) {
+		return ActivitiUtil.getVariable(variables, CommonProcessVariableNames.VARIABLE_STAGE_NUMBER, Integer.class);
+	}
 
-    @Override
+	@Override
+	public Integer getStageCount(Map<String, Object> variables) {
+		return ActivitiUtil.getVariable(variables, CommonProcessVariableNames.VARIABLE_STAGE_COUNT, Integer.class);
+	}
+
+	@Override
+	public String getStageName(Map<String, Object> variables) {
+		return ActivitiUtil.getVariable(variables, CommonProcessVariableNames.VARIABLE_STAGE_NAME, String.class);
+	}
+
+	@Override
+	public String getStageDisplayName(Map<String, Object> variables) {
+		return ActivitiUtil.getVariable(variables, CommonProcessVariableNames.VARIABLE_STAGE_DISPLAY_NAME, String.class);
+	}
+
+	@Override
+	public Integer getEscalationLevelNumber(Map<String, Object> variables) {
+		return ActivitiUtil.getEscalationLevelNumber(variables);
+	}
+
+	@Override
+	public String getEscalationLevelName(Map<String, Object> variables) {
+		return ActivitiUtil.getVariable(variables, CommonProcessVariableNames.VARIABLE_ESCALATION_LEVEL_NAME, String.class);
+	}
+
+	@Override
+	public String getEscalationLevelDisplayName(Map<String, Object> variables) {
+		return ActivitiUtil.getVariable(variables, CommonProcessVariableNames.VARIABLE_ESCALATION_LEVEL_DISPLAY_NAME, String.class);
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<InformationType> getAdditionalInformation(Map<String, Object> variables) {
+		List<InformationType> info = ActivitiUtil.getVariable(variables, CommonProcessVariableNames.ADDITIONAL_INFORMATION,
+				List.class, prismContext);
+		return info != null ? info : Collections.emptyList();
+	}
+
+	@Override
     public void setBeanName(String name) {
         this.beanName = name;
     }

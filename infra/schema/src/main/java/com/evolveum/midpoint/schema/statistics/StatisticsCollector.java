@@ -25,8 +25,10 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ActionsExecutedInfor
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationStatsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SynchronizationInformationType;
+import org.jetbrains.annotations.NotNull;
 
 import javax.xml.namespace.QName;
+import java.util.List;
 
 /**
  * An object that receives various statistics and state information, processes them and provides
@@ -56,7 +58,7 @@ public interface StatisticsCollector {
 
     void recordNotificationOperation(String transportName, boolean success, long duration);
 
-    void recordMappingOperation(String objectOid, String objectName, String mappingName, long duration);
+    void recordMappingOperation(String objectOid, String objectName, String objectTypeName, String mappingName, long duration);
 
     /**
      * Records information about iterative processing of objects.
@@ -76,7 +78,8 @@ public interface StatisticsCollector {
 
     void recordSynchronizationOperationStart(String objectName, String objectDisplayName, QName objectType, String objectOid);
 
-    void recordSynchronizationOperationEnd(String objectName, String objectDisplayName, QName objectType, String objectOid, long started, Throwable exception, SynchronizationInformation.Record increment);
+    void recordSynchronizationOperationEnd(String objectName, String objectDisplayName, QName objectType, String objectOid, long started,
+			Throwable exception, SynchronizationInformation.Record originalStateIncrement, SynchronizationInformation.Record newStateIncrement);
 
     /**
      * Records information about repository (focal) events.
@@ -102,4 +105,7 @@ public interface StatisticsCollector {
 
     void resetActionsExecutedInformation(ActionsExecutedInformationType value);
 
+    // EXPERIMENTAL - TODO: replace by something more serious
+    @NotNull
+    List<String> getLastFailures();
 }

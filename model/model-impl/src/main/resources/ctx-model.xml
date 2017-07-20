@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-  ~ Copyright (c) 2010-2014 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -21,14 +21,12 @@
        xmlns:context="http://www.springframework.org/schema/context"
        xmlns:jaxws="http://cxf.apache.org/jaxws"
        xmlns:jaxrs="http://cxf.apache.org/jaxrs"
-       xmlns:util="http://www.springframework.org/schema/util"
        xmlns:ssec="http://cxf.apache.org/spring-security"
-       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       xsi:schemaLocation="
+     http://www.springframework.org/schema/beans
      http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
      http://www.springframework.org/schema/context
      http://www.springframework.org/schema/context/spring-context-3.0.xsd
-     http://www.springframework.org/schema/util
-     http://www.springframework.org/schema/util/spring-util-3.0.xsd
      http://cxf.apache.org/jaxws
      http://cxf.apache.org/schemas/jaxws.xsd
      http://cxf.apache.org/jaxrs
@@ -105,7 +103,13 @@
           <constructor-arg name="prismContext" ref="prismContext"/>
           <constructor-arg name="protector" ref="protector"/>
     </bean>
-    
+
+    <bean id="velocityScriptEvaluator" class="com.evolveum.midpoint.model.common.expression.script.velocity.VelocityScriptEvaluator"
+          scope="singleton">
+          <constructor-arg name="prismContext" ref="prismContext"/>
+          <constructor-arg name="protector" ref="protector"/>
+    </bean>
+
     <bean id="scriptExpressionFactory" class="com.evolveum.midpoint.model.common.expression.script.ScriptExpressionFactory"
           scope="singleton">
         <constructor-arg ref="modelObjectResolver"/>
@@ -124,6 +128,7 @@
         		<ref bean="javascriptScriptEvaluator"/>
         		<ref bean="groovyScriptEvaluator"/>
         		<ref bean="pythonScriptEvaluator"/>
+        		<ref bean="velocityScriptEvaluator"/>
         	</list>
         </property>
     </bean>
@@ -138,6 +143,7 @@
           scope="singleton">
           <constructor-arg ref="protector"/>
           <constructor-arg ref="modelObjectResolver"/>
+          <constructor-arg ref="valuePolicyProcessor"/>
           <constructor-arg name="prismContext" ref="prismContext"/>
     </bean>
     
@@ -148,16 +154,24 @@
           <constructor-arg name="protector" ref="protector"/>
     </bean>
     
-    <bean id="literalExpressionEvaluatorFactory" class="com.evolveum.midpoint.model.common.expression.evaluator.LiteralExpressionEvaluatorFactory"
+    <bean id="literalExpressionEvaluatorFactory" class="com.evolveum.midpoint.repo.common.expression.evaluator.LiteralExpressionEvaluatorFactory"
           scope="singleton">
           <constructor-arg name="prismContext" ref="prismContext"/>
     </bean>
     
     <bean id="asisExpressionEvaluatorFactory" 
-          class="com.evolveum.midpoint.model.common.expression.evaluator.AsIsExpressionEvaluatorFactory"
+          class="com.evolveum.midpoint.repo.common.expression.evaluator.AsIsExpressionEvaluatorFactory"
           scope="singleton">
           <constructor-arg name="prismContext" ref="prismContext"/>
           <constructor-arg name="protector" ref="protector"/>
+    </bean>
+    
+    <bean id="constExpressionEvaluatorFactory" 
+          class="com.evolveum.midpoint.model.common.expression.evaluator.ConstExpressionEvaluatorFactory"
+          scope="singleton">
+          <constructor-arg name="protector" ref="protector"/>
+          <constructor-arg name="constantsManager" ref="constantsManager"/>
+          <constructor-arg name="prismContext" ref="prismContext"/>
     </bean>
 
 	<bean id="assignmentTargetSearchExpressionEvaluatorFactory" 
@@ -206,10 +220,13 @@
           <constructor-arg name="prismContext" ref="prismContext"/>
     </bean>
     
-    <bean id="expressionFactory" class="com.evolveum.midpoint.model.common.expression.ExpressionFactory" 
+    <bean id="expressionFactory" class="com.evolveum.midpoint.repo.common.expression.ExpressionFactory" 
     		scope="singleton">
         <constructor-arg>
         	<ref bean="modelObjectResolver"/>
+        </constructor-arg>
+        <constructor-arg>
+        	<ref bean="securityEnforcer"/>
         </constructor-arg>
         <constructor-arg>
         	<ref bean="prismContext"/>
@@ -221,6 +238,7 @@
         		<ref bean="pathExpressionEvaluatorFactory"/>
         		<ref bean="literalExpressionEvaluatorFactory"/>
         		<ref bean="asisExpressionEvaluatorFactory"/>
+        		<ref bean="constExpressionEvaluatorFactory"/>
         		<ref bean="assignmentTargetSearchExpressionEvaluatorFactory"/>
         		<ref bean="referenceSearchExpressionEvaluatorFactory"/>
         		<ref bean="associationTargetSearchExpressionEvaluatorFactory"/>
@@ -330,8 +348,8 @@
                  -->
             </map>
         </property>
-        <property name="model">
-            <ref bean="modelController"/>
+        <property name="modelObjectResolver">
+            <ref bean="modelObjectResolver"/>
         </property>
         <property name="clockwork">
             <ref bean="clockwork"/>
@@ -372,6 +390,8 @@
     <import resource="classpath:META-INF/cxf/cxf.xml"/>
     <import resource="classpath:META-INF/cxf/cxf-servlet.xml"/>
 
+    <bean id="loggingFeature" class="com.evolveum.midpoint.model.impl.util.LoggingFeature"/>
+
     <jaxws:endpoint id="modelWS"
                     address="/model-3"
                     wsdlLocation="classpath:xml/ns/public/model/model-3.wsdl"
@@ -393,47 +413,34 @@
         <jaxws:outInterceptors>
         </jaxws:outInterceptors>
 
-        <!-- this is because of https://jira.evolveum.com/browse/MID-1603 -->
         <jaxws:properties>
-            <entry key="javax.xml.stream.XMLOutputFactory" value-ref="modelWsXmlOutputFactory"/>
             <entry key="org.apache.cxf.logging.FaultListener" value-ref="wsFaultListener"/>
         </jaxws:properties>
 
+        <jaxws:features>
+            <ref bean="loggingFeature"/>
+        </jaxws:features>
     </jaxws:endpoint>
-
-
-    <bean id="modelWsXmlOutputFactory" class="com.ctc.wstx.stax.WstxOutputFactory" />
-
-    <bean class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
-        <property name="targetObject">
-            <ref local="modelWsXmlOutputFactory" />
-        </property>
-        <property name="targetMethod">
-            <value>setProperty</value>
-        </property>
-        <property name="arguments">
-            <list>
-                <util:constant static-field="org.codehaus.stax2.XMLOutputFactory2.P_AUTOMATIC_EMPTY_ELEMENTS"/>
-                <value>false</value>
-            </list>
-        </property>
-    </bean>
 
     <jaxrs:server id="restService" address="/rest/">
         <jaxrs:serviceBeans>
-        	<ref bean="modelRestService"/>
+            <ref bean="modelRestService"/>
         </jaxrs:serviceBeans>
-      <jaxrs:providers>
-      	<ref bean="jaxbProvider" />
-<!--       	<ref bean="jsonProvider" /> -->
-     	<ref bean="restAuthenticationHandler" />
-    </jaxrs:providers>
-   
+        <jaxrs:providers>
+            <ref bean="jaxbProvider"/>
+            <ref bean="jsonProvider"/>
+            <ref bean="yamlProvider"/>
+            <ref bean="restAuthenticationHandler"/>
+        </jaxrs:providers>
+        <jaxrs:features>
+            <ref bean="loggingFeature"/>
+        </jaxrs:features>
     </jaxrs:server>
      
       <bean id="modelRestService" class="com.evolveum.midpoint.model.impl.ModelRestService"/>
      <bean id="jaxbProvider" class="com.evolveum.midpoint.model.impl.rest.MidpointXmlProvider"/>
-<!--      <bean id="jsonProvider" class="com.evolveum.midpoint.model.impl.rest.MidpointJsonProvider"/> -->
+     <bean id="yamlProvider" class="com.evolveum.midpoint.model.impl.rest.MidpointYamlProvider"/>
+     <bean id="jsonProvider" class="com.evolveum.midpoint.model.impl.rest.MidpointJsonProvider"/>
      <bean id="restAuthenticationHandler" class="com.evolveum.midpoint.model.impl.security.MidpointRestAuthenticationHandler"/>
 
     <bean id="authenticationInterceptor" class="org.apache.cxf.ws.security.wss4j.WSS4JInInterceptor">
@@ -461,11 +468,8 @@
     <bean id="springAuthenticationJanitor" class="com.evolveum.midpoint.model.impl.security.SpringAuthenticationJanitorInterceptor">
     </bean>
 
-
     <bean id="passwordCallback" class="com.evolveum.midpoint.model.impl.security.PasswordCallback">
-        <constructor-arg name="userDetailsService" ref="userDetailsService"/>
-        <constructor-arg name="protector" ref="protector"/>
-        <constructor-arg name="securityHelper" ref="securityHelper"/>
+        <constructor-arg name="passwordAuthenticationEvaluatorImpl" ref="passwordAuthenticationEvaluator"/>
     </bean>
 
     <!--Example of authorization for WS-->

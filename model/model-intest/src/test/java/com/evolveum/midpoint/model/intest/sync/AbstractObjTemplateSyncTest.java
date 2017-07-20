@@ -20,15 +20,12 @@ import com.evolveum.icf.dummy.resource.DummyResource;
 import com.evolveum.midpoint.model.intest.AbstractInitializedModelIntegrationTest;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
-import com.evolveum.midpoint.schema.constants.MidPointConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.test.DummyResourceContoller;
 import com.evolveum.midpoint.test.util.TestUtil;
 import com.evolveum.midpoint.util.MiscUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnforcementType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectTemplateType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SynchronizationSituationType;
@@ -95,7 +92,7 @@ public abstract class AbstractObjTemplateSyncTest extends AbstractInitializedMod
 		super.initSystem(initTask, initResult);
 
 		// templates
-		repoAddObjectFromFile(USER_TEMPLATE_FILE, ObjectTemplateType.class, initResult);
+		repoAddObjectFromFile(USER_TEMPLATE_FILE, initResult);
 
 		assumeAssignmentPolicy(AssignmentPolicyEnforcementType.RELATIVE);
 		
@@ -137,7 +134,8 @@ public abstract class AbstractObjTemplateSyncTest extends AbstractInitializedMod
         
         waitForSyncTaskStart(resourceDummyByzantine);
 	}
-	
+
+	// MID-2149
 	@Test
     public void test110AddDummyByzantineAccountMancomb() throws Exception {
 		final String TEST_NAME = "test110AddDummyByzantineAccountMancomb";
@@ -190,8 +188,7 @@ public abstract class AbstractObjTemplateSyncTest extends AbstractInitializedMod
 
 		assertEquals("Wrong e-mail address for mancomb", "mancomb.Mr@test.com", userMancomb.asObjectable().getEmailAddress());
 		assertAssignedOrg(userMancomb, ORG_F0001_OID);
-		// this fails (see MID-2149)
-		//assertHasOrg(userMancomb, ORG_F0001_OID);
+		assertHasOrg(userMancomb, ORG_F0001_OID);
         
         assertUsers(6);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
 
 package com.evolveum.midpoint.web.component;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.behavior.AbstractAjaxBehavior;
 import org.apache.wicket.request.IRequestCycle;
@@ -30,44 +30,35 @@ import org.apache.wicket.util.resource.IResourceStream;
 import org.apache.wicket.util.resource.ResourceStreamNotFoundException;
 import org.apache.wicket.util.time.Duration;
 
-public abstract class AjaxDownloadBehaviorFromStream extends AbstractAjaxBehavior {
+public abstract class AjaxDownloadBehaviorFromStream extends AbstractAjaxDownloadBehavior {
 
+	private static final long serialVersionUID = 1L;
 	private boolean addAntiCache;
 	private String contentType = "text";
+	private String fileName = null;
 
+	
 	public AjaxDownloadBehaviorFromStream() {
-		this(true);
-	}
-
-	public AjaxDownloadBehaviorFromStream(boolean addAntiCache) {
 		super();
-		this.addAntiCache = addAntiCache;
+	}
+	
+	public AjaxDownloadBehaviorFromStream(boolean addAntiCache) {
+		super(addAntiCache);
+		
 	}
 
-	/**
-	 * Call this method to initiate the download.
-	 */
-	public void initiate(AjaxRequestTarget target) {
-		String url = getCallbackUrl().toString();
 
-		if (addAntiCache) {
-			url = url + (url.contains("?") ? "&" : "?");
-			url = url + "antiCache=" + System.currentTimeMillis();
-		}
-
-		// the timeout is needed to let Wicket release the channel
-		target.appendJavaScript("setTimeout(\"window.location.href='" + url + "'\", 100);");
-	}
-
-	public void onRequest() {
+	@Override
+	public IResourceStream getResourceStream() {
 		final InputStream byteStream = initStream();
 
-        if(byteStream == null){
-            return;
-        }
-
+		if (byteStream == null) {
+			return null;
+		}
+		
 		IResourceStream resourceStream = new AbstractResourceStream(){
 
+			private static final long serialVersionUID = 1L;
 			@Override
 			public String getContentType() {
 				return contentType;
@@ -84,19 +75,16 @@ public abstract class AjaxDownloadBehaviorFromStream extends AbstractAjaxBehavio
 			}
 			
 		};
-		getComponent().getRequestCycle().scheduleRequestHandlerAfterCurrent(
-				new ResourceStreamRequestHandler(resourceStream) {
-					@Override
-					public void respond(IRequestCycle requestCycle) {
-						super.respond(requestCycle);
-					}
-				}.setContentDisposition(ContentDisposition.ATTACHMENT)
-						.setCacheDuration(Duration.ONE_SECOND));
+		return resourceStream;
 	}
 	
-	public void setContentType(String contentType) {
-		this.contentType = contentType;
-	}
-
     protected abstract InputStream initStream();
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
 }

@@ -16,8 +16,16 @@
 
 package com.evolveum.midpoint.wf.api;
 
-import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.xml.ns.model.workflow.process_instance_state_3.ProcessInstanceState;
+import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.task.api.Task;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.WorkItemEventCauseInformationType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.WorkItemNotificationActionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.WorkItemType;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import javax.xml.datatype.Duration;
 
 /**
  * An interface through which external observers can be notified about work item related events.
@@ -36,20 +44,29 @@ public interface WorkItemListener {
 
     /**
      * This method is called by wf module when a work item is created.
-     *
-     * @param workItemName name of the work item
-     * @param assigneeOid OID of the user to which the work item is assigned
-     * @param instanceState externalized process instance state
-     */
-    public void onWorkItemCreation(String workItemName, String assigneeOid, PrismObject<? extends ProcessInstanceState> instanceState);
+	 */
+    void onWorkItemCreation(ObjectReferenceType assignee, @NotNull WorkItemType workItem,
+			Task wfTask, OperationResult result);
 
     /**
      * This method is called by wf module when a work item is completed.
-     *
-     * @param workItemName name of the work item
-     * @param assigneeOid OID of the user to which the work item is assigned
-     * @param instanceState externalized process instance state
-     * @param decision decision of the user
-     */
-    public void onWorkItemCompletion(String workItemName, String assigneeOid, PrismObject<? extends ProcessInstanceState> instanceState, String decision);
+	 */
+    void onWorkItemDeletion(ObjectReferenceType assignee, @NotNull WorkItemType workItem,
+			@Nullable WorkItemOperationInfo operationInfo, @Nullable WorkItemOperationSourceInfo sourceInfo,
+			Task wfTask, OperationResult result);
+
+    void onWorkItemCustomEvent(ObjectReferenceType assignee, @NotNull WorkItemType workItem,
+			@NotNull WorkItemNotificationActionType notificationAction, @Nullable WorkItemEventCauseInformationType cause, Task wfTask,
+			OperationResult result);
+
+	/**
+	 * EXPERIMENTAL
+	 */
+	void onWorkItemAllocationChangeCurrentActors(@NotNull WorkItemType workItem,
+			@NotNull WorkItemAllocationChangeOperationInfo operationInfo,
+			@Nullable WorkItemOperationSourceInfo sourceInfo,
+			Duration timeBefore, Task task, OperationResult result);
+
+	void onWorkItemAllocationChangeNewActors(@NotNull WorkItemType workItem, @NotNull WorkItemAllocationChangeOperationInfo operationInfo,
+			@Nullable WorkItemOperationSourceInfo sourceInfo, Task task, OperationResult result);
 }

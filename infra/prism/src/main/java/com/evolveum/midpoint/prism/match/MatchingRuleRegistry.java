@@ -23,6 +23,7 @@ import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * @author semancik
@@ -30,12 +31,12 @@ import com.evolveum.midpoint.util.exception.SchemaException;
  */
 public class MatchingRuleRegistry {
 	
-	public MatchingRule <? extends Object> defaultMatchingRule;
-	public Map<QName, ? extends MatchingRule<?>> matchingRules = new HashMap<QName, MatchingRule<?>>();
+	@NotNull public final MatchingRule<?> defaultMatchingRule;
+	public Map<QName, ? extends MatchingRule<?>> matchingRules = new HashMap<>();
 	
 	public MatchingRuleRegistry() {
 		super();
-		this.defaultMatchingRule = new DefaultMatchingRule<Object>();
+		this.defaultMatchingRule = new DefaultMatchingRule<>();
 	}
 	
 	public MatchingRuleRegistry(Collection<? extends MatchingRule<?>> matchingRules) {
@@ -46,6 +47,7 @@ public class MatchingRuleRegistry {
 	}
 
 	// if typeQName is null, we skip the rule-type correspondence test
+	@NotNull
 	public <T> MatchingRule<T> getMatchingRule(QName ruleName, QName typeQName) throws SchemaException {
 		if (ruleName == null) {
 			return (MatchingRule<T>) defaultMatchingRule;

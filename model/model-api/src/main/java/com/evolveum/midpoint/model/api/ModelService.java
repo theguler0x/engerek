@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,8 +24,10 @@ import java.util.Set;
 
 import javax.xml.namespace.QName;
 
+import com.evolveum.midpoint.prism.Containerable;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
+import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.query.ObjectPaging;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.schema.GetOperationOptions;
@@ -42,9 +44,11 @@ import com.evolveum.midpoint.util.exception.ConfigurationException;
 import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
+import com.evolveum.midpoint.util.exception.PolicyViolationException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.exception.SystemException;
+import com.evolveum.midpoint.xml.ns._public.common.api_types_3.CompareResultType;
 import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ImportOptionsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ConnectorHostType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ConnectorType;
@@ -52,6 +56,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * <p>
@@ -84,7 +89,10 @@ public interface ModelService {
 	// Constants for OperationResult
 	static final String CLASS_NAME_WITH_DOT = ModelService.class.getName() + ".";
 	static final String GET_OBJECT = CLASS_NAME_WITH_DOT + "getObject";
+	static final String COMPARE_OBJECT = CLASS_NAME_WITH_DOT + "compareObject";
 	static final String SEARCH_OBJECTS = CLASS_NAME_WITH_DOT + "searchObjects";
+	static final String SEARCH_CONTAINERS = CLASS_NAME_WITH_DOT + "searchContainers";
+	static final String COUNT_CONTAINERS = CLASS_NAME_WITH_DOT + "countContainers";
 	static final String COUNT_OBJECTS = CLASS_NAME_WITH_DOT + "countObjects";
 	static final String EXECUTE_CHANGES = CLASS_NAME_WITH_DOT + "executeChanges";
 	static final String EXECUTE_CHANGE = CLASS_NAME_WITH_DOT + "executeChange";
@@ -100,6 +108,7 @@ public interface ModelService {
 	static final String IMPORT_OBJECTS_FROM_STREAM = CLASS_NAME_WITH_DOT + "importObjectsFromStream";
 	static final String POST_INIT = CLASS_NAME_WITH_DOT + "postInit";
 	static final String DISCOVER_CONNECTORS = CLASS_NAME_WITH_DOT + "discoverConnectors";
+	static final String MERGE_OBJECTS = CLASS_NAME_WITH_DOT + "mergeObjects";
 
 	static final String AUTZ_NAMESPACE = AuthorizationConstants.NS_AUTHORIZATION_MODEL;
 	
@@ -146,7 +155,7 @@ public interface ModelService {
 	 */
 	<T extends ObjectType> PrismObject<T> getObject(Class<T> type, String oid, Collection<SelectorOptions<GetOperationOptions>> options,
 			Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, SecurityViolationException, 
-			CommunicationException, ConfigurationException;
+			CommunicationException, ConfigurationException, ExpressionEvaluationException;
 
 	/**
 	 * <p>
@@ -232,8 +241,15 @@ public interface ModelService {
             CommunicationException, ConfigurationException, PolicyViolationException, SecurityViolationException;
 
     /**
+     * <p>
 	 * Recomputes focal object with the specified OID. The operation considers all the applicable policies and
 	 * mapping and tries to re-apply them as necessary.
+	 * </p>
+	 * <p>
+	 * This method is DEPRECATED. It is provided for compatibility only. Please use the version with options
+	 * instead of this one. This method will assume the reconcile option to keep compatible behavior with
+	 * previous versions.
+	 * </p>
 	 * 
 	 * @param type type (class) of an object to recompute
 	 * @param oid OID of the object to recompute
@@ -243,7 +259,26 @@ public interface ModelService {
 	 * 			  Task instance. It gives context to the execution (e.g. security context)
 	 * @param parentResult parent OperationResult (in/out)
 	 */
+    @Deprecated
 	<F extends ObjectType> void recompute(Class<F> type, String oid, Task task, OperationResult parentResult)
+			 throws SchemaException, PolicyViolationException, ExpressionEvaluationException, ObjectNotFoundException, ObjectAlreadyExistsException, CommunicationException, ConfigurationException, SecurityViolationException;
+	
+	/**
+	 * Recomputes focal object with the specified OID. The operation considers all the applicable policies and
+	 * mapping and tries to re-apply them as necessary.
+	 * 
+	 * @since 3.6
+	 * 
+	 * @param type type (class) of an object to recompute
+	 * @param oid OID of the object to recompute
+	 * @param options execute options
+	 * @param parentResult
+	 *            parent OperationResult (in/out)
+	 * @param task
+	 * 			  Task instance. It gives context to the execution (e.g. security context)
+	 * @param parentResult parent OperationResult (in/out)
+	 */
+	<F extends ObjectType> void recompute(Class<F> type, String oid, ModelExecuteOptions options, Task task, OperationResult parentResult)
 			 throws SchemaException, PolicyViolationException, ExpressionEvaluationException, ObjectNotFoundException, ObjectAlreadyExistsException, CommunicationException, ConfigurationException, SecurityViolationException;
 	
 	/**
@@ -364,7 +399,7 @@ public interface ModelService {
 	@Deprecated
 	List<PrismObject<? extends ShadowType>> listResourceObjects(String resourceOid, QName objectClass, ObjectPaging paging,
 			Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, 
-			ConfigurationException, SecurityViolationException;
+			ConfigurationException, SecurityViolationException, ExpressionEvaluationException;
 
 	/**
 	 * <p>
@@ -416,8 +451,29 @@ public interface ModelService {
 	 */
 	<T extends ObjectType> SearchResultList<PrismObject<T>> searchObjects(Class<T> type, ObjectQuery query,
 			Collection<SelectorOptions<GetOperationOptions>> options, Task task, OperationResult parentResult) throws SchemaException,
-            ObjectNotFoundException, SecurityViolationException, CommunicationException, ConfigurationException;
-	
+            ObjectNotFoundException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException;
+
+	/**
+	 * Search for "sub-object" structures, i.e. containers.
+	 * Supported types are: AccessCertificationCaseType, WorkItemType.
+	 *
+	 * @param type
+	 * @param query
+	 * @param options
+	 * @param parentResult
+	 * @param <T>
+	 * @return
+	 * @throws SchemaException
+	 */
+	<T extends Containerable> SearchResultList<T> searchContainers(
+			Class<T> type, ObjectQuery query,
+			Collection<SelectorOptions<GetOperationOptions>> options, Task task, OperationResult parentResult)
+			throws SchemaException, SecurityViolationException, ConfigurationException, ObjectNotFoundException;
+
+	<T extends Containerable> Integer countContainers(Class<T> type, ObjectQuery query, Collection<SelectorOptions<GetOperationOptions>> options,
+			Task task, OperationResult parentResult)
+			throws SchemaException, SecurityViolationException;
+
 	/**
 	 * <p>
 	 * Search for objects in iterative fashion (using callback).
@@ -458,7 +514,8 @@ public interface ModelService {
 	 *             wrong query format
 	 */
 	<T extends ObjectType> SearchResultMetadata searchObjectsIterative(Class<T> type, ObjectQuery query,
-			ResultHandler<T> handler, Collection<SelectorOptions<GetOperationOptions>> options, Task task, OperationResult parentResult) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException;
+			ResultHandler<T> handler, Collection<SelectorOptions<GetOperationOptions>> options, Task task, OperationResult parentResult) 
+					throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException;
 
 	/**
 	 * <p>
@@ -499,7 +556,7 @@ public interface ModelService {
 	 */
 	<T extends ObjectType> Integer countObjects(Class<T> type, ObjectQuery query, Collection<SelectorOptions<GetOperationOptions>> options,
             Task task, OperationResult parentResult) 
-            		throws SchemaException, ObjectNotFoundException, SecurityViolationException, ConfigurationException, CommunicationException;
+            		throws SchemaException, ObjectNotFoundException, SecurityViolationException, ConfigurationException, CommunicationException, ExpressionEvaluationException;
 
 	/**
 	 * <p>
@@ -539,7 +596,7 @@ public interface ModelService {
 	 * TODO: Better description
 	 */
 	void importFromResource(String resourceOid, QName objectClass, Task task, OperationResult parentResult)
-			throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException; 
+			throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException; 
 	
 	/**
 	 * <p>
@@ -548,7 +605,7 @@ public interface ModelService {
 	 * TODO: Better description 
 	 */
 	void importFromResource(String shadowOid, Task task, OperationResult parentResult)
-			throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException;
+			throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException;
 
 	/**
 	 * Import objects from file.
@@ -603,4 +660,45 @@ public interface ModelService {
 	 * up.
 	 */
 	void postInit(OperationResult parentResult);
+
+	/**
+	 * TODO
+	 *
+	 * @param object
+	 * @param readOptions
+	 * @param compareOptions
+	 * @param ignoreItemPaths
+	 * @param task
+	 * @param result
+	 * @param <O>
+	 * @return
+	 * @throws SchemaException
+	 * @throws ObjectNotFoundException
+	 * @throws SecurityViolationException
+	 * @throws CommunicationException
+	 * @throws ConfigurationException
+	 */
+	<O extends ObjectType> CompareResultType compareObject(PrismObject<O> object,
+			Collection<SelectorOptions<GetOperationOptions>> readOptions, ModelCompareOptions compareOptions,
+			@NotNull List<ItemPath> ignoreItemPaths, Task task, OperationResult result)
+			throws SchemaException, ObjectNotFoundException, SecurityViolationException, CommunicationException,
+			ConfigurationException, ExpressionEvaluationException;
+	
+	/**
+	 * Merge two objects into one.
+	 * 
+	 * EXPERIMENTAL feature. The method signature is likely to change in the future.
+	 * 
+	 * @param type object type
+	 * @param leftOid left-side object OID
+	 * @param rightOid  right-side object OID
+	 * @param mergeConfigurationName name of the merge configuration to use
+	 * @param task
+	 * @param result
+	 * @return 
+	 */
+	<O extends ObjectType> Collection<ObjectDeltaOperation<? extends ObjectType>> mergeObjects(Class<O> type, String leftOid, String rightOid, 
+			String mergeConfigurationName, Task task, OperationResult result) 
+					throws ObjectNotFoundException, SchemaException, ConfigurationException, ObjectAlreadyExistsException, ExpressionEvaluationException, CommunicationException, PolicyViolationException, SecurityViolationException;
+	
 }

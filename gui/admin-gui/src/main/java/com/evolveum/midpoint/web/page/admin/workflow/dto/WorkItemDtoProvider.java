@@ -16,26 +16,33 @@
 
 package com.evolveum.midpoint.web.page.admin.workflow.dto;
 
-import com.evolveum.midpoint.model.api.WorkflowService;
+import com.evolveum.midpoint.model.api.ModelAuthorizationAction;
+import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.prism.query.ObjectPaging;
+import com.evolveum.midpoint.prism.query.ObjectQuery;
+import com.evolveum.midpoint.prism.query.builder.QueryBuilder;
+import com.evolveum.midpoint.prism.query.builder.S_FilterEntryOrEmpty;
+import com.evolveum.midpoint.schema.GetOperationOptions;
+import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.security.api.MidPointPrincipal;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
-import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.exception.SystemException;
+import com.evolveum.midpoint.task.api.Task;
+import com.evolveum.midpoint.util.exception.*;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.component.data.BaseSortableDataProvider;
 import com.evolveum.midpoint.web.security.SecurityUtils;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
-import com.evolveum.midpoint.wf.api.WorkflowManager;
-import com.evolveum.midpoint.wf.api.WorkflowException;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.WorkItemType;
-
+import com.evolveum.midpoint.wf.util.QueryUtils;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import org.apache.wicket.Component;
 
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
+
+import static com.evolveum.midpoint.gui.api.util.WebComponentUtil.*;
+import static com.evolveum.midpoint.prism.PrismConstants.T_PARENT;
+import static com.evolveum.midpoint.prism.query.OrderDirection.DESCENDING;
+import static com.evolveum.midpoint.xml.ns._public.common.common_3.WorkItemType.*;
 
 /**
  * @author lazyman
@@ -47,9 +54,10 @@ public class WorkItemDtoProvider extends BaseSortableDataProvider<WorkItemDto> {
     private static final String OPERATION_LIST_ITEMS = DOT_CLASS + "listItems";
     private static final String OPERATION_COUNT_ITEMS = DOT_CLASS + "countItems";
 
-    boolean assigned;
+    private boolean claimable;
+	private boolean all;
 
-    public static String currentUser() {
+    private String currentUserOid() {
         MidPointPrincipal principal = SecurityUtils.getPrincipalUser();
         if (principal == null) {
             return "Unknown";
@@ -58,41 +66,39 @@ public class WorkItemDtoProvider extends BaseSortableDataProvider<WorkItemDto> {
         return principal.getOid();
     }
 
-    public WorkItemDtoProvider(Component component, boolean assigned) {
+    public WorkItemDtoProvider(Component component, boolean claimable, boolean all) {
         super(component);
-        this.assigned = assigned;
+        this.claimable = claimable;
+		this.all = all;
     }
 
     @Override
     public Iterator<? extends WorkItemDto> internalIterator(long first, long count) {
         getAvailableData().clear();
 
+        Task task = getTaskManager().createTaskInstance();
         OperationResult result = new OperationResult(OPERATION_LIST_ITEMS);
 
         try {
-//            SortParam sortParam = getSort();
-//            OrderDirectionType order;
-//            if (sortParam.isAscending()) {
-//                order = OrderDirectionType.ASCENDING;
-//            } else {
-//                order = OrderDirectionType.DESCENDING;
-//            }
-
-            WorkflowService wfm = getWorkflowService();
-            List<WorkItemType> items = wfm.listWorkItemsRelatedToUser(currentUser(), assigned,
-                    WebMiscUtil.safeLongToInteger(first), WebMiscUtil.safeLongToInteger(count), result);
+            ObjectQuery query = createQuery(first, count, result);
+            Collection<SelectorOptions<GetOperationOptions>> options =
+                    GetOperationOptions.resolveItemsNamed(
+                            new ItemPath(F_ASSIGNEE_REF),
+                            new ItemPath(T_PARENT, WfContextType.F_OBJECT_REF),
+                            new ItemPath(T_PARENT, WfContextType.F_TARGET_REF));
+            List<WorkItemType> items = getModel().searchContainers(WorkItemType.class, query, options, task, result);
 
             for (WorkItemType item : items) {
                 try {
                     getAvailableData().add(new WorkItemDto(item));
                 } catch (Exception e) {
-                    LoggingUtils.logException(LOGGER, "Unhandled exception when listing work item {}", e, item);
+                    LoggingUtils.logUnexpectedException(LOGGER, "Unhandled exception when listing work item {}", e, item);
                     result.recordFatalError("Couldn't list work item.", e);
                 }
             }
 
-        } catch (Exception ex) {
-            LoggingUtils.logException(LOGGER, "Unhandled exception when listing work items", ex);
+        } catch (SchemaException|ObjectNotFoundException|SecurityViolationException|ConfigurationException|RuntimeException ex) {
+            LoggingUtils.logUnexpectedException(LOGGER, "Unhandled exception when listing work items", ex);
             result.recordFatalError("Couldn't list work items.", ex);
         }
 
@@ -103,14 +109,35 @@ public class WorkItemDtoProvider extends BaseSortableDataProvider<WorkItemDto> {
         return getAvailableData().iterator();
     }
 
-    @Override
+    private ObjectQuery createQuery(long first, long count, OperationResult result) throws SchemaException {
+        ObjectQuery query = createQuery(result);
+        query.setPaging(ObjectPaging.createPaging(safeLongToInteger(first), safeLongToInteger(count), F_CREATE_TIMESTAMP, DESCENDING));
+        return query;
+    }
+
+    private ObjectQuery createQuery(OperationResult result) throws SchemaException {
+		boolean authorizedToSeeAll = isAuthorized(ModelAuthorizationAction.READ_ALL_WORK_ITEMS.getUrl());
+		S_FilterEntryOrEmpty q = QueryBuilder.queryFor(WorkItemType.class, getPrismContext());
+		if (all && authorizedToSeeAll) {
+			return q.build();
+		} else if (all || !claimable) {
+			// not authorized to see all => sees only allocated to him (not quite what is expected, but sufficient for the time being)
+			return QueryUtils.filterForAssignees(q, SecurityUtils.getPrincipalUser(),
+                    OtherPrivilegesLimitationType.F_APPROVAL_WORK_ITEMS).build();
+        } else {
+			return QueryUtils.filterForGroups(q, currentUserOid(), getRepositoryService(), result).build();
+        }
+    }
+
+	@Override
     protected int internalSize() {
-        int count = 0;
+        int count;
+        Task task = getTaskManager().createTaskInstance();
         OperationResult result = new OperationResult(OPERATION_COUNT_ITEMS);
-        WorkflowService workflowService = getWorkflowService();
         try {
-            count = workflowService.countWorkItemsRelatedToUser(currentUser(), assigned, result);
-        } catch (SchemaException|ObjectNotFoundException e) {
+            ObjectQuery query = createQuery(result);
+            count = getModel().countContainers(WorkItemType.class, query, null, task, result);
+        } catch (SchemaException|SecurityViolationException|RuntimeException e) {
             throw new SystemException("Couldn't count work items: " + e.getMessage(), e);
         }
 
@@ -124,4 +151,6 @@ public class WorkItemDtoProvider extends BaseSortableDataProvider<WorkItemDto> {
 
         return count;
     }
+
+
 }

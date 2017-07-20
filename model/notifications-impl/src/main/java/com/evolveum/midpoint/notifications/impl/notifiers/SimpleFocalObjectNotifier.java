@@ -22,23 +22,16 @@ import com.evolveum.midpoint.notifications.api.events.Event;
 import com.evolveum.midpoint.notifications.api.events.ModelEvent;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
-import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-
-import org.apache.commons.lang.StringUtils;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
-
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -81,7 +74,7 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
         }
 
         for (ObjectDelta<FocusType> delta : deltas) {
-            if (!delta.isModify() || deltaContainsOtherPathsThan(delta, auxiliaryPaths)) {
+            if (!delta.isModify() || deltaContainsOtherPathsThan(delta, functions.getAuxiliaryPaths())) {
                 return true;
             }
         }
@@ -92,7 +85,8 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
     @Override
     protected String getSubject(Event event, GeneralNotifierType generalNotifierType, String transport, Task task, OperationResult result) {
 
-        String typeName = getFocusTypeName(event);
+		final ModelEvent modelEvent = (ModelEvent) event;
+        String typeName = modelEvent.getFocusTypeName();
 
         if (event.isAdd()) {
             return typeName + " oluşturma bildirimi";
@@ -105,21 +99,26 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
         }
     }
 
+<<<<<<< HEAD
     // assuming the quick availability check was passed
     private String getFocusTypeName(Event event) {
         String simpleName = ((ModelEvent) event).getFocusContext().getObjectTypeClass().getSimpleName();
         return StringUtils.substringBeforeLast(simpleName, "Tip");         // should usually work ;)
     }
 
+=======
+>>>>>>> midpoint/master
     @Override
     protected String getBody(Event event, GeneralNotifierType generalNotifierType, String transport, Task task, OperationResult result) throws SchemaException {
 
-        String typeName = getFocusTypeName(event);
+		final ModelEvent modelEvent = (ModelEvent) event;
+
+		String typeName = modelEvent.getFocusTypeName();
         String typeNameLower = typeName.toLowerCase();
 
         boolean techInfo = Boolean.TRUE.equals(generalNotifierType.isShowTechnicalInformation());
 
-        ModelContext<FocusType> modelContext = (ModelContext) ((ModelEvent) event).getModelContext();
+		ModelContext<FocusType> modelContext = (ModelContext) modelEvent.getModelContext();
         ModelElementContext<FocusType> focusContext = modelContext.getFocusContext();
         PrismObject<FocusType> focus = focusContext.getObjectNew() != null ? focusContext.getObjectNew() : focusContext.getObjectOld();
         FocusType userType = focus.asObjectable();
@@ -138,10 +137,11 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
             fullName = "";          // "null" is not nice in notifications
         }
 
-        ObjectDelta<FocusType> delta = ObjectDelta.summarize(((ModelEvent) event).getFocusDeltas());
+        ObjectDelta<FocusType> delta = ObjectDelta.summarize(modelEvent.getFocusDeltas());
 
         StringBuilder body = new StringBuilder();
 
+<<<<<<< HEAD
         String status;
         if (event.isSuccess()) {
             status = "BAŞARILI";
@@ -171,7 +171,26 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
             body.append("\n");
         } else if (delta.isDelete()) {
 		    body.append(typeNameLower).append(" kaydı " + attemptedTo + "silindi.\n\n");
+=======
+		String status = modelEvent.getStatusAsText();
+        String attemptedTo = event.isSuccess() ? "" : "(attempted to be) ";
+
+        body.append("Notification about ").append(typeNameLower).append("-related operation (status: ").append(status).append(")\n\n");
+        body.append(typeName).append(": ").append(fullName).append(" (").append(userType.getName()).append(", oid ").append(oid).append(")\n");
+        body.append("Notification created on: ").append(new Date()).append("\n\n");
+
+		final boolean watchAuxiliaryAttributes = isWatchAuxiliaryAttributes(generalNotifierType);
+		if (delta.isAdd()) {
+            body.append("The ").append(typeNameLower).append(" record was ").append(attemptedTo).append("created with the following data:\n");
+            body.append(modelEvent.getContentAsFormattedList(false, watchAuxiliaryAttributes));
+        } else if (delta.isModify()) {
+            body.append("The ").append(typeNameLower).append(" record was ").append(attemptedTo).append("modified. Modified attributes are:\n");
+			body.append(modelEvent.getContentAsFormattedList(false, watchAuxiliaryAttributes));
+        } else if (delta.isDelete()) {
+            body.append("The ").append(typeNameLower).append(" record was ").append(attemptedTo).append("removed.\n");
+>>>>>>> midpoint/master
         }
+		body.append("\n");
 
         if (!event.isSuccess()) {
 		    body.append("Yapılan istemin durumu hakkında daha fazla bilgisi gösterilmiştir ve/veya log dosyalarında mevcuttur.\n\n");
@@ -197,7 +216,7 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
         
 
 
-        notificationsUtil.addRequesterAndChannelInformation(body, event, result);
+        functions.addRequesterAndChannelInformation(body, event, result);
 
 
         if (techInfo) {
@@ -209,7 +228,7 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
         return body.toString();
     }
 
-    @Override
+	@Override
     protected Trace getLogger() {
         return LOGGER;
     }

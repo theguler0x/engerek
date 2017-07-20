@@ -126,12 +126,14 @@ public class LocalNodeManager {
             quartzProperties.put("org.quartz.threadPool.makeThreadsDaemons", "true");
         }
 
+        LOGGER.info("Initializing Quartz scheduler (but not starting it yet).");
         // initialize the scheduler (without starting it)
         try {
             LOGGER.trace("Quartz scheduler properties: {}", quartzProperties);
             StdSchedulerFactory sf = new StdSchedulerFactory();
             sf.initialize(quartzProperties);
             getGlobalExecutionManager().setQuartzScheduler(sf.getScheduler());
+            LOGGER.info("... Quartz scheduler initialized.");
         } catch (SchedulerException e) {
             throw new TaskManagerInitializationException("Cannot initialize the Quartz scheduler", e);
         }
@@ -243,7 +245,7 @@ public class LocalNodeManager {
             getQuartzScheduler().standby();
             result.recordSuccess();
         } catch (SchedulerException e1) {
-            LoggingUtils.logException(LOGGER, "Couldn't put local Quartz scheduler into standby mode", e1);
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't put local Quartz scheduler into standby mode", e1);
             result.recordFatalError("Couldn't put local Quartz scheduler into standby mode", e1);
         }
     }
@@ -301,7 +303,7 @@ public class LocalNodeManager {
             LOGGER.debug("Quartz scheduler started.");
             result.recordSuccess();
         } catch (SchedulerException e) {
-            LoggingUtils.logException(LOGGER, "Cannot (re)start Quartz scheduler.", e);
+            LoggingUtils.logUnexpectedException(LOGGER, "Cannot (re)start Quartz scheduler.", e);
             result.recordFatalError("Cannot (re)start Quartz scheduler.", e);
         }
     }
@@ -328,7 +330,7 @@ public class LocalNodeManager {
         try {
             return quartzScheduler.isStarted() && !quartzScheduler.isInStandbyMode() && !quartzScheduler.isShutdown();
         } catch (SchedulerException e) {
-            LoggingUtils.logException(LOGGER, "Cannot determine Quartz scheduler state", e);
+            LoggingUtils.logUnexpectedException(LOGGER, "Cannot determine Quartz scheduler state", e);
             return null;
         }
     }
@@ -361,7 +363,7 @@ public class LocalNodeManager {
             result.recordSuccess();
         } catch (UnableToInterruptJobException e) {
             String message = "Unable to interrupt the task " + oid;
-            LoggingUtils.logException(LOGGER, message, e);			// however, we continue (e.g. to suspend the task)
+            LoggingUtils.logUnexpectedException(LOGGER, message, e);			// however, we continue (e.g. to suspend the task)
             result.recordFatalError(message, e);
         }
     }
@@ -387,7 +389,7 @@ public class LocalNodeManager {
             }
 
         } catch (SchedulerException e1) {
-            LoggingUtils.logException(LOGGER, "Cannot find the currently executing job for the task {}", e1, oid);
+            LoggingUtils.logUnexpectedException(LOGGER, "Cannot find the currently executing job for the task {}", e1, oid);
             // ...and ignore it.
         }
     }
@@ -405,7 +407,7 @@ public class LocalNodeManager {
                 }
             }
         } catch (SchedulerException e) {
-            LoggingUtils.logException(LOGGER, "Cannot get the list of currently executing jobs", e);
+            LoggingUtils.logUnexpectedException(LOGGER, "Cannot get the list of currently executing jobs", e);
             return false;
         }
         return false;
@@ -428,7 +430,7 @@ public class LocalNodeManager {
         } catch (SchedulerException e1) {
             String message = "Cannot get the list of currently executing jobs on local node.";
             result.recordFatalError(message, e1);
-            LoggingUtils.logException(LOGGER, message, e1);
+            LoggingUtils.logUnexpectedException(LOGGER, message, e1);
             return retval;
         }
 
@@ -444,7 +446,7 @@ public class LocalNodeManager {
                 result1.recordHandledError(m, e);               // it's OK, the task could disappear in the meantime
             } catch (SchemaException e) {
                 String m = "Cannot get the task with OID " + oid + " due to schema problems";
-                LoggingUtils.logException(LOGGER, m, e);
+                LoggingUtils.logUnexpectedException(LOGGER, m, e);
                 result1.recordFatalError(m, e);
             }
         }

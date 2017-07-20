@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2015 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -130,6 +130,12 @@
 		<assignment>
 			<targetRef oid="00000000-d34d-b33f-f00d-000000000001" type="c:RoleType"/>		<!-- CEO -->
 		</assignment>
+		<assignment>
+			<targetRef oid="00000000-d34d-b33f-f00d-000000000001" type="c:RoleType" relation="owner"/>		<!-- CEO (intentionally without 'org' prefix) -->
+		</assignment>
+		<assignment>
+			<targetRef oid="00000000-d34d-b33f-f00d-ffffffff0000" type="c:RoleType"/>		<!-- reviewer -->
+		</assignment>
 		<fullName>Elaine Marley</fullName>
 		<givenName>Elaine</givenName>
 		<familyName>Marley</familyName>
@@ -149,6 +155,9 @@
 		</assignment>
 		<assignment>
 			<targetRef oid="00000000-0000-0000-0000-000000000004" type="c:RoleType"/>       <!-- Superuser -->
+		</assignment>
+		<assignment>
+			<targetRef oid="00000000-d34d-b33f-f00d-ffffffff0000" type="c:RoleType"/>		<!-- reviewer -->
 		</assignment>
 		<fullName>Ignatius Cheese</fullName>
 		<givenName>Ignatius</givenName>
@@ -224,15 +233,4 @@
 		<fullName>Captain LeChuck</fullName>
 		<familyName>LeChuck</familyName>
 	</user>
-
-	<user oid="c0c010c0-d34d-b33f-f00d-111111111134">
-		<name>bob</name>
-		<parentOrgRef oid="00000000-8888-6666-0000-200000000002" type="c:OrgType"/>
-		<assignment>
-			<targetRef oid="00000000-8888-6666-0000-200000000002" type="c:OrgType"/>
-		</assignment>
-		<fullName>Ghost Pirate Bob</fullName>
-		<givenName>Bob</givenName>
-	</user>
-	
 </objects>

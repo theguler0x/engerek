@@ -16,39 +16,46 @@
 
 package com.evolveum.midpoint.web.page.admin.certification.dto;
 
-import com.evolveum.midpoint.certification.api.CertificationManager;
-import com.evolveum.midpoint.prism.query.ObjectPaging;
-import com.evolveum.midpoint.prism.query.ObjectQuery;
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
+import com.evolveum.midpoint.prism.query.*;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
+import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
+import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.component.data.BaseSortableDataProvider;
 import com.evolveum.midpoint.web.page.error.PageError;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCaseType;
 import org.apache.wicket.Component;
 import org.apache.wicket.RestartResponseException;
+import org.apache.wicket.extensions.markup.html.repeater.util.SortParam;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
+import static com.evolveum.midpoint.schema.GetOperationOptions.*;
+import static com.evolveum.midpoint.schema.SelectorOptions.createCollection;
+
 /**
  * @author lazyman
  * @author mederly
  */
-public class CertCaseDtoProvider extends BaseSortableDataProvider<CertCaseOrDecisionDto> {
+public class CertCaseDtoProvider extends BaseSortableDataProvider<CertCaseOrWorkItemDto> {
 
     private static final Trace LOGGER = TraceManager.getTrace(CertCaseDtoProvider.class);
     private static final String DOT_CLASS = CertCaseDtoProvider.class.getName() + ".";
     private static final String OPERATION_SEARCH_OBJECTS = DOT_CLASS + "searchObjects";
     private static final String OPERATION_COUNT_OBJECTS = DOT_CLASS + "countObjects";
 
-    String campaignOid;
+    private String campaignOid;
     // case query is stored in super.query
 
     public CertCaseDtoProvider(Component component) {
@@ -56,38 +63,27 @@ public class CertCaseDtoProvider extends BaseSortableDataProvider<CertCaseOrDeci
     }
 
     @Override
-    public Iterator<CertCaseOrDecisionDto> internalIterator(long first, long count) {
-        LOGGER.trace("begin::iterator() from {} count {}.", new Object[]{first, count});
+    public Iterator<CertCaseOrWorkItemDto> internalIterator(long first, long count) {
+        LOGGER.trace("begin::iterator() from {} count {}.", first, count);
         getAvailableData().clear();
 
         Task task = getPage().createSimpleTask(OPERATION_SEARCH_OBJECTS);
         OperationResult result = task.getResult();
         try {
             ObjectPaging paging = createPaging(first, count);
-            
-            ObjectQuery caseQuery = getQuery();
-            if (caseQuery == null){
-            	caseQuery = new ObjectQuery();
-            }
-            caseQuery.setPaging(paging);
-
-            Collection<SelectorOptions<GetOperationOptions>> resolveNames =
-                    SelectorOptions.createCollection(GetOperationOptions.createResolveNames());
-
-            CertificationManager certificationManager = getPage().getCertificationManager();
-            List<AccessCertificationCaseType> caseList = certificationManager.searchCases(campaignOid, caseQuery, resolveNames, task, result);
-
+            Collection<SelectorOptions<GetOperationOptions>> resolveNames = createCollection(createResolveNames());
+            List<AccessCertificationCaseType> caseList = searchCases(campaignOid, paging, resolveNames, task, result);
             for (AccessCertificationCaseType _case : caseList) {
                 getAvailableData().add(new CertCaseDto(_case, getPage(), task, result));
             }
         } catch (Exception ex) {
             result.recordFatalError("Couldn't list decisions.", ex);
-            LoggingUtils.logException(LOGGER, "Couldn't list decisions", ex);
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't list decisions", ex);
         } finally {
             result.computeStatusIfUnknown();
         }
 
-        if (!WebMiscUtil.isSuccessOrHandledError(result)) {
+        if (!WebComponentUtil.isSuccessOrHandledError(result)) {
             handleNotSuccessOrHandledErrorInIterator(result);
         }
 
@@ -95,12 +91,11 @@ public class CertCaseDtoProvider extends BaseSortableDataProvider<CertCaseOrDeci
         return getAvailableData().iterator();
     }
 
-    protected void handleNotSuccessOrHandledErrorInIterator(OperationResult result){
-        getPage().showResultInSession(result);
+    private void handleNotSuccessOrHandledErrorInIterator(OperationResult result){
+        getPage().showResult(result);
         throw new RestartResponseException(PageError.class);
     }
 
-    // TODO replace searchDecisions with countDecisions (when it will be available)
     @Override
     protected int internalSize() {
         LOGGER.trace("begin::internalSize()");
@@ -108,20 +103,16 @@ public class CertCaseDtoProvider extends BaseSortableDataProvider<CertCaseOrDeci
         OperationResult result = new OperationResult(OPERATION_COUNT_OBJECTS);
         try {
             Task task = getPage().createSimpleTask(OPERATION_COUNT_OBJECTS);
-            CertificationManager certificationManager = getPage().getCertificationManager();
-            ObjectQuery query = getQuery().clone();
-            query.setPaging(null);          // when counting decisions we need to exclude offset+size (and sorting info is irrelevant)
-            List<AccessCertificationCaseType> caseList = certificationManager.searchCases(campaignOid, query, null, task, result);
-            count = caseList.size();
+            count = countCases(campaignOid, null, task, result);
         } catch (Exception ex) {
             result.recordFatalError("Couldn't count objects.", ex);
-            LoggingUtils.logException(LOGGER, "Couldn't count objects", ex);
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't count objects", ex);
         } finally {
             result.computeStatusIfUnknown();
         }
 
-        if (!WebMiscUtil.isSuccessOrHandledError(result)) {
-            getPage().showResultInSession(result);
+        if (!WebComponentUtil.isSuccessOrHandledError(result)) {
+            getPage().showResult(result, false);
             throw new RestartResponseException(PageError.class);
         }
 
@@ -129,6 +120,7 @@ public class CertCaseDtoProvider extends BaseSortableDataProvider<CertCaseOrDeci
         return count;
     }
 
+    @SuppressWarnings("unused")
     public String getCampaignOid() {
         return campaignOid;
     }
@@ -136,4 +128,41 @@ public class CertCaseDtoProvider extends BaseSortableDataProvider<CertCaseOrDeci
     public void setCampaignOid(String campaignOid) {
         this.campaignOid = campaignOid;
     }
+
+    private List<AccessCertificationCaseType> searchCases(String campaignOid, ObjectPaging paging, Collection<SelectorOptions<GetOperationOptions>> options, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, ConfigurationException, SecurityViolationException {
+        InOidFilter inOidFilter = InOidFilter.createOwnerHasOidIn(campaignOid);
+        ObjectQuery query = createFinalQuery(inOidFilter);
+        query.setPaging(paging);
+        return getModel().searchContainers(AccessCertificationCaseType.class, query, options, task, result);
+    }
+
+    private int countCases(String campaignOid, Collection<SelectorOptions<GetOperationOptions>> options, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, ConfigurationException, SecurityViolationException {
+        InOidFilter inOidFilter = InOidFilter.createOwnerHasOidIn(campaignOid);
+        ObjectQuery query = createFinalQuery(inOidFilter);
+        return getModel().countContainers(AccessCertificationCaseType.class, query, options, task, result);
+    }
+
+    @NotNull
+    private ObjectQuery createFinalQuery(InOidFilter inOidFilter) {
+        ObjectQuery query = getQuery();
+        if (query != null) {
+            query = query.clone();
+            if (query.getFilter() == null) {
+                query.setFilter(inOidFilter);
+            } else {
+                query.setFilter(AndFilter.createAnd(query.getFilter(), inOidFilter));
+            }
+        } else {
+            query = new ObjectQuery();
+            query.setFilter(inOidFilter);
+        }
+        return query;
+    }
+
+    @NotNull
+	@Override
+	protected List<ObjectOrdering> createObjectOrderings(SortParam<String> sortParam) {
+		return SearchingUtils.createObjectOrderings(sortParam, false);
+	}
+
 }

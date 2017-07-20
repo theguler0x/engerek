@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
     <test name="Model Basic" preserve-order="true" parallel="false" verbose="10" enabled="false">
         <classes>
             <class name="com.evolveum.midpoint.model.impl.SpringApplicationContextTest"/>
+            <class name="com.evolveum.midpoint.model.impl.TestRefinedSchema"/>
         </classes>
     </test>
     <test name="Controller" preserve-order="true" parallel="false" verbose="10">
@@ -59,17 +60,27 @@
     <test name="Lens" preserve-order="true" parallel="false" verbose="10">
         <classes>
             <class name="com.evolveum.midpoint.model.impl.lens.TestAssignmentProcessor"/>
+            <class name="com.evolveum.midpoint.model.impl.lens.TestAssignmentProcessor2"/>
             <class name="com.evolveum.midpoint.model.impl.lens.TestAssignmentEvaluator"/>
+            <class name="com.evolveum.midpoint.model.impl.lens.TestAssignmentEvaluatorDynamic"/>
             <class name="com.evolveum.midpoint.model.impl.lens.TestProjector"/>
             <class name="com.evolveum.midpoint.model.impl.lens.TestProjectorRoleEntitlement"/>
             <class name="com.evolveum.midpoint.model.impl.lens.TestDependencies"/>
             <class name="com.evolveum.midpoint.model.impl.lens.TestClockwork"/>
             <class name="com.evolveum.midpoint.model.impl.lens.TestReconScript"/>
+            <class name="com.evolveum.midpoint.model.impl.lens.TestPasswordPolicyProcessor"/>
+            <class name="com.evolveum.midpoint.model.impl.lens.TestPasswordPolicy"/>
+            <class name="com.evolveum.midpoint.model.impl.lens.TestPolicyRules"/>
+            <class name="com.evolveum.midpoint.model.impl.lens.TestPolicyMetadata"/>
+            <class name="com.evolveum.midpoint.model.impl.lens.TestProjectorPersona"/>
         </classes>
     </test>
-    <test name="Model Web service" preserve-order="true" parallel="false" verbose="10">
+    <test name="Misc" preserve-order="true" parallel="false" verbose="10">
         <classes>
             <class name="com.evolveum.midpoint.model.impl.ModelWebServiceTest"/>
+            <class name="com.evolveum.midpoint.model.impl.security.TestPasswordAuthenticationEvaluator"/>
+            <class name="com.evolveum.midpoint.model.impl.security.TestNonceAuthenticationEvaluator"/>
+            <class name="com.evolveum.midpoint.model.impl.security.TestSecurityQuestionsAuthenticationEvaluator"/>
         </classes>
     </test>
 </suite>

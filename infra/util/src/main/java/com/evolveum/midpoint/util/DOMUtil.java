@@ -23,14 +23,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringWriter;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Random;
 
 import javax.xml.XMLConstants;
 import javax.xml.namespace.QName;
@@ -55,6 +49,7 @@ import com.sun.org.apache.xml.internal.utils.XMLChar;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
+import org.jetbrains.annotations.NotNull;
 import org.w3c.dom.Attr;
 import org.w3c.dom.Comment;
 import org.w3c.dom.Document;
@@ -68,11 +63,8 @@ import org.xml.sax.SAXException;
 import com.evolveum.midpoint.util.exception.SystemException;
 
 /**
- *
- *
  * @author Igor Farinic
  * @author Radovan Semancik
- * @version $Revision$ $Date$
  * @since 0.1
  */
 public class DOMUtil {
@@ -91,6 +83,9 @@ public class DOMUtil {
 	public static final QName XML_ID_ATTRIBUTE = new QName(W3C_XML_XML_URI, "id", W3C_XML_XML_PREFIX);
 
     public static final String HACKED_XSI_TYPE = "xsiType";
+	public static final String IS_LIST_ATTRIBUTE_NAME = "list";
+	private static final List<String> AUXILIARY_ATTRIBUTE_NAMES = Arrays.asList(HACKED_XSI_TYPE, IS_LIST_ATTRIBUTE_NAME);
+	private static final List<String> AUXILIARY_NAMESPACES = Arrays.asList(W3C_XML_SCHEMA_XMLNS_URI, W3C_XML_XML_URI, W3C_XML_SCHEMA_INSTANCE_NS_URI);
 
 	public static final String NS_W3C_XML_SCHEMA_PREFIX = "xsd";
 	public static final QName XSD_SCHEMA_ELEMENT = new QName(W3C_XML_SCHEMA_NS_URI, "schema",
@@ -102,6 +97,8 @@ public class DOMUtil {
     public static final QName XSD_DOCUMENTATION_ELEMENT = new QName(W3C_XML_SCHEMA_NS_URI, "documentation",
             NS_W3C_XML_SCHEMA_PREFIX);
     public static final QName XSD_IMPORT_ELEMENT = new QName(W3C_XML_SCHEMA_NS_URI, "import",
+			NS_W3C_XML_SCHEMA_PREFIX);
+	public static final QName XSD_INCLUDE_ELEMENT = new QName(W3C_XML_SCHEMA_NS_URI, "include",
 			NS_W3C_XML_SCHEMA_PREFIX);
 
 	public static final QName XSD_ATTR_TARGET_NAMESPACE = new QName(W3C_XML_SCHEMA_NS_URI, "targetNamespace",
@@ -156,7 +153,9 @@ public class DOMUtil {
 			NS_WSDL_SCHEMA_PREFIX);
 	public static final QName WSDL_ATTR_SCHEMA_LOCATION = new QName(NS_WSDL, "schemaLocation",
 			NS_WSDL_SCHEMA_PREFIX);
-	
+	public static final QName WSDL_ATTR_LOCATION = new QName(NS_WSDL, "location",
+			NS_WSDL_SCHEMA_PREFIX);
+
 	private static final String RANDOM_ATTR_PREFIX_PREFIX = "qn";
 	private static final int RANDOM_ATTR_PREFIX_RND = 1000;
 	private static final int RANDOM_ATTR_PREFIX_MAX_ITERATIONS = 30;
@@ -220,9 +219,7 @@ public class DOMUtil {
 		try {
 			DocumentBuilder loader = createDocumentBuilder();
 			return loader.parse(IOUtils.toInputStream(doc, "utf-8"));
-		} catch (SAXException ex) {
-			throw new IllegalStateException("Error parsing XML document " + ex.getMessage(),ex);
-		} catch (IOException ex) {
+		} catch (SAXException | IOException ex) {
 			throw new IllegalStateException("Error parsing XML document " + ex.getMessage(),ex);
 		}
 	}
@@ -237,11 +234,7 @@ public class DOMUtil {
 			factory.setNamespaceAware(true);
 			DocumentBuilder loader = factory.newDocumentBuilder();
 			return loader.parse(file);
-		} catch (SAXException ex) {
-			throw new IllegalStateException("Error parsing XML document " + ex.getMessage(),ex);
-		} catch (IOException ex) {
-			throw new IllegalStateException("Error parsing XML document " + ex.getMessage(),ex);
-		} catch (ParserConfigurationException ex) {
+		} catch (SAXException | IOException | ParserConfigurationException ex) {
 			throw new IllegalStateException("Error parsing XML document " + ex.getMessage(),ex);
 		}
 	}
@@ -258,9 +251,7 @@ public class DOMUtil {
 			factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
 			DocumentBuilder loader = factory.newDocumentBuilder();
 			return loader.parse(inputStream);
-		} catch (SAXException ex) {
-			throw new IllegalStateException("Error parsing XML document " + ex.getMessage(),ex);
-		} catch (ParserConfigurationException ex) {
+		} catch (SAXException | ParserConfigurationException ex) {
 			throw new IllegalStateException("Error parsing XML document " + ex.getMessage(),ex);
 		}
 	}
@@ -405,9 +396,9 @@ public class DOMUtil {
 		return null;
 	}
 	
-	public static List<Element> getChildElements(Element element, QName elementName){
+	public static List<Element> getChildElements(Element element, QName elementName) {
 		Validate.notNull(elementName, "Element name to get must not be null");
-		List<Element> elements = new ArrayList<Element>();
+		List<Element> elements = new ArrayList<>();
 		NodeList childNodes = element.getChildNodes();
 		for (int i= 0; i< childNodes.getLength(); i++){
 			Node childNode = childNodes.item(i);
@@ -418,8 +409,9 @@ public class DOMUtil {
 		return elements;
 	}
 
+	@NotNull
 	public static List<Element> listChildElements(Node node) {
-		List<Element> subelements = new ArrayList<Element>();
+		List<Element> subelements = new ArrayList<>();
 		NodeList childNodes = node.getChildNodes();
 		for (int i = 0; i < childNodes.getLength(); i++) {
 			Node childNode = childNodes.item(i);
@@ -429,7 +421,7 @@ public class DOMUtil {
 		}
 		return subelements;
 	}
-	
+
 	public static boolean hasChildElements(Node node) {
 		List<Element> childElements = listChildElements(node);
 		return (!childElements.isEmpty());
@@ -513,6 +505,11 @@ public class DOMUtil {
 			return false;
 		}
 		return true;
+	}
+
+	public static void removeXsiType(Element element) {
+		element.removeAttributeNS(XSI_TYPE.getNamespaceURI(), XSI_TYPE.getLocalPart());
+		element.removeAttribute(HACKED_XSI_TYPE);
 	}
 
 	public static void setXsiType(Element element, QName type) {
@@ -682,13 +679,10 @@ public class DOMUtil {
 	}
 
 	public static boolean isNamespaceDefinition(Attr attr) {
-			if(W3C_XML_SCHEMA_XMLNS_URI.equals(attr.getNamespaceURI())) {
-				return true;
-			}
-			if(attr.getName().startsWith("xmlns:") || "xmlns".equals(attr.getName())) {
-				return true;
-			}
-			return false;
+		if (W3C_XML_SCHEMA_XMLNS_URI.equals(attr.getNamespaceURI())) {
+			return true;
+		}
+		return attr.getName().startsWith("xmlns:") || "xmlns".equals(attr.getName());
 	}
 
 	public static void setNamespaceDeclaration(Element element, String prefix, String namespaceUri) {
@@ -711,7 +705,7 @@ public class DOMUtil {
 	 * Returns map of all namespace declarations from specified element (prefix -> namespace).
 	 */
 	public static Map<String,String> getNamespaceDeclarations(Element element) {
-		Map<String,String> nsDeclMap = new HashMap<String, String>();
+		Map<String,String> nsDeclMap = new HashMap<>();
 		NamedNodeMap attributes = element.getAttributes();
 		for(int i=0; i<attributes.getLength(); i++) {
 			Attr attr = (Attr)attributes.item(i);
@@ -774,7 +768,7 @@ public class DOMUtil {
 			Attr attr = (Attr)attributes.item(i);
 			if (isNamespaceDefinition(attr)) {
 				String prefix = getNamespaceDeclarationPrefix(attr);
-				String namespace = getNamespaceDeclarationNamespace(attr);
+				//String namespace = getNamespaceDeclarationNamespace(attr);
 				if (hasNamespaceDeclarationForPrefix(targetElement, prefix)) {
 					if (targetElement != currentElement) {
 						// We are processing parent element, while the original element already
@@ -863,7 +857,7 @@ public class DOMUtil {
 	}
 
 	public static Collection<Attr> listApplicationAttributes(Element element) {
-		Collection<Attr> attrs = new ArrayList<Attr>();
+		Collection<Attr> attrs = new ArrayList<>();
 		NamedNodeMap attributes = element.getAttributes();
 		for(int i=0; i<attributes.getLength(); i++) {
 			Attr attr = (Attr)attributes.item(i);
@@ -888,22 +882,11 @@ public class DOMUtil {
 
 	private static boolean isApplicationAttribute(Attr attr) {
 		String namespaceURI = attr.getNamespaceURI();
-        if (StringUtils.isEmpty(attr.getNamespaceURI()) && HACKED_XSI_TYPE.equals(attr.getName())) {
-            return false;
-        }
-		if (namespaceURI == null) {
-			return true;
+        if (StringUtils.isEmpty(namespaceURI)) {
+			return !AUXILIARY_ATTRIBUTE_NAMES.contains(attr.getName());
+		} else {
+        	return !AUXILIARY_NAMESPACES.contains(namespaceURI);
 		}
-		if (W3C_XML_SCHEMA_XMLNS_URI.equals(namespaceURI)) {
-			return false;
-		}
-		if (W3C_XML_XML_URI.equals(namespaceURI)) {
-			return false;
-		}
-		if (W3C_XML_SCHEMA_INSTANCE_NS_URI.equals(namespaceURI)) {
-			return false;
-		}
-		return true;
 	}
 
 	private static boolean comparePrefix(String prefixA, String prefixB) {
@@ -947,6 +930,16 @@ public class DOMUtil {
 		element = doc.createElementNS(elementQName.getNamespaceURI(), elementQName.getLocalPart());
 		parentElement.insertBefore(element, getFirstChildElement(parentElement));
 		return element;
+	}
+
+	@NotNull
+	public static QName getQName(Element element) {
+		QName name = getQName((Node) element);
+		if (name == null) {
+			throw new IllegalStateException("Element with no name: " + element);
+		} else {
+			return name;
+		}
 	}
 
 	public static QName getQName(Node node) {
@@ -1045,6 +1038,10 @@ public class DOMUtil {
 	}
 
 	public static boolean compareElement(Element a, Element b, boolean considerNamespacePrefixes) {
+		return compareElement(a, b, considerNamespacePrefixes, true);
+	}
+	
+	public static boolean compareElement(Element a, Element b, boolean considerNamespacePrefixes, boolean considerWhitespaces) {
 		if (a==b) {
 			return true;
 		}
@@ -1060,20 +1057,40 @@ public class DOMUtil {
 		if (!compareAttributes(a.getAttributes(),b.getAttributes(), considerNamespacePrefixes)) {
 			return false;
 		}
-		if (!compareNodeList(a.getChildNodes(),b.getChildNodes(), considerNamespacePrefixes)) {
+		if (!compareNodeList(a.getChildNodes(),b.getChildNodes(), considerNamespacePrefixes, considerWhitespaces)) {
+			return false;
+		}
+		return true;
+	}
+	
+	public static boolean compareDocument(Document a, Document b, boolean considerNamespacePrefixes, boolean considerWhitespaces) {
+		if (a==b) {
+			return true;
+		}
+		if (a == null && b == null) {
+			return true;
+		}
+		if (a == null || b == null) {
+			return false;
+		}
+		if (!compareNodeList(a.getChildNodes(),b.getChildNodes(), considerNamespacePrefixes, considerWhitespaces)) {
 			return false;
 		}
 		return true;
 	}
 	
 	public static boolean compareElementList(List<Element> aList, List<Element> bList, boolean considerNamespacePrefixes) {
+		return compareElementList(aList, bList, considerNamespacePrefixes, true);
+	}
+	
+	public static boolean compareElementList(List<Element> aList, List<Element> bList, boolean considerNamespacePrefixes, boolean considerWhitespaces) {
 		if (aList.size() != bList.size()) {
 			return false;
 		}
 		Iterator<Element> bIterator = bList.iterator();
 		for (Element a: aList) {
 			Element b = bIterator.next();
-			if (!compareElement(a, b, considerNamespacePrefixes)) {
+			if (!compareElement(a, b, considerNamespacePrefixes, considerWhitespaces)) {
 				return false;
 			}
 		}
@@ -1133,7 +1150,7 @@ public class DOMUtil {
 		return null;
 	}
 
-	private static boolean compareNodeList(NodeList a, NodeList b, boolean considerNamespacePrefixes) {
+	private static boolean compareNodeList(NodeList a, NodeList b, boolean considerNamespacePrefixes, boolean considerWhitespaces) {
 		if (a==b) {
 			return true;
 		}
@@ -1160,11 +1177,11 @@ public class DOMUtil {
 				return false;
 			}
 			if (aItem.getNodeType() == Node.ELEMENT_NODE) {
-				if (!compareElement((Element)aItem, (Element)bItem, considerNamespacePrefixes)) {
+				if (!compareElement((Element)aItem, (Element)bItem, considerNamespacePrefixes, considerWhitespaces)) {
 					return false;
 				}
 			} else if (aItem.getNodeType() == Node.TEXT_NODE) {
-				if (!compareTextNodeValues(aItem.getTextContent(),bItem.getTextContent())) {
+				if (!compareTextNodeValues(aItem.getTextContent(), bItem.getTextContent(), considerWhitespaces)) {
 					return false;
 				}
 			}
@@ -1173,7 +1190,14 @@ public class DOMUtil {
 	}
 
 	public static boolean compareTextNodeValues(String a, String b) {
+		return compareTextNodeValues(a, b, true);
+	}
+	
+	public static boolean compareTextNodeValues(String a, String b, boolean considerWhitespaces) {
 		if (StringUtils.equals(a,b)) {
+			return true;
+		}
+		if (!considerWhitespaces && StringUtils.trimToEmpty(a).equals(StringUtils.trimToEmpty(b))) {
 			return true;
 		}
 		if (StringUtils.isBlank(a) && StringUtils.isBlank(b)) {
@@ -1182,23 +1206,41 @@ public class DOMUtil {
 		return false;
 	}
 
-	/**
-	 * Remove comments and whitespace-only text nodes
-	 */
 	private static List<Node> canonizeNodeList(NodeList nodelist) {
 		List<Node> list = new ArrayList<Node>(nodelist.getLength());
 		for (int i = 0; i < nodelist.getLength(); i++) {
 			Node aItem = nodelist.item(i);
-			if (aItem.getNodeType() == Node.COMMENT_NODE) {
-				continue;
-			} else if (aItem.getNodeType() == Node.TEXT_NODE) {
-				if (aItem.getTextContent().matches("\\s*")) {
-					continue;
+			if (aItem.getNodeType() == Node.ELEMENT_NODE || aItem.getNodeType() == Node.ATTRIBUTE_NODE) {
+				list.add(aItem);
+			} else if (aItem.getNodeType() == Node.TEXT_NODE || aItem.getNodeType() == Node.CDATA_SECTION_NODE) {
+				if (!aItem.getTextContent().matches("\\s*")) {
+					list.add(aItem);
 				}
 			}
-			list.add(aItem);
 		}
 		return list;
+	}
+	
+	public static void normalize(Node node, boolean keepWhitespaces) {
+		NodeList childNodes = node.getChildNodes();
+		for (int i = 0; i < childNodes.getLength(); i++) {
+			Node aItem = childNodes.item(i);
+			if (aItem.getNodeType() == Node.COMMENT_NODE) {
+				node.removeChild(aItem);
+				i--;
+			} else if (aItem.getNodeType() == Node.TEXT_NODE) {
+				if (aItem.getTextContent().matches("\\s*")) {
+					node.removeChild(aItem);
+					i--;
+				} else {
+					if (!keepWhitespaces) {
+						aItem.setTextContent(aItem.getTextContent().trim());
+					}
+				}
+			} else if (aItem.getNodeType() == Node.ELEMENT_NODE) {
+				normalize(aItem, keepWhitespaces);
+			}
+		}
 	}
 
 	public static boolean isJunk(Node node) {
@@ -1367,4 +1409,29 @@ public class DOMUtil {
 		return attr;
     }
 
+	public static boolean hasNoPrefix(Element top) {
+		return Objects.equals(top.getLocalName(), top.getNodeName());
+	}
+
+	@NotNull
+	public static List<Element> getElementsWithoutNamespacePrefix(Element element) {
+    	List<Element> rv = new ArrayList<>();
+    	getElementsWithoutNamespacePrefix(element, rv);
+    	return rv;
+	}
+
+	private static void getElementsWithoutNamespacePrefix(Element element, List<Element> result) {
+		NodeList childNodes = element.getChildNodes();
+		for (int i = 0; i < childNodes.getLength(); i++) {
+			Node childNode = childNodes.item(i);
+			if (childNode instanceof Element) {
+				Element childElement = (Element) childNode;
+				if (hasNoPrefix(childElement)) {
+					result.add(childElement);
+				} else {
+					getElementsWithoutNamespacePrefix(childElement, result);
+				}
+			}
+		}
+	}
 }

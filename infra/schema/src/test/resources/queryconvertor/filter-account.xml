@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-  ~ Copyright (c) 2010-2014 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -23,14 +23,14 @@
 		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 	<and>
 		<equal>
+            <matching>insensitive</matching>
 			<path>c:failedOperationType</path>
 			<value>add</value>
-			<matching>insensitive</matching>
 		</equal>
 		<equal>
+            <matching>norm</matching>
 			<path>c:name</path>
 			<value>someName</value>
-			<matching>norm</matching>
 		</equal>
 	</and>
 </q:filter>

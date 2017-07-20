@@ -23,9 +23,9 @@ import com.evolveum.midpoint.schema.DeltaConvertor;
 import com.evolveum.midpoint.util.DebugDumpable;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectDeltaWaveType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectDeltaWavesType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.model.model_context_3.ObjectDeltaWaveType;
-import com.evolveum.midpoint.xml.ns._public.model.model_context_3.ObjectDeltaWavesType;
 
 import java.io.Serializable;
 import java.util.*;
@@ -394,7 +394,6 @@ public class ObjectDeltaWaves<O extends ObjectType> implements List<ObjectDelta<
                 ObjectDeltaWaveType objectDeltaWaveType = new ObjectDeltaWaveType();
                 objectDeltaWaveType.setNumber(i);
                 objectDeltaWaveType.setDelta(DeltaConvertor.toObjectDeltaType(wave));
-
                 objectDeltaWavesType.getWave().add(objectDeltaWaveType);
             }
         }
@@ -402,12 +401,12 @@ public class ObjectDeltaWaves<O extends ObjectType> implements List<ObjectDelta<
     }
 
     // don't forget to apply provisioning definitions to resulting deltas (it's the client responsibility)
-    public static ObjectDeltaWaves fromObjectDeltaWavesType(ObjectDeltaWavesType secondaryDeltas, PrismContext prismContext) throws SchemaException {
+    public static <O extends ObjectType> ObjectDeltaWaves<O> fromObjectDeltaWavesType(ObjectDeltaWavesType secondaryDeltas, PrismContext prismContext) throws SchemaException {
         if (secondaryDeltas == null) {
             return null;
         }
 
-        ObjectDeltaWaves retval = new ObjectDeltaWaves();
+        ObjectDeltaWaves<O> retval = new ObjectDeltaWaves<>();
 
         int max = 0;
         for (ObjectDeltaWaveType odwt : secondaryDeltas.getWave()) {
@@ -416,7 +415,7 @@ public class ObjectDeltaWaves<O extends ObjectType> implements List<ObjectDelta<
             }
         }
 
-        ObjectDelta[] wavesAsArray = new ObjectDelta[max+1];
+        ObjectDelta<O>[] wavesAsArray = new ObjectDelta[max+1];
         for (ObjectDeltaWaveType odwt : secondaryDeltas.getWave()) {
             wavesAsArray[odwt.getNumber()] = DeltaConvertor.createObjectDelta(odwt.getDelta(), prismContext);
         }

@@ -15,10 +15,6 @@
  */
 package com.evolveum.midpoint.prism.path;
 
-import javax.xml.namespace.QName;
-
-import com.evolveum.midpoint.util.PrettyPrinter;
-
 import java.io.Serializable;
 
 /**
@@ -62,5 +58,8 @@ public abstract class ItemPathSegment implements Serializable, Cloneable {
     public abstract boolean equivalent(Object obj);
 
     public abstract ItemPathSegment clone();
-	
+
+	public boolean isVariable() {
+		return false;
+	}
 }

@@ -20,10 +20,11 @@ import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 
 import org.apache.commons.lang.Validate;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.xml.namespace.QName;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 /**
  * @author lazyman
@@ -62,6 +63,8 @@ public enum ObjectTypes {
 
     NODE(NodeType.COMPLEX_TYPE, SchemaConstantsGenerated.C_NODE, NodeType.class, ObjectManager.TASK_MANAGER, "nodes"),
 
+    FORM(FormType.COMPLEX_TYPE, SchemaConstantsGenerated.C_FORM, FormType.class, ObjectManager.MODEL, "forms"),
+
     ORG(OrgType.COMPLEX_TYPE, SchemaConstantsGenerated.C_ORG, OrgType.class, ObjectManager.MODEL, "orgs"),
 
     ABSTRACT_ROLE(AbstractRoleType.COMPLEX_TYPE, SchemaConstants.C_ABSTRACT_ROLE, AbstractRoleType.class,
@@ -80,23 +83,42 @@ public enum ObjectTypes {
     LOOKUP_TABLE(LookupTableType.COMPLEX_TYPE, SchemaConstantsGenerated.C_LOOKUP_TABLE, LookupTableType.class,
             ObjectManager.MODEL, "lookupTables"),
 
-    ACCESS_CERTIFICATION_DEFINITION(AccessCertificationDefinitionType.COMPLEX_TYPE, SchemaConstantsGenerated.C_ACCESS_CERTIFICATION_DEFINITION, AccessCertificationDefinitionType.class,
+    ACCESS_CERTIFICATION_DEFINITION(AccessCertificationDefinitionType.COMPLEX_TYPE,
+            SchemaConstantsGenerated.C_ACCESS_CERTIFICATION_DEFINITION, AccessCertificationDefinitionType.class,
             ObjectManager.MODEL, "accessCertificationDefinitions"),
 
-    ACCESS_CERTIFICATION_CAMPAIGN(AccessCertificationCampaignType.COMPLEX_TYPE, SchemaConstantsGenerated.C_ACCESS_CERTIFICATION_CAMPAIGN, AccessCertificationCampaignType.class,
+    ACCESS_CERTIFICATION_CAMPAIGN(AccessCertificationCampaignType.COMPLEX_TYPE,
+            SchemaConstantsGenerated.C_ACCESS_CERTIFICATION_CAMPAIGN, AccessCertificationCampaignType.class,
             ObjectManager.MODEL, "accessCertificationCampaigns"),
 
-    SEQUENCE(SequenceType.COMPLEX_TYPE, SchemaConstantsGenerated.C_SEQUENCE, SequenceType.class, ObjectManager.MODEL, "sequences"),
+    SEQUENCE(SequenceType.COMPLEX_TYPE, SchemaConstantsGenerated.C_SEQUENCE, SequenceType.class, ObjectManager.MODEL,
+            "sequences"),
 
-    // as for now, this has to remain disabled (they could be used e.g. in audit logs, when the repo will support them)
-    //WORK_ITEM(WorkItemType.COMPLEX_TYPE, SchemaConstants.C_WORK_ITEM, WorkItemType.class, ObjectManager.WORKFLOW, "workItems"),
-    //WF_PROCESS_INSTANCE(WfProcessInstanceType.COMPLEX_TYPE, SchemaConstants.C_WF_PROCESS_INSTANCE, WfProcessInstanceType.class, ObjectManager.WORKFLOW, "wfProcessInstances"),
+    SERVICE(ServiceType.COMPLEX_TYPE, SchemaConstantsGenerated.C_SERVICE, ServiceType.class, ObjectManager.MODEL,
+            "services"),
+
+    CASE(CaseType.COMPLEX_TYPE, SchemaConstantsGenerated.C_CASE, CaseType.class, ObjectManager.MODEL,
+            "cases"),
 
     // this should be at end, because otherwise it presents itself as entry for all subtypes of ObjectType
     OBJECT(SchemaConstants.C_OBJECT_TYPE, SchemaConstants.C_OBJECT, ObjectType.class, ObjectManager.MODEL, "objects");
-    
-    public static enum ObjectManager {
-        PROVISIONING, TASK_MANAGER, WORKFLOW, MODEL, REPOSITORY;
+
+	public List<ObjectTypes> thisAndSupertypes() {
+		List<ObjectTypes> rv = new ArrayList<>();
+		rv.add(this);
+		ObjectTypes superType = superType();
+		if (superType != null) {
+			rv.addAll(superType.thisAndSupertypes());
+		}
+		return rv;
+	}
+
+	public ObjectTypes superType() {
+		return getObjectTypeIfKnown(classDefinition.getSuperclass());
+	}
+
+	public enum ObjectManager {
+        PROVISIONING, TASK_MANAGER, MODEL, WORKFLOW, REPOSITORY
     }
 
     private QName type;
@@ -105,8 +127,8 @@ public enum ObjectTypes {
     private ObjectManager objectManager;
     private String restType;
 
-    private ObjectTypes(QName type, QName name, Class<? extends ObjectType> classDefinition,
-                        ObjectManager objectManager, String restType) {
+    ObjectTypes(QName type, QName name, Class<? extends ObjectType> classDefinition,
+			ObjectManager objectManager, String restType) {
         this.type = type;
         this.name = name;
         this.classDefinition = classDefinition;
@@ -120,10 +142,6 @@ public enum ObjectTypes {
 
     public boolean isManagedByTaskManager() {
         return objectManager == ObjectManager.TASK_MANAGER;
-    }
-
-    public boolean isManagedByWorkflow() {
-        return objectManager == ObjectManager.WORKFLOW;
     }
 
     public String getValue() {
@@ -214,7 +232,16 @@ public enum ObjectTypes {
     }
 
     @SuppressWarnings("unchecked")
+    @NotNull
     public static ObjectTypes getObjectType(Class<? extends ObjectType> objectType) {
+		ObjectTypes rv = getObjectTypeIfKnown(objectType);
+		if (rv == null) {
+			throw new IllegalArgumentException("Unsupported object type " + objectType);
+		}
+		return rv;
+	}
+
+    public static ObjectTypes getObjectTypeIfKnown(Class<?> objectType) {
         for (ObjectTypes type : values()) {
             if (type.getClassDefinition().equals(objectType)) {
                 return type;
@@ -222,11 +249,10 @@ public enum ObjectTypes {
         }
         // No match. Try with superclass.
         Class<?> superclass = objectType.getSuperclass();
-        if (superclass != null && !superclass.equals(ObjectType.class)) {
-            return getObjectType((Class<? extends ObjectType>) superclass);
+        if (superclass != null) {
+            return getObjectTypeIfKnown(superclass);
         }
-
-        throw new IllegalArgumentException("Unsupported object type " + objectType);
+        return null;
     }
 
     public static boolean isManagedByProvisioning(ObjectType object) {
@@ -303,5 +329,21 @@ public enum ObjectTypes {
 
         return list;
     }
+
+    // TODO move somewhere else?
+    public static String getDisplayNameForTypeName(@Nullable QName name, @Nullable Locale locale) {
+    	if (name == null) {
+    		return null;
+		}
+		ResourceBundle bundle = ResourceBundle.getBundle(
+				SchemaConstants.SCHEMA_LOCALIZATION_PROPERTIES_RESOURCE_BASE_PATH,
+				locale != null ? locale : Locale.getDefault());
+		String key = "ObjectType." + name.getLocalPart();
+		if (bundle.containsKey(key)) {
+			return bundle.getString(key);
+		} else {
+			return null;
+		}
+	}
 }
 

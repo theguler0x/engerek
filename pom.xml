@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 	<name>midPoint Project</name>
 	<groupId>com.evolveum.midpoint</groupId>
 	<artifactId>midpoint</artifactId>
-	<version>3.4-SNAPSHOT</version>
+	<version>3.7-SNAPSHOT</version>
 	<packaging>pom</packaging>
 	<description>Utility module to compile all of the maven based midPoint projects.</description>
 	<organization>
@@ -40,12 +40,12 @@
         <repository>
             <id>evolveum-nexus</id>
             <name>Internal Releases</name>
-            <url>http://nexus.evolveum.com/nexus/content/repositories/releases/</url>
+            <url>https://nexus.evolveum.com/nexus/content/repositories/releases/</url>
         </repository>
         <snapshotRepository>
             <id>evolveum-nexus</id>
             <name>Internal Snapshots</name>
-            <url>http://nexus.evolveum.com/nexus/content/repositories/snapshots/</url>
+            <url>https://nexus.evolveum.com/nexus/content/repositories/snapshots/</url>
         </snapshotRepository>
     </distributionManagement>
 
@@ -63,12 +63,13 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>2.3.2</version>
+				<version>3.5.1</version>
 				<configuration>
-					<source>1.7</source>
-					<target>1.7</target>
+					<source>${project.source.version}</source>
+					<target>${project.source.version}</target>
 				</configuration>
 			</plugin>
+<<<<<<< HEAD
 			<plugin>     
 				<groupId>org.apache.maven.plugins</groupId>     
 				<artifactId>maven-javadoc-plugin</artifactId>     
@@ -82,9 +83,21 @@
 					</execution>    
 				</executions>
              </plugin>
+=======
+            <plugin>
+                <groupId>com.rimerosolutions.maven.plugins</groupId>
+                <artifactId>wrapper-maven-plugin</artifactId>
+                <version>0.0.4</version>
+            </plugin>
+>>>>>>> midpoint/master
 		</plugins>
 		<pluginManagement>
 			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-plugin-plugin</artifactId>
+					<version>3.3</version>		<!-- 3.2 does not work because of some internal error; 3.4+ probably because of some misconfiguration -->
+				</plugin>
 				<plugin>
 					<groupId>org.eclipse.m2e</groupId>
 					<artifactId>lifecycle-mapping</artifactId>
@@ -100,20 +113,6 @@
 										<goals>
 											<goal>copy-dependencies</goal>
 											<goal>unpack</goal>
-										</goals>
-									</pluginExecutionFilter>
-									<action>
-										<execute />
-									</action>
-								</pluginExecution>
-								<pluginExecution>
-									<pluginExecutionFilter>
-										<groupId>org.codehaus.mojo</groupId>
-										<artifactId>aspectj-maven-plugin</artifactId>
-										<versionRange>[1.6,)</versionRange>
-										<goals>
-											<goal>test-compile</goal>
-											<goal>compile</goal>
 										</goals>
 									</pluginExecutionFilter>
 									<action>
@@ -157,17 +156,17 @@
 		<repository>
 			<id>evolveum</id>
 			<name>Evolveum Public Releases</name>
-			<url>http://nexus.evolveum.com/nexus/content/groups/public</url>
+			<url>https://nexus.evolveum.com/nexus/content/groups/public</url>
 		</repository>
 		<repository>
 			<id>evolveum-snapshots</id>
 			<name>Evolveum Snapshots</name>
-			<url>http://nexus.evolveum.com/nexus/content/repositories/snapshots/</url>
+			<url>https://nexus.evolveum.com/nexus/content/repositories/snapshots/</url>
 		</repository>
 	</repositories>
 	<properties>
 		<!-- Build system options - more options in build-system/pom.xml -->
-		<project.source.version>1.7</project.source.version>
+		<project.source.version>1.8</project.source.version>
 		<clover.version>3.1.11</clover.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>

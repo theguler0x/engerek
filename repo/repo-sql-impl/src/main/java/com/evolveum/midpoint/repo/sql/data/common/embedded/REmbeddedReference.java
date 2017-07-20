@@ -23,8 +23,8 @@ import com.evolveum.midpoint.repo.sql.data.common.other.RObjectType;
 import com.evolveum.midpoint.repo.sql.query2.definition.NotQueryable;
 import com.evolveum.midpoint.repo.sql.util.ClassMapper;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
+import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.prism.xml.ns._public.query_3.SearchFilterType;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
@@ -39,10 +39,12 @@ import javax.persistence.Embeddable;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.FetchType;
-import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
-import javax.persistence.MapsId;
+import javax.xml.namespace.QName;
+
+import static com.evolveum.midpoint.repo.sql.util.RUtil.*;
+import static com.evolveum.midpoint.schema.util.ObjectTypeUtil.*;
 
 /**
  * @author lazyman
@@ -51,15 +53,13 @@ import javax.persistence.MapsId;
 public class REmbeddedReference implements ObjectReference {
 
     //target
-    @NotFound(action = NotFoundAction.IGNORE)
-    private RObject target;
     private String targetOid;
     //other fields
     private RObjectType type;
     //relation qname
     private String relation;
 
-    @Column(length = RUtil.COLUMN_LENGTH_QNAME)
+    @Column(length = COLUMN_LENGTH_QNAME)
     @Override
     public String getRelation() {
         return relation;
@@ -72,15 +72,12 @@ public class REmbeddedReference implements ObjectReference {
     @NotFound(action = NotFoundAction.IGNORE)
     @NotQueryable
     public RObject getTarget() {
-        return target;
+        return null;
     }
 
-    @Column(length = RUtil.COLUMN_LENGTH_OID, insertable = true, updatable = true, nullable = true /*, insertable = false, updatable = false */)
+    @Column(length = COLUMN_LENGTH_OID, insertable = true, updatable = true, nullable = true /*, insertable = false, updatable = false */)
     @Override
     public String getTargetOid() {
-        if (target != null && targetOid == null) {
-            targetOid = target.getOid();
-        }
         return targetOid;
     }
 
@@ -103,7 +100,6 @@ public class REmbeddedReference implements ObjectReference {
     }
 
     public void setTarget(RObject target) {
-        this.target = target;
     }
 
     @Override
@@ -138,19 +134,20 @@ public class REmbeddedReference implements ObjectReference {
         Validate.notNull(repo, "Repo object must not be null.");
         Validate.notNull(jaxb, "JAXB object must not be null.");
         jaxb.setType(ClassMapper.getQNameForHQLType(repo.getType()));
-        jaxb.setRelation(RUtil.stringToQName(repo.getRelation()));
+        jaxb.setRelation(stringToQName(repo.getRelation()));
         if (StringUtils.isNotEmpty(repo.getTargetOid())) {
             jaxb.setOid(repo.getTargetOid());
         }
     }
 
-    public static void copyFromJAXB(ObjectReferenceType jaxb, REmbeddedReference repo, PrismContext prismContext) {
+    public static void copyFromJAXB(ObjectReferenceType jaxb, REmbeddedReference repo) {
         Validate.notNull(repo, "Repo object must not be null.");
         Validate.notNull(jaxb, "JAXB object must not be null.");
-        Validate.notEmpty(jaxb.getOid(), "Target oid must not be null.");
-
+        if (jaxb.getFilter() == null) {
+            Validate.notEmpty(jaxb.getOid(), "Target oid must not be null.");
+        }
         repo.setType(ClassMapper.getHQLTypeForQName(jaxb.getType()));
-        repo.setRelation(RUtil.qnameToString(jaxb.getRelation()));
+        repo.setRelation(qnameToString(normalizeRelation(jaxb.getRelation())));
         repo.setTargetOid(jaxb.getOid());
 
     }
@@ -158,7 +155,6 @@ public class REmbeddedReference implements ObjectReference {
     public ObjectReferenceType toJAXB(PrismContext prismContext) {
         ObjectReferenceType ref = new ObjectReferenceType();
         copyToJAXB(this, ref, prismContext);
-
         return ref;
     }
 }

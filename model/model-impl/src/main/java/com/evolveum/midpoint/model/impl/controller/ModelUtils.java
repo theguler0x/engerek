@@ -15,6 +15,9 @@
  */
 package com.evolveum.midpoint.model.impl.controller;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.model.api.ModelAuthorizationAction;
@@ -23,14 +26,17 @@ import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.query.ObjectPaging;
 import com.evolveum.midpoint.schema.constants.ObjectTypes;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.util.FocusTypeUtil;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectPolicyConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectTemplateType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ServiceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 
@@ -97,8 +103,19 @@ public class ModelUtils {
 		}
 		throw new IllegalArgumentException("Unknown delta type "+delta);
 	}
+
+	public static <O extends ObjectType> ObjectPolicyConfigurationType determineObjectPolicyConfiguration(PrismObject<O> object, SystemConfigurationType systemConfigurationType) throws ConfigurationException {
+		List<String> subTypes;
+        if (object.getOid() == null){
+            subTypes = new ArrayList<>();
+        } else {
+            subTypes = FocusTypeUtil.determineSubTypes(object);
+        }
+		return determineObjectPolicyConfiguration(object.getCompileTimeClass(), subTypes, systemConfigurationType);
+	}
 	
-	public static <O extends ObjectType> ObjectPolicyConfigurationType determineObjectPolicyConfiguration(Class<O> objectClass, SystemConfigurationType systemConfigurationType) throws ConfigurationException {
+	public static <O extends ObjectType> ObjectPolicyConfigurationType determineObjectPolicyConfiguration(Class<O> objectClass, List<String> objectSubtypes, SystemConfigurationType systemConfigurationType) throws ConfigurationException {
+		ObjectPolicyConfigurationType applicablePolicyConfigurationType = null;
 		for (ObjectPolicyConfigurationType aPolicyConfigurationType: systemConfigurationType.getDefaultObjectPolicyConfiguration()) {
 			QName typeQName = aPolicyConfigurationType.getType();
 			ObjectTypes objectType = ObjectTypes.getObjectTypeFromTypeQName(typeQName);
@@ -106,8 +123,18 @@ public class ModelUtils {
 				throw new ConfigurationException("Unknown type "+typeQName+" in default object policy definition in system configuration");
 			}
 			if (objectType.getClassDefinition() == objectClass) {
-				return aPolicyConfigurationType;
+				String aSubType = aPolicyConfigurationType.getSubtype();
+				if (aSubType == null) {
+					if (applicablePolicyConfigurationType == null) {
+						applicablePolicyConfigurationType = aPolicyConfigurationType;
+					}
+				} else if (objectSubtypes != null && objectSubtypes.contains(aSubType)) {
+					applicablePolicyConfigurationType = aPolicyConfigurationType;
+				}
 			}
+		}
+		if (applicablePolicyConfigurationType != null) {
+			return applicablePolicyConfigurationType;
 		}
 
 		// Deprecated

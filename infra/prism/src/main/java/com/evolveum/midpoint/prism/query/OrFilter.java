@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2014 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,10 @@
 package com.evolveum.midpoint.prism.query;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-import com.evolveum.midpoint.prism.Containerable;
-import com.evolveum.midpoint.prism.Objectable;
 import com.evolveum.midpoint.prism.PrismContainerValue;
-import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.match.MatchingRuleRegistry;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
@@ -33,13 +31,9 @@ public class OrFilter extends NaryLogicalFilter {
 		super(condition);
 	}
 
-	
 	public static OrFilter createOr(ObjectFilter... conditions){
 		List<ObjectFilter> filters = new ArrayList<ObjectFilter>();
-		for (ObjectFilter condition : conditions){
-			filters.add(condition);
-		}
-		
+		Collections.addAll(filters, conditions);
 		return new OrFilter(filters);
 	}
 	
@@ -47,6 +41,7 @@ public class OrFilter extends NaryLogicalFilter {
 		return new OrFilter(conditions);
 	}
 	
+	@SuppressWarnings("CloneDoesntCallSuperClone")
 	@Override
 	public OrFilter clone() {
 		return new OrFilter(getClonedConditions());
@@ -58,37 +53,9 @@ public class OrFilter extends NaryLogicalFilter {
 	}
 
 	@Override
-	public String debugDump() {
-		return debugDump(0);
+	protected String getDebugDumpOperationName() {
+		return "OR";
 	}
-	
-	@Override
-	public String debugDump(int indent) {
-		StringBuilder sb = new StringBuilder();
-		DebugUtil.indentDebugDump(sb, indent);
-		sb.append("OR:");
-		for (ObjectFilter filter : getConditions()){
-			sb.append("\n");
-			sb.append(filter.debugDump(indent + 1));
-		}
-		return sb.toString();
-	}
-	
-	@Override
-	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		sb.append("OR");
-		sb.append("(");
-		for (int i = 0; i < getConditions().size(); i++){
-			sb.append(getConditions().get(i));
-			if (i != getConditions().size() -1){
-				sb.append(",");
-			}
-		}
-		sb.append(")");
-		return sb.toString();
-	}
-
 
 	@Override
 	public boolean match(PrismContainerValue value, MatchingRuleRegistry matchingRuleRegistry) throws SchemaException {
@@ -99,4 +66,10 @@ public class OrFilter extends NaryLogicalFilter {
 		}
 		return false;
 	}
+
+	@Override
+	public boolean equals(Object obj, boolean exact) {
+		return super.equals(obj, exact) && obj instanceof OrFilter;
+	}
+
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,11 +22,12 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.function.Function;
 
 import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.prism.*;
-import com.evolveum.midpoint.prism.parser.XPathHolder;
+import com.evolveum.midpoint.prism.marshaller.XPathHolder;
 import com.evolveum.midpoint.prism.path.IdItemPathSegment;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.path.ItemPath.CompareResult;
@@ -34,16 +35,26 @@ import com.evolveum.midpoint.prism.path.ItemPathSegment;
 import com.evolveum.midpoint.prism.path.NameItemPathSegment;
 import com.evolveum.midpoint.util.DebugDumpable;
 import com.evolveum.midpoint.util.DebugUtil;
+import com.evolveum.midpoint.util.Foreachable;
 import com.evolveum.midpoint.util.MiscUtil;
 import com.evolveum.midpoint.util.PrettyPrinter;
+import com.evolveum.midpoint.util.Processor;
+import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.util.logging.Trace;
+import com.evolveum.midpoint.util.logging.TraceManager;
+import com.evolveum.prism.xml.ns._public.types_3.ItemDeltaType;
+import com.evolveum.prism.xml.ns._public.types_3.ModificationTypeType;
+import org.apache.commons.collections4.CollectionUtils;
 
 /**
  * @author Radovan Semancik
  * 
  */
-public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> implements Itemable, DebugDumpable, Visitable, PathVisitable, Serializable {
+public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> implements Itemable, DebugDumpable, Visitable, PathVisitable, Foreachable<V>, Serializable {
 
+	private static final Trace LOGGER = TraceManager.getTrace(ItemDelta.class);
+			
 	/**
 	 * Name of the property
 	 */
@@ -68,7 +79,7 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
         //checkPrismContext(prismContext, itemDefinition);
         this.prismContext = prismContext;
 		this.elementName = itemDefinition.getName();
-		this.parentPath = new ItemPath();
+		this.parentPath = ItemPath.EMPTY_PATH;
 		this.definition = itemDefinition;
 	}
 
@@ -76,13 +87,13 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
         //checkPrismContext(prismContext, itemDefinition);
         this.prismContext = prismContext;
 		this.elementName = elementName;
-		this.parentPath = new ItemPath();
+		this.parentPath = ItemPath.EMPTY_PATH;
 		this.definition = itemDefinition;
     }
 
 	protected ItemDelta(ItemPath parentPath, QName elementName, D itemDefinition, PrismContext prismContext) {
         //checkPrismContext(prismContext, itemDefinition);
-		ItemPath.checkNoReferences(parentPath);
+		ItemPath.checkNoSpecialSymbols(parentPath);
         this.prismContext = prismContext;
 		this.elementName = elementName;
 		this.parentPath = parentPath;
@@ -91,7 +102,7 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 
 	protected ItemDelta(ItemPath path, D itemDefinition, PrismContext prismContext) {
         //checkPrismContext(prismContext, itemDefinition);
-		ItemPath.checkNoReferences(path);
+		ItemPath.checkNoSpecialSymbols(path);
         this.prismContext = prismContext;
 
 		if (path == null) {
@@ -178,6 +189,18 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 		}
 	}
 
+	public int size() {
+		return sizeSet(valuesToReplace) + sizeSet(valuesToAdd) + sizeSet(valuesToDelete);
+	}
+	
+	private int sizeSet(Collection<V> set) {
+		if (set == null) {
+			return 0;
+		} else {
+			return set.size();
+		}
+	}
+
 	// TODO think if estimated old values have to be visited as well
 	@Override
 	public void accept(Visitor visitor, ItemPath path, boolean recursive) {
@@ -251,15 +274,16 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 		}
 	}
 
-	public static void applyDefinition(Collection<? extends ItemDelta> deltas,
-			PrismObjectDefinition definition) throws SchemaException {
+	public static void applyDefinitionIfPresent(Collection<? extends ItemDelta> deltas,
+			PrismObjectDefinition definition, boolean tolerateNoDefinition) throws SchemaException {
 		for (ItemDelta itemDelta : deltas) {
 			ItemPath path = itemDelta.getPath();
 			ItemDefinition itemDefinition = definition.findItemDefinition(path, ItemDefinition.class);
-            if (itemDefinition == null) {
-                throw new SchemaException("Object type " + definition.getTypeName() + " doesn't contain definition for path " + new XPathHolder(path).getXPathWithDeclarations(false));
-            }
-			itemDelta.applyDefinition(itemDefinition);
+            if (itemDefinition != null) {
+				itemDelta.applyDefinition(itemDefinition);
+			} else if (!tolerateNoDefinition) {
+				throw new SchemaException("Object type " + definition.getTypeName() + " doesn't contain definition for path " + new XPathHolder(path).getXPathWithDeclarations(false));
+			}
 		}
 	}
 	
@@ -299,6 +323,9 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 	}
 
 	public void addValuesToAdd(Collection<V> newValues) {
+		if (newValues == null) {
+			return;
+		}
 		for (V val : newValues) {
 			addValueToAdd(val);
 		}
@@ -326,28 +353,31 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 		newValue.recompute();
 	}
 	
-	public boolean removeValueToAdd(V valueToRemove) {
-		return removeValue(valueToRemove, valuesToAdd);
+	public boolean removeValueToAdd(PrismValue valueToRemove) {
+		return removeValue(valueToRemove, valuesToAdd, false);
 	}
 	
-	public boolean removeValueToDelete(V valueToRemove) {
-		return removeValue(valueToRemove, valuesToDelete);
+	public boolean removeValueToDelete(PrismValue valueToRemove) {
+		return removeValue(valueToRemove, valuesToDelete, true);
 	}
 	
-	public boolean removeValueToReplace(V valueToRemove) {
-		return removeValue(valueToRemove, valuesToReplace);
+	public boolean removeValueToReplace(PrismValue valueToRemove) {
+		return removeValue(valueToRemove, valuesToReplace, false);
 	}
 	
-	private boolean removeValue(V valueToRemove, Collection<V> set) {
+	private boolean removeValue(PrismValue valueToRemove, Collection<V> set, boolean toDelete) {
 		boolean removed = false;
 		if (set == null) {
-			return removed;
+			return false;
 		}
-		Iterator<V> valuesToReplaceIterator = set.iterator();
-		while (valuesToReplaceIterator.hasNext()) {
-			V valueToReplace = valuesToReplaceIterator.next();
-			if (valueToReplace.equalsRealValue(valueToRemove)) {
-				valuesToReplaceIterator.remove();
+		Iterator<V> valuesIterator = set.iterator();
+		while (valuesIterator.hasNext()) {
+			V existingValue = valuesIterator.next();
+			// TODO either make equalsRealValue return false if both PCVs have IDs and these IDs are different
+			// TODO or include a special test condition here; see MID-3828
+			if (existingValue.equalsRealValue(valueToRemove)
+					|| toDelete && existingValue.representsSameValue(valueToRemove, false)) {		// the same algorithm as when deleting the item value
+				valuesIterator.remove();
 				removed = true;
 			}
 		}
@@ -355,12 +385,18 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 	}
 
 	public void mergeValuesToAdd(Collection<V> newValues) {
+		if (newValues == null) {
+			return;
+		}
 		for (V val : newValues) {
 			mergeValueToAdd(val);
 		}
 	}
 	
 	public void mergeValuesToAdd(V[] newValues) {
+		if (newValues == null) {
+			return;
+		}
 		for (V val : newValues) {
 			mergeValueToAdd(val);
 		}
@@ -380,6 +416,9 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 	}
 
 	public void addValuesToDelete(Collection<V> newValues) {
+		if (newValues == null) {
+			return;
+		}
 		for (V val : newValues) {
 			addValueToDelete(val);
 		}
@@ -452,8 +491,15 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 	public void resetValuesToDelete() {
 		valuesToDelete = null;
 	}
+	
+	public void resetValuesToReplace() {
+		valuesToReplace = null;
+	}
 
 	public void setValuesToReplace(Collection<V> newValues) {
+		if (newValues == null) {
+			return;
+		}
 		if (valuesToAdd != null) {
 			throw new IllegalStateException("Delta " + this
 					+ " already has values to add ("+valuesToAdd+"), attempt to set value to replace ("+newValues+")");
@@ -494,7 +540,7 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 			val.recompute();
 		}
 	}
-
+	
 	/**
 	 * Sets empty value to replace. This efficiently means removing all values.
 	 */
@@ -519,6 +565,25 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 			valuesToReplace = newValueCollection();
 		} else {
 			valuesToReplace.clear();
+		}
+		if (newValue != null) {
+			valuesToReplace.add(newValue);
+			newValue.setParent(this);
+			newValue.recompute();
+		}
+	}
+	
+	public void addValueToReplace(V newValue) {
+		if (valuesToAdd != null) {
+			throw new IllegalStateException("Delta " + this
+					+ " already has values to add, attempt to set value to replace");
+		}
+		if (valuesToDelete != null) {
+			throw new IllegalStateException("Delta " + this
+					+ " already has values to delete, attempt to set value to replace");
+		}
+		if (valuesToReplace == null) {
+			valuesToReplace = newValueCollection();
 		}
 		if (newValue != null) {
 			valuesToReplace.add(newValue);
@@ -615,10 +680,22 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 	}
 
 	public boolean isEmpty() {
-		if (valuesToAdd == null && valuesToDelete == null && valuesToReplace == null) {
+		return valuesToAdd == null && valuesToDelete == null && valuesToReplace == null;
+	}
+
+	// TODO merge with isEmpty
+	public boolean isInFactEmpty() {
+		return CollectionUtils.isEmpty(valuesToAdd) && CollectionUtils.isEmpty(valuesToDelete) && valuesToReplace == null;
+	}
+
+	public static boolean isEmpty(ItemDeltaType itemDeltaType) {
+		if (itemDeltaType == null) {
 			return true;
 		}
-		return false;
+		if (itemDeltaType.getModificationType() == ModificationTypeType.REPLACE) {
+			return false;
+		}
+		return !itemDeltaType.getValue().isEmpty();
 	}
 	
 	public boolean addsAnyValue() {
@@ -627,6 +704,21 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 	
 	private boolean hasAnyValue(Collection<V> set) {
 		return (set != null && !set.isEmpty());
+	}
+	
+	public void foreach(Processor<V> processor) {
+		foreachSet(processor, valuesToAdd);
+		foreachSet(processor, valuesToDelete);
+		foreachSet(processor, valuesToReplace);
+	}
+	
+	private void foreachSet(Processor<V> processor, Collection<V> set) {
+		if (set == null) {
+			return;
+		}
+		for (V val: set) {
+			processor.process(val);
+		}
 	}
 	
 	/**
@@ -685,13 +777,8 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 		if (set == null) {
 			return;
 		}
-		Iterator<V> iterator = set.iterator();
-		while (iterator.hasNext()) {
-			V value = iterator.next();
+		for (V value : set) {
 			value.normalize();
-			if (value.isEmpty()) {
-				iterator.remove();
-			}
 		}
 	}
 
@@ -740,6 +827,9 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
         for (ItemDelta<?,?> delta : deltas) {
             if (deltaType.isAssignableFrom(delta.getClass()) && delta.getPath().equivalent(propertyPath)) {
                 return (DD) delta;
+            }
+            if ((delta instanceof ContainerDelta<?>) && delta.getPath().isSubPath(propertyPath)) {
+            	return (DD) ((ContainerDelta)delta).getSubDelta(propertyPath.substract(delta.getPath()));
             }
         }
         return null;
@@ -794,14 +884,16 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
     
     /**
      * Filters out all delta values that are meaningless to apply. E.g. removes all values to add that the property already has,
-     * removes all values to delete that the property does not have, etc. 
+     * removes all values to delete that the property does not have, etc.
+     * Returns null if the delta is not needed at all. 
      */
     public ItemDelta<V,D> narrow(PrismObject<? extends Objectable> object) {
     	return narrow(object, null);
     }
 	/**
      * Filters out all delta values that are meaningless to apply. E.g. removes all values to add that the property already has,
-     * removes all values to delete that the property does not have, etc. 
+     * removes all values to delete that the property does not have, etc.
+     * Returns null if the delta is not needed at all.
      */
     public ItemDelta<V,D> narrow(PrismObject<? extends Objectable> object, Comparator<V> comparator) {
     	Item<V,D> currentItem = (Item<V,D>) object.findItem(getPath());
@@ -815,26 +907,42 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
     			return this;
     		}
     	} else {
-    		ItemDelta<V,D> clone = clone();
-    		if (clone.valuesToDelete != null) {
-    			Iterator<V> iterator = clone.valuesToDelete.iterator();
-    			while (iterator.hasNext()) {
-    				V valueToDelete = iterator.next();
-    				if (!currentItem.contains(valueToDelete, true, comparator)) {
-    					iterator.remove();
-    				}
+    		if (isReplace()) {
+    			// We can narrow replace deltas only if the replace set matches
+    			// current item exactly. Otherwise we may lose some values.
+    			if (currentItem.valuesExactMatch(valuesToReplace, comparator)) {
+    				return null;
+    			} else {
+    				return this;
     			}
+    		} else {
+	    		ItemDelta<V,D> clone = clone();
+	    		if (clone.valuesToDelete != null) {
+	    			Iterator<V> iterator = clone.valuesToDelete.iterator();
+	    			while (iterator.hasNext()) {
+	    				V valueToDelete = iterator.next();
+	    				if (!currentItem.contains(valueToDelete, true, comparator)) {
+	    					iterator.remove();
+	    				}
+	    			}
+	    			if (clone.valuesToDelete.isEmpty()) {
+	    				clone.valuesToDelete = null;
+	    			}
+	    		}
+	    		if (clone.valuesToAdd != null) {
+	    			Iterator<V> iterator = clone.valuesToAdd.iterator();
+	    			while (iterator.hasNext()) {
+	    				V valueToDelete = iterator.next();
+	    				if (currentItem.contains(valueToDelete, true, comparator)) {
+	    					iterator.remove();
+	    				}
+	    			}
+	    			if (clone.valuesToAdd.isEmpty()) {
+	    				clone.valuesToAdd = null;
+	    			}
+	    		}
+	    		return clone;
     		}
-    		if (clone.valuesToAdd != null) {
-    			Iterator<V> iterator = clone.valuesToAdd.iterator();
-    			while (iterator.hasNext()) {
-    				V valueToDelete = iterator.next();
-    				if (currentItem.contains(valueToDelete, true, comparator)) {
-    					iterator.remove();
-    				}
-    			}
-    		}
-    		return clone;
     	}
     }
 
@@ -865,10 +973,10 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 			return !hasAnyValue(valuesToAdd);
 		} else {
 			if (valuesToReplace != null) {
-				return MiscUtil.unorderedCollectionEquals(valuesToReplace, currentItem.getValues(), comparator);
+				return MiscUtil.unorderedCollectionCompare(valuesToReplace, currentItem.getValues(), comparator);
 			}
 			ItemDelta<V,D> narrowed = narrow(object, comparator);
-			boolean narrowedNotEmpty = narrowed.hasAnyValue(narrowed.valuesToAdd) || narrowed.hasAnyValue(narrowed.valuesToDelete);
+			boolean narrowedNotEmpty = narrowed == null || narrowed.hasAnyValue(narrowed.valuesToAdd) || narrowed.hasAnyValue(narrowed.valuesToDelete);
 			return narrowedNotEmpty;
 		}
 	}
@@ -898,8 +1006,43 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
     		}
     	}
     }
+    
+    
+    public void validateValues(ItemDeltaValidator<V> validator) throws SchemaException {
+    	validateValues(validator, getEstimatedOldValues());
+    }
+    
+    public void validateValues(ItemDeltaValidator<V> validator, Collection<V> oldValues) throws SchemaException {
+    	validateSet(valuesToAdd, PlusMinusZero.PLUS, validator);
+    	validateSet(valuesToDelete, PlusMinusZero.MINUS, validator);
+    	if (isReplace()) {
+    		for (V val: getValuesToReplace()) {
+    			if (oldValues != null && PrismValue.containsRealValue(oldValues, val)) {
+    				validator.validate(PlusMinusZero.ZERO, val);
+    			} else {
+    				validator.validate(PlusMinusZero.PLUS, val);
+    			}
+    		}
+    		if (oldValues != null) {
+    			for (V val: getValuesToReplace()) {
+    				if (!PrismValue.containsRealValue(getValuesToReplace(), val)) {
+    					validator.validate(PlusMinusZero.MINUS, val);
+    				}
+    			}
+    		}
+    	}
+    }
 
-    public static void checkConsistence(Collection<? extends ItemDelta> deltas) {
+    private void validateSet(Collection<V> set, PlusMinusZero plusMinusZero,
+			ItemDeltaValidator<V> validator) {
+		if (set != null) {
+			for (V val: set) {
+				validator.validate(plusMinusZero, val);
+			}
+		}
+	}
+
+	public static void checkConsistence(Collection<? extends ItemDelta> deltas) {
         checkConsistence(deltas, ConsistencyCheckScope.THOROUGH);
     }
 
@@ -1029,9 +1172,8 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 	}
 	
 	private void removeEmptySets() {
-		if (valuesToReplace != null && valuesToReplace.isEmpty()) {
-			valuesToReplace = null;
-		}
+		// Do not remove replace set, even if it is empty. 
+		// Empty replace set is not the same as no replace set
 		if (valuesToAdd != null && valuesToAdd.isEmpty()) {
 			valuesToAdd = null;
 		}
@@ -1039,7 +1181,70 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 			valuesToDelete = null;
 		}
 	}
+	
+	public Collection<V> getValueChanges(PlusMinusZero mode) {
+		Collection<V> out = new ArrayList<>();
+		
+		if (isReplace()) {
+			switch (mode) {
+				case PLUS:
+					setSubtract(out, valuesToReplace, estimatedOldValues);
+					break;
+				case MINUS:
+					setSubtract(out, estimatedOldValues, valuesToReplace);
+					break;
+				case ZERO:
+					setIntersection(out, valuesToReplace, estimatedOldValues);
+			}
+		} else {
+			switch (mode) {
+				case PLUS:
+					setAddAll(out, valuesToAdd);
+					break;
+				case MINUS:
+					setAddAll(out, valuesToDelete);
+					break;
+				case ZERO:
+					setAddAll(out, estimatedOldValues);
+					break;
+			}
+		}
+		
+		return out;
+	}
 
+	private void setSubtract(Collection<V> out, Collection<V> subtrahend, Collection<V> minuend) {
+		if (subtrahend == null) {
+			return;
+		}
+		for (V sube: subtrahend) {
+			if (minuend == null) {
+				out.add(sube);
+			} else {
+				if (!minuend.contains(sube)) {
+					out.add(sube);
+				}
+			}
+		}
+	}
+
+	private void setIntersection(Collection<V> out, Collection<V> a, Collection<V> b) {
+		if (a == null || b == null) {
+			return;
+		}
+		for (V ae: a) {
+			if (b.contains(ae)) {
+				out.add(ae);
+			}
+		}
+	}
+	
+	private void setAddAll(Collection<V> out, Collection<V> in) {
+		if (in != null) {
+			out.addAll(in);
+		}
+	}
+	
 	/**
 	 * Transforms the delta to the simplest (and safest) form. E.g. it will transform add delta for
 	 * single-value properties to replace delta. 
@@ -1079,6 +1284,13 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 			throws SchemaException {
 		for (ItemDelta delta : deltas) {
 			delta.applyTo(propertyContainer);
+		}
+	}
+	
+	public static void applyTo(Collection<? extends ItemDelta> deltas, PrismContainerValue propertyContainerValue)
+			throws SchemaException {
+		for (ItemDelta delta : deltas) {
+			delta.applyTo(propertyContainerValue);
 		}
 	}
 	
@@ -1125,6 +1337,9 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 	 * Applies delta to item were path of the delta and path of the item matches (skips path checks).
 	 */
 	public void applyToMatchingPath(Item item) throws SchemaException {
+		if (item == null) {
+			return;
+		}
 		if (item.getDefinition() == null && getDefinition() != null){
 			item.applyDefinition(getDefinition());
 		}
@@ -1240,32 +1455,47 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 	 * deltas are equal. 
 	 */
 	public boolean contains(ItemDelta<V,D> other) {
+		return contains(other, PrismConstants.EQUALS_DEFAULT_IGNORE_METADATA, PrismConstants.EQUALS_DEFAULT_IS_LITERAL);
+	}		
+	/**
+	 * Returns true if the other delta is a complete subset of this delta.
+	 * I.e. if all the statements of the other delta are already contained
+	 * in this delta. As a consequence it also returns true if the two
+	 * deltas are equal. 
+	 */
+	public boolean contains(ItemDelta<V,D> other, boolean ignoreMetadata, boolean isLiteral) {
 		if (!this.getPath().equivalent(other.getPath())) {
 			return false;
 		}
-		if (!containsSet(this.valuesToAdd, other.valuesToAdd)) {
+		if (!PrismValue.containsAll(this.valuesToAdd, other.valuesToAdd, ignoreMetadata, isLiteral)) {
 			return false;
 		}
-		if (!containsSet(this.valuesToDelete, other.valuesToDelete)) {
+		if (!PrismValue.containsAll(this.valuesToDelete, other.valuesToDelete, ignoreMetadata, isLiteral)) {
 			return false;
 		}
-		if (!containsSet(this.valuesToReplace, other.valuesToReplace)) {
+		if (!PrismValue.containsAll(this.valuesToReplace, other.valuesToReplace, ignoreMetadata, isLiteral)) {
 			return false;
 		}
 		return true;
 	}
+	
+	public void filterValues(Function<V, Boolean> function) {
+		filterValuesSet(this.valuesToAdd, function);
+		filterValuesSet(this.valuesToDelete, function);
+		filterValuesSet(this.valuesToReplace, function);
+	}
 
-	private boolean containsSet(Collection<V> thisSet, Collection<V> otherSet) {
-		if (thisSet == null && otherSet == null) {
-			return true;
+	private void filterValuesSet(Collection<V> set, Function<V, Boolean> function) {
+		if (set == null) {
+			return;
 		}
-		if (otherSet == null) {
-			return true;
+		Iterator<V> iterator = set.iterator();
+		while (iterator.hasNext()) {
+			Boolean keep = function.apply(iterator.next());
+			if (keep == null || !keep) {
+				iterator.remove();
+			}
 		}
-		if (thisSet == null) {
-			return false;
-		}
-		return thisSet.containsAll(otherSet);
 	}
 
 	public abstract ItemDelta<V,D> clone();
@@ -1475,6 +1705,40 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 		return result;
 	}
 
+	/**
+	 * Deltas are equivalent if they have the same result when
+	 * applied to an object. I.e. meta-data and other "decorations"
+	 * such as old values are not considered in this comparison.
+	 */
+	public boolean equivalent(ItemDelta other) {
+		if (elementName == null) {
+			if (other.elementName != null)
+				return false;
+		} else if (!QNameUtil.match(elementName, elementName))
+			return false;
+		if (parentPath == null) {
+			if (other.parentPath != null)
+				return false;
+		} else if (!parentPath.equivalent(other.parentPath))
+			return false;
+		if (!equivalentSetRealValue(this.valuesToAdd, other.valuesToAdd, false))
+			return false;
+		if (!equivalentSetRealValue(this.valuesToDelete, other.valuesToDelete, true))
+			return false;
+		if (!equivalentSetRealValue(this.valuesToReplace, other.valuesToReplace, false))
+			return false;
+		return true;
+	}
+	
+	public static boolean hasEquivalent(Collection<? extends ItemDelta> col, ItemDelta delta) {
+		for (ItemDelta colItem: col) {
+			if (colItem.equivalent(delta)) {
+				return true;
+			}
+		}
+		return false;
+	}
+	
 	@Override
 	public boolean equals(Object obj) {
 		if (this == obj)
@@ -1499,31 +1763,45 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 				return false;
 		} else if (!parentPath.equivalent(other.parentPath))                    // or "equals" ?
 			return false;
-		if (!equalsSetRealValue(this.valuesToAdd, other.valuesToAdd))
+		if (!equivalentSetRealValue(this.valuesToAdd, other.valuesToAdd, false))
 			return false;
-		if (!equalsSetRealValue(this.valuesToDelete, other.valuesToDelete))
+		if (!equivalentSetRealValue(this.valuesToDelete, other.valuesToDelete, true))		// TODO ok?
 			return false;
-		if (!equalsSetRealValue(this.valuesToReplace, other.valuesToReplace))
+		if (!equivalentSetRealValue(this.valuesToReplace, other.valuesToReplace, false))
 			return false;
-		if (!equalsSetRealValue(this.estimatedOldValues, other.estimatedOldValues))
+		if (!equivalentSetRealValue(this.estimatedOldValues, other.estimatedOldValues, false))
 			return false;
 		return true;
 	}
 
-	private boolean equalsSetRealValue(Collection<V> thisValue, Collection<V> otherValues) {
-		Comparator<?> comparator = new Comparator<Object>() {
-			@Override
-			public int compare(Object o1, Object o2) {
-				if (o1 instanceof PrismValue && o2 instanceof PrismValue) {
-					PrismValue v1 = (PrismValue)o1;
-					PrismValue v2 = (PrismValue)o2;
-					return v1.equalsRealValue(v2) ? 0 : 1;
-				} else {
-					return -1;
-				}
-			}
-		};
-		return MiscUtil.unorderedCollectionEquals(thisValue, otherValues, comparator);
+	private boolean equivalentSetRealValue(Collection<V> thisValue, Collection<V> otherValues, boolean isDelete) {
+		return MiscUtil.unorderedCollectionEquals(thisValue, otherValues, 
+				(v1, v2) -> {
+					if (v1 != null && v2 != null) {
+						if (!isDelete || !(v1 instanceof PrismContainerValue) || !(v2 instanceof PrismContainerValue)) {
+							// Here it is questionable if we should consider adding "assignment id=1 (A)" and "assignment id=2 (A)"
+							// - i.e. assignments with the same real value but different identifiers - the same delta.
+							// Historically, we considered it as such. But the question is if it's correct.
+							return v1.equalsRealValue(v2);
+						} else {
+							// But for container values to be deleted, they can be referred to either using IDs or values.
+							// If content is used - but no IDs - the content must be equal.
+							// If IDs are used - and are the same - the content is irrelevant.
+							// The problem is if one side has content with ID, and the other has the same content without ID.
+							// This might have the same or different effect, depending on the content it is applied to.
+							// See MID-3828
+							return (v1.equalsRealValue(v2) && !differentIds(v1, v2)) || v1.representsSameValue(v2, false);
+						}
+					} else {
+						return false;
+					}
+				});
+	}
+
+	private boolean differentIds(PrismValue v1, PrismValue v2) {
+		Long id1 = v1 instanceof PrismContainerValue ? ((PrismContainerValue) v1).getId() : null;
+		Long id2 = v2 instanceof PrismContainerValue ? ((PrismContainerValue) v2).getId() : null;
+		return id1 != null && id2 != null && id1.longValue() != id2.longValue();
 	}
 
 	@Override
@@ -1648,7 +1926,63 @@ public abstract class ItemDelta<V extends PrismValue,D extends ItemDefinition> i
 			throw new IllegalStateException("Delta is a REPLACE delta, not an ADD one");
 		}
 		valuesToReplace = valuesToAdd;
+		if (valuesToReplace == null) {
+			valuesToReplace = new ArrayList<>(0);
+		}
 		valuesToAdd = null;
 	}
+
+	public ItemDelta<V,D> createReverseDelta() {
+		ItemDelta<V,D> reverseDelta = clone();
+		Collection<V> cloneValuesToAdd = reverseDelta.valuesToAdd;
+		Collection<V> cloneValuesToDelete = reverseDelta.valuesToDelete;
+		Collection<V> cloneValuesToReplace = reverseDelta.valuesToReplace;
+		Collection<V> cloneEstimatedOldValues = reverseDelta.estimatedOldValues;
+		
+		reverseDelta.valuesToAdd = cloneValuesToDelete;
+		reverseDelta.valuesToDelete = cloneValuesToAdd;
+		if (cloneValuesToReplace != null) {
+			reverseDelta.valuesToReplace = cloneEstimatedOldValues;
+			if (reverseDelta.valuesToReplace == null) {
+				// We want to force replace delta here. Otherwise the reverse delta
+				// may look like empty. We do not explicitly have old values here,
+				// so this is a bit tricky and not entirely correct. But we can live
+				// with that for now.
+				reverseDelta.valuesToReplace = new ArrayList<>(0);
+			}
+			reverseDelta.estimatedOldValues = cloneValuesToReplace;
+		} else {
+			// TODO: what about estimatedOldValues here?
+		}
+		
+		return reverseDelta;
+	}
+
+	public V findValueToAddOrReplace(V value) {
+		V found = findValue(valuesToAdd, value);
+		if (found == null) {
+			found = findValue(valuesToReplace, value);
+		}
+		return found;
+	}
+
+	private V findValue(Collection<V> values, V value) {
+		if (values == null) {
+			return null;
+		}
+		return values.stream()
+				.filter(v -> !differentIds(v, value) && v.equals(value, true))
+				.findFirst().orElse(null);
+	}
 	
+	/**
+	 * Set origin type to all values and subvalues
+	 */
+	public void setOriginTypeRecursive(final OriginType originType) {
+		accept((visitable) -> {
+			if (visitable instanceof PrismValue) {
+				((PrismValue)visitable).setOriginType(originType);
+			}
+		});
+	}
 }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -32,4 +32,35 @@
             <append>true</append>
         </appender>
     </logging>
+	<notificationConfiguration>
+		<handler>
+			<simpleReviewerNotifier>
+				<recipientExpression>
+					<value>recipient@evolveum.com</value>
+				</recipientExpression>
+				<transport>dummy:simpleReviewerNotifier</transport>
+			</simpleReviewerNotifier>
+		</handler>
+		<mail>
+			<redirectToFile>target/mail-notifications.log</redirectToFile>
+		</mail>
+	</notificationConfiguration>
+	<globalPolicyRule>
+		<name>sod-approval</name>
+		<policyConstraints>
+			<situation>
+				<situation>http://midpoint.evolveum.com/xml/ns/public/model/policy/situation#exclusionViolation</situation>
+			</situation>
+		</policyConstraints>
+		<policyActions>
+			<!-- empty; just to test policy rules stored in assignments -->
+		</policyActions>
+		<focusSelector>
+			<type>UserType</type>
+		</focusSelector>
+		<targetSelector>
+			<type>RoleType</type>
+		</targetSelector>
+	</globalPolicyRule>
+
 </systemConfiguration>

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +15,19 @@
  */
 package com.evolveum.midpoint.model.common.expression.evaluator;
 
+import java.util.List;
+
 import javax.xml.namespace.QName;
 
-import com.evolveum.midpoint.common.InternalsConfig;
 import com.evolveum.midpoint.model.api.ModelService;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluationContext;
 import com.evolveum.midpoint.prism.PrismContainerDefinition;
 import com.evolveum.midpoint.prism.PrismContainerValue;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.crypto.Protector;
+import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluationContext;
+import com.evolveum.midpoint.schema.internals.InternalsConfig;
 import com.evolveum.midpoint.schema.util.ObjectResolver;
 import com.evolveum.midpoint.security.api.SecurityEnforcer;
 import com.evolveum.midpoint.util.exception.SchemaException;
@@ -51,7 +54,7 @@ public class AssignmentTargetSearchExpressionEvaluator
 		super(expressionEvaluatorType, outputDefinition, protector, objectResolver, modelService, prismContext, securityEnforcer);
 	}
 	
-	protected PrismContainerValue<AssignmentType> createPrismValue(String oid, QName targetTypeQName, ExpressionEvaluationContext params) {
+	protected PrismContainerValue<AssignmentType> createPrismValue(String oid, QName targetTypeQName, List<ItemDelta<PrismContainerValue<AssignmentType>, PrismContainerDefinition<AssignmentType>>> additionalAttributeDeltas, ExpressionEvaluationContext params) {
 		AssignmentType assignmentType = new AssignmentType();
 		PrismContainerValue<AssignmentType> assignmentCVal = assignmentType.asPrismContainerValue();
 		
@@ -60,8 +63,11 @@ public class AssignmentTargetSearchExpressionEvaluator
 		targetRef.setType(targetTypeQName);
 		targetRef.setRelation(((SearchObjectRefExpressionEvaluatorType)getExpressionEvaluatorType()).getRelation());
 		assignmentType.setTargetRef(targetRef);
-		
+				
 		try {
+			if (additionalAttributeDeltas != null) {
+				ItemDelta.applyTo(additionalAttributeDeltas, assignmentCVal);
+			}
 			getPrismContext().adopt(assignmentCVal, FocusType.COMPLEX_TYPE, new ItemPath(FocusType.F_ASSIGNMENT));
 			if (InternalsConfig.consistencyChecks) {
 				assignmentCVal.assertDefinitions("assignmentCVal in assignment expression in "+params.getContextDescription());

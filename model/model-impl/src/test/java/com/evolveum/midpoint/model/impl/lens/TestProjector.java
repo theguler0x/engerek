@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,11 +27,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 
-import javax.xml.bind.JAXBException;
 import javax.xml.datatype.XMLGregorianCalendar;
 import javax.xml.namespace.QName;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.ContextConfiguration;
@@ -39,15 +37,7 @@ import org.testng.AssertJUnit;
 import org.testng.annotations.Test;
 
 import com.evolveum.icf.dummy.resource.DummyAccount;
-import com.evolveum.midpoint.common.monitor.InternalMonitor;
-import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
 import com.evolveum.midpoint.model.api.context.SynchronizationPolicyDecision;
-import com.evolveum.midpoint.model.impl.AbstractInternalModelIntegrationTest;
-import com.evolveum.midpoint.model.impl.lens.LensContext;
-import com.evolveum.midpoint.model.impl.lens.LensFocusContext;
-import com.evolveum.midpoint.model.impl.lens.LensProjectionContext;
-import com.evolveum.midpoint.model.impl.lens.projector.Projector;
 import com.evolveum.midpoint.model.impl.trigger.RecomputeTriggerHandler;
 import com.evolveum.midpoint.prism.OriginType;
 import com.evolveum.midpoint.prism.PrismObject;
@@ -58,38 +48,35 @@ import com.evolveum.midpoint.prism.delta.ContainerDelta;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
-import com.evolveum.midpoint.prism.delta.ReferenceDelta;
-import com.evolveum.midpoint.prism.path.IdItemPathSegment;
 import com.evolveum.midpoint.prism.path.ItemPath;
-import com.evolveum.midpoint.prism.path.NameItemPathSegment;
 import com.evolveum.midpoint.prism.util.PrismAsserts;
 import com.evolveum.midpoint.prism.util.PrismTestUtil;
 import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
 import com.evolveum.midpoint.schema.ResourceShadowDiscriminator;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.internals.InternalCounters;
+import com.evolveum.midpoint.schema.internals.InternalMonitor;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.ResourceTypeUtil;
 import com.evolveum.midpoint.schema.util.SchemaTestConstants;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.task.api.TaskManager;
 import com.evolveum.midpoint.test.DummyResourceContoller;
 import com.evolveum.midpoint.test.IntegrationTestTools;
 import com.evolveum.midpoint.test.util.TestUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
+import com.evolveum.midpoint.util.exception.PolicyViolationException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnforcementType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.PasswordType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
@@ -123,14 +110,6 @@ public class TestProjector extends AbstractLensTest {
     public void test000Sanity() throws Exception {
 		final String TEST_NAME = "test000Sanity";
         TestUtil.displayTestTile(this, TEST_NAME);
-
-        // WHEN
-        RefinedResourceSchema refinedSchema = RefinedResourceSchema.getRefinedSchema(resourceDummyType, prismContext);
-        
-        display("Dummy refined schema", refinedSchema);
-        
-        // THEN
-        dummyResourceCtl.assertRefinedSchemaSanity(refinedSchema);
         
         assertNoJackShadow();
 	}
@@ -145,9 +124,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.NONE);
         
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         LensFocusContext<UserType> focusContext = fillContextWithUser(context, USER_ELAINE_OID, result);
-        LensProjectionContext accountContext = fillContextWithAccount(context, ACCOUNT_SHADOW_ELAINE_DUMMY_OID, result);
+        LensProjectionContext accountContext = fillContextWithAccount(context, ACCOUNT_SHADOW_ELAINE_DUMMY_OID, task, result);
         
         // User deltas
         ObjectDelta<UserType> userDeltaPrimary = createModifyUserReplaceDelta(USER_ELAINE_OID, UserType.F_FULL_NAME, 
@@ -161,12 +140,12 @@ public class TestProjector extends AbstractLensTest {
         
         // Account Deltas
         ObjectDelta<ShadowType> accountDeltaPrimary = createModifyAccountShadowReplaceAttributeDelta(
-        		ACCOUNT_SHADOW_ELAINE_DUMMY_OID, resourceDummy, DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME, "Elie Marley");
+        		ACCOUNT_SHADOW_ELAINE_DUMMY_OID, getDummyResourceObject(), DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME, "Elie Marley");
         ObjectDelta<ShadowType> accountDeltaPrimaryClone = accountDeltaPrimary.clone();
         assert accountDeltaPrimaryClone != accountDeltaPrimary : "clone is not cloning";
         assert accountDeltaPrimaryClone.getModifications() != accountDeltaPrimary.getModifications() : "clone is not cloning (modifications)";
         ObjectDelta<ShadowType> accountDeltaSecondary = createModifyAccountShadowReplaceAttributeDelta(
-        		ACCOUNT_SHADOW_ELAINE_DUMMY_OID, resourceDummy, DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME, "Elie LeChuck");
+        		ACCOUNT_SHADOW_ELAINE_DUMMY_OID, getDummyResourceObject(), DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME, "Elie LeChuck");
         ObjectDelta<ShadowType> accountDeltaSecondaryClone = accountDeltaSecondary.clone();
         accountContext.setPrimaryDelta(accountDeltaPrimary);
         accountContext.setSecondaryDelta(accountDeltaSecondary);
@@ -231,7 +210,7 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.NONE);
         
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_JACK_OID, result);
         // We want "shadow" so the fullname will be computed by outbound expression 
         addModificationToContextAddAccountFromFile(context, ACCOUNT_SHADOW_JACK_DUMMY_FILE);
@@ -240,7 +219,7 @@ public class TestProjector extends AbstractLensTest {
 
         assertFocusModificationSanity(context);
         
-        rememberShadowFetchOperationCount();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
         
         // WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -250,7 +229,7 @@ public class TestProjector extends AbstractLensTest {
         TestUtil.displayThen(TEST_NAME);
         display("Output context", context);
         // Not loading anything. The account is already loaded in the context
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
         assertNull("Unexpected user primary changes "+context.getFocusContext().getPrimaryDelta(), context.getFocusContext().getPrimaryDelta());
         assertSideEffectiveDeltasOnly(context.getFocusContext().getSecondaryDelta(), "user secondary delta", ActivationStatusType.ENABLED);
@@ -268,22 +247,25 @@ public class TestProjector extends AbstractLensTest {
         PrismProperty<Object> intentProperty = accountToAddPrimary.findProperty(ShadowType.F_INTENT);
         assertNotNull("No account type in account primary add delta", intentProperty);
         assertEquals(DEFAULT_INTENT, intentProperty.getRealValue());
-        assertEquals(new QName(ResourceTypeUtil.getResourceNamespace(resourceDummyType), "AccountObjectClass"),
+        assertEquals(new QName(ResourceTypeUtil.getResourceNamespace(getDummyResourceType()), "AccountObjectClass"),
                 accountToAddPrimary.findProperty(ShadowType.F_OBJECT_CLASS).getRealValue());
         PrismReference resourceRef = accountToAddPrimary.findReference(ShadowType.F_RESOURCE_REF);
-        assertEquals(resourceDummyType.getOid(), resourceRef.getOid());
+        assertEquals(getDummyResourceType().getOid(), resourceRef.getOid());
         accountToAddPrimary.checkConsistence();
 
         ObjectDelta<ShadowType> accountSecondaryDelta = accContext.getSecondaryDelta();
         assertEquals(ChangeType.MODIFY, accountSecondaryDelta.getChangeType());
-        PropertyDelta<String> fullNameDelta = accountSecondaryDelta.findPropertyDelta(dummyResourceCtl.getAttributeFullnamePath());
+        PropertyDelta<String> fullNameDelta = accountSecondaryDelta.findPropertyDelta(
+        		getDummyResourceController().getAttributeFullnamePath());
         PrismAsserts.assertReplace(fullNameDelta, "Jack Sparrow");
         PrismAsserts.assertOrigin(fullNameDelta, OriginType.OUTBOUND);
 
         PrismObject<ShadowType> accountNew = accContext.getObjectNew();
         IntegrationTestTools.assertIcfsNameAttribute(accountNew, "jack");
-        IntegrationTestTools.assertAttribute(accountNew, dummyResourceCtl.getAttributeFullnameQName(), "Jack Sparrow");
-        IntegrationTestTools.assertAttribute(accountNew, dummyResourceCtl.getAttributeWeaponQName(), "mouth", "pistol");
+        IntegrationTestTools.assertAttribute(accountNew, 
+        		getDummyResourceController().getAttributeFullnameQName(), "Jack Sparrow");
+        IntegrationTestTools.assertAttribute(accountNew, 
+        		getDummyResourceController().getAttributeWeaponQName(), "mouth", "pistol");
 	}
 	
 	@Test
@@ -296,14 +278,14 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
         
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_JACK_OID, result);
         addFocusModificationToContext(context, REQ_USER_JACK_MODIFY_ADD_ASSIGNMENT_ACCOUNT_DUMMY);
 
         display("Input context", context);
 
         assertFocusModificationSanity(context);
-        rememberShadowFetchOperationCount();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
         
         // WHEN
         projector.project(context, "test", task, result);
@@ -325,7 +307,7 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
         
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_JACK_OID, result);
         addFocusModificationToContext(context, REQ_USER_JACK_MODIFY_ADD_ASSIGNMENT_ACCOUNT_DUMMY);
 
@@ -335,7 +317,7 @@ public class TestProjector extends AbstractLensTest {
         
         // Let's break it a bit...
         breakAssignmentDelta(context);
-        rememberShadowFetchOperationCount();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
         
         // WHEN
         projector.project(context, "test", task, result);
@@ -347,7 +329,7 @@ public class TestProjector extends AbstractLensTest {
 	private void assertAssignAccountToJack(LensContext<UserType> context) {
         display("Output context", context);
         // Not loading anything. The account is already loaded in the context
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
         assertTrue(context.getFocusContext().getPrimaryDelta().getChangeType() == ChangeType.MODIFY);
         assertSideEffectiveDeltasOnly(context.getFocusContext().getSecondaryDelta(), "user secondary delta", ActivationStatusType.ENABLED);
@@ -365,9 +347,10 @@ public class TestProjector extends AbstractLensTest {
         assertEquals(ChangeType.MODIFY, accountSecondaryDelta.getChangeType());
         
         PrismAsserts.assertPropertyReplace(accountSecondaryDelta, getIcfsNameAttributePath() , "jack");
-        PrismAsserts.assertPropertyReplace(accountSecondaryDelta, dummyResourceCtl.getAttributeFullnamePath() , "Jack Sparrow");
+        PrismAsserts.assertPropertyReplace(accountSecondaryDelta, 
+        		getDummyResourceController().getAttributeFullnamePath() , "Jack Sparrow");
         PrismAsserts.assertPropertyAdd(accountSecondaryDelta, 
-        		dummyResourceCtl.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME) , "mouth", "pistol");
+        		getDummyResourceController().getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME) , "mouth", "pistol");
         
         PrismAsserts.assertOrigin(accountSecondaryDelta, OriginType.OUTBOUND);
 
@@ -388,9 +371,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
         addModificationToContextReplaceUserProperty(context, UserType.F_LOCALITY, PrismTestUtil.createPolyString("Tortuga"));
         context.recompute();
 
@@ -418,7 +401,7 @@ public class TestProjector extends AbstractLensTest {
         assertEquals(ChangeType.MODIFY, accountSecondaryDelta.getChangeType());
         assertEquals("Unexpected number of account secondary changes", 3, accountSecondaryDelta.getModifications().size());
         PrismAsserts.assertPropertyReplace(accountSecondaryDelta, 
-        		dummyResourceCtl.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME) , "Tortuga");
+        		getDummyResourceController().getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME) , "Tortuga");
         
         PrismAsserts.assertOrigin(accountSecondaryDelta, OriginType.ASSIGNMENTS, OriginType.OUTBOUND);
                 
@@ -426,7 +409,7 @@ public class TestProjector extends AbstractLensTest {
 
 	/**
 	 * User barbossa has a direct account assignment. This assignment has an expression for user/fullName -> dummy/fullname.
-	 * cn is also overriden to be single-value.
+	 * cn is also overridden to be single-value.
 	 * Let's try if the "cn" gets updated if we update barbosa's fullName. Also check if delta is replace.
 	 */
 	@Test
@@ -440,9 +423,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
         addModificationToContextReplaceUserProperty(context, UserType.F_FULL_NAME, PrismTestUtil.createPolyString("Captain Hector Barbossa"));
         context.recompute();
 
@@ -470,7 +453,7 @@ public class TestProjector extends AbstractLensTest {
         assertEquals(ChangeType.MODIFY, accountSecondaryDelta.getChangeType());
         assertEquals("Unexpected number of account secondary changes", 3, accountSecondaryDelta.getModifications().size());
         PrismAsserts.assertPropertyReplace(accountSecondaryDelta, 
-        		dummyResourceCtl.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME) , 
+        		getDummyResourceController().getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME) , 
         		"Captain Hector Barbossa");
         
         PrismAsserts.assertOrigin(accountSecondaryDelta, OriginType.OUTBOUND);
@@ -492,9 +475,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
         addModificationToContextReplaceUserProperty(context,
         		new ItemPath(UserType.F_ACTIVATION, ActivationType.F_ADMINISTRATIVE_STATUS),
         		ActivationStatusType.DISABLED);
@@ -558,9 +541,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
         addFocusModificationToContext(context, USER_BARBOSSA_MODIFY_ASSIGNMENT_REPLACE_AC_FILE);
         context.recompute();
 
@@ -591,7 +574,7 @@ public class TestProjector extends AbstractLensTest {
         // There is a lot of changes caused by the reconciliation. But we are only interested in the new one
         assertEquals("Unexpected number of account secondary changes", 3, accountSecondaryDelta.getModifications().size());
         PrismAsserts.assertPropertyAdd(accountSecondaryDelta, 
-        		dummyResourceCtl.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_QUOTE_NAME),
+        		getDummyResourceController().getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_QUOTE_NAME),
         		"Pirate of Caribbean");
         PrismAsserts.assertOrigin(accountSecondaryDelta, OriginType.RECONCILIATION, OriginType.OUTBOUND);
                 
@@ -612,9 +595,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
         addModificationToContextReplaceAccountAttribute(context, ACCOUNT_HBARBOSSA_DUMMY_OID, 
         		DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_DRINK_NAME, "Water");
         context.recompute();
@@ -652,9 +635,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
         addModificationToContextReplaceAccountAttribute(context, ACCOUNT_HBARBOSSA_DUMMY_OID, 
         		DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_QUOTE_NAME, "I'm disinclined to acquiesce to your request.");
         context.recompute();
@@ -681,7 +664,7 @@ public class TestProjector extends AbstractLensTest {
         assertEquals(ChangeType.MODIFY, accountPrimaryDelta.getChangeType());
         assertEquals("Unexpected number of account secondary changes", 1, accountPrimaryDelta.getModifications().size());
         PrismAsserts.assertPropertyReplace(accountPrimaryDelta, 
-        		dummyResourceCtl.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_QUOTE_NAME) , 
+        		getDummyResourceController().getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_QUOTE_NAME) , 
         		"I'm disinclined to acquiesce to your request.");
         
         assertEquals(SynchronizationPolicyDecision.KEEP,accContext.getSynchronizationPolicyDecision());
@@ -691,7 +674,7 @@ public class TestProjector extends AbstractLensTest {
         assertEquals(ChangeType.MODIFY, accountSecondaryDelta.getChangeType());
         assertEquals("Unexpected number of account secondary changes", 3, accountSecondaryDelta.getModifications().size());
         PrismAsserts.assertPropertyAdd(accountSecondaryDelta, 
-        		dummyResourceCtl.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_QUOTE_NAME) , 
+        		getDummyResourceController().getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_QUOTE_NAME) , 
         		"Arr!");
         
         PrismAsserts.assertOrigin(accountSecondaryDelta, OriginType.OUTBOUND);
@@ -714,9 +697,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         // Do not fill user to context. Projector should figure that out.
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
         addModificationToContextDeleteAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID);
         context.recompute();
 
@@ -751,9 +734,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
 		addFocusDeltaToContext(context, createAssignmentUserDelta(USER_BARBOSSA_OID, ORG_BRETHREN_OID, 
 				OrgType.COMPLEX_TYPE, null, null, true));
         context.recompute();
@@ -799,14 +782,14 @@ public class TestProjector extends AbstractLensTest {
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
         modifyUserReplace(USER_BARBOSSA_OID, UserType.F_ORGANIZATION, task, result, PrismTestUtil.createPolyString(ORG_BRETHREN_INDUCED_ORGANIZATION));
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         PrismObject<UserType> focus = repositoryService.getObject(UserType.class, USER_BARBOSSA_OID, null, result);
         ObjectDelta<UserType> addAssignmentDelta = createAssignmentUserDelta(USER_BARBOSSA_OID, ORG_BRETHREN_OID, 
 				OrgType.COMPLEX_TYPE, null, null, true);
         addAssignmentDelta.applyTo(focus);
 		fillContextWithFocus(context, focus);
 		
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
 		
         addFocusDeltaToContext(context, createAssignmentUserDelta(USER_BARBOSSA_OID, ORG_BRETHREN_OID, 
 				OrgType.COMPLEX_TYPE, null, null, false));
@@ -847,9 +830,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
 		addFocusDeltaToContext(context, createAssignmentUserDelta(USER_BARBOSSA_OID, ROLE_MUTINIER_OID, 
 				RoleType.COMPLEX_TYPE, null, null, true));
         context.recompute();
@@ -879,7 +862,7 @@ public class TestProjector extends AbstractLensTest {
         assertEquals(ChangeType.MODIFY, accountSecondaryDelta.getChangeType());
         assertEquals("Unexpected number of account secondary changes", 1, accountSecondaryDelta.getModifications().size());
         PrismAsserts.assertPropertyAdd(accountSecondaryDelta, 
-        		dummyResourceCtl.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME),
+        		getDummyResourceController().getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME),
         		"Damned mutinier");
         PrismAsserts.assertOrigin(accountSecondaryDelta, OriginType.ASSIGNMENTS);
     }
@@ -896,9 +879,9 @@ public class TestProjector extends AbstractLensTest {
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
         
         // Make sure there is a shadow with conflicting account
-        repoAddObjectFromFile(ACCOUNT_SHADOW_JACK_DUMMY_FILE, ShadowType.class, result);
+        repoAddObjectFromFile(ACCOUNT_SHADOW_JACK_DUMMY_FILE, result);
         
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_JACK_OID, result);
         addFocusModificationToContext(context, REQ_USER_JACK_MODIFY_ADD_ASSIGNMENT_ACCOUNT_DUMMY);
 
@@ -928,7 +911,7 @@ public class TestProjector extends AbstractLensTest {
         assertEquals(ChangeType.MODIFY, accountSecondaryDelta.getChangeType());
 
         PrismAsserts.assertPropertyReplace(accountSecondaryDelta, getIcfsNameAttributePath() , "jack");
-        PrismAsserts.assertPropertyReplace(accountSecondaryDelta, dummyResourceCtl.getAttributeFullnamePath() , "Jack Sparrow");
+        PrismAsserts.assertPropertyReplace(accountSecondaryDelta, getDummyResourceController().getAttributeFullnamePath() , "Jack Sparrow");
 
         PrismAsserts.assertOrigin(accountSecondaryDelta, OriginType.OUTBOUND);
 	}
@@ -944,10 +927,10 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         context.setChannel(SchemaConstants.CHANGE_CHANNEL_IMPORT);
         fillContextWithEmtptyAddUserDelta(context, result);
-        fillContextWithAccountFromFile(context, ACCOUNT_HERMAN_DUMMY_FILENAME, result);
+        fillContextWithAccountFromFile(context, ACCOUNT_HERMAN_DUMMY_FILE, task, result);
         makeImportSyncDelta(context.getProjectionContexts().iterator().next());
         context.recompute();
 
@@ -1002,10 +985,10 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         context.setChannel(SchemaConstants.CHANGE_CHANNEL_IMPORT);
         fillContextWithEmtptyAddUserDelta(context, result);
-        fillContextWithAccountFromFile(context, ACCOUNT_HERMAN_DUMMY_FILENAME, result);
+        fillContextWithAccountFromFile(context, ACCOUNT_HERMAN_DUMMY_FILE, task, result);
         makeImportSyncDelta(context.getProjectionContexts().iterator().next());
         context.recompute();
 
@@ -1048,9 +1031,9 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.POSITIVE);
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_GUYBRUSH_OID, result);
-        fillContextWithAccount(context, ACCOUNT_SHADOW_GUYBRUSH_OID, result);
+        fillContextWithAccount(context, ACCOUNT_SHADOW_GUYBRUSH_OID, task, result);
         addSyncModificationToContextReplaceAccountAttribute(context, ACCOUNT_SHADOW_GUYBRUSH_OID, "ship", "Black Pearl");
         context.recompute();
 
@@ -1083,7 +1066,7 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.POSITIVE);
         
-    	PrismObject<ValuePolicyType> passPolicy = PrismTestUtil.parseObject(new File(PASSWORD_POLICY_GLOBAL_FILENAME));
+    	PrismObject<ValuePolicyType> passPolicy = PrismTestUtil.parseObject(PASSWORD_POLICY_GLOBAL_FILE);
     	ObjectDelta delta = ObjectDelta.createAddDelta(passPolicy);
     	Collection<ObjectDelta<? extends ObjectType>> deltas = new ArrayList<ObjectDelta<? extends ObjectType>>();
     	deltas.add(delta);
@@ -1101,9 +1084,9 @@ public class TestProjector extends AbstractLensTest {
     	assertEquals(PASSWORD_POLICY_GLOBAL_OID, sysConfig.asObjectable().getGlobalPasswordPolicyRef().getOid());
 
         // GIVEN
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_GUYBRUSH_OID, result);
-        fillContextWithAccountFromFile(context, ACCOUNT_GUYBRUSH_DUMMY_FILENAME, result);
+        fillContextWithAccountFromFile(context, ACCOUNT_GUYBRUSH_DUMMY_FILE, task, result);
         LensProjectionContext guybrushAccountContext = context.findProjectionContextByOid(ACCOUNT_SHADOW_GUYBRUSH_OID);
         guybrushAccountContext.setFullShadow(true);
         guybrushAccountContext.setDoReconciliation(true);
@@ -1141,11 +1124,11 @@ public class TestProjector extends AbstractLensTest {
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.POSITIVE);
         
         // Change the guybrush account on dummy resource directly. This creates inconsistency.
-        DummyAccount dummyAccount = dummyResource.getAccountByUsername(ACCOUNT_GUYBRUSH_DUMMY_USERNAME);
+        DummyAccount dummyAccount = getDummyResource().getAccountByUsername(ACCOUNT_GUYBRUSH_DUMMY_USERNAME);
         dummyAccount.replaceAttributeValue(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME, "Fuycrush Greepdood");
         dummyAccount.replaceAttributeValue(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME, "Phatt Island");
         
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         context.setChannel(SchemaConstants.CHANGE_CHANNEL_RECON);
         fillContextWithUser(context, USER_GUYBRUSH_OID, result);
         context.setDoReconciliationForAllProjections(true);
@@ -1184,7 +1167,7 @@ public class TestProjector extends AbstractLensTest {
         // Full name is not changed, it has normal mapping strength
         // Location is changed back, it has strong mapping
         PropertyDelta<String> locationDelta = accountSecondaryDelta.findPropertyDelta(
-        		dummyResourceCtl.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
+        		getDummyResourceController().getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
         assertNotNull("No location delta in projection secondary delta", locationDelta);
         PrismAsserts.assertReplace(locationDelta, "Melee Island");
         PrismAsserts.assertOrigin(locationDelta, OriginType.RECONCILIATION);
@@ -1205,8 +1188,8 @@ public class TestProjector extends AbstractLensTest {
         OperationResult result = task.getResult();
         assumeAssignmentPolicy(AssignmentPolicyEnforcementType.FULL);
 
-        LensContext<UserType> context = createUserAccountContext();
-        PrismObject<UserType> user = PrismTestUtil.parseObject(new File(USER_LARGO_FILENAME));
+        LensContext<UserType> context = createUserLensContext();
+        PrismObject<UserType> user = PrismTestUtil.parseObject(USER_LARGO_FILE);
         fillContextWithAddUserDelta(context, user);
 
         display("Input context", context);
@@ -1227,11 +1210,12 @@ public class TestProjector extends AbstractLensTest {
         assertFalse("Empty user secondary delta", userSecondaryDelta.isEmpty());
         PrismAsserts.assertPropertyReplace(userSecondaryDelta, UserType.F_FULL_NAME, 
         		PrismTestUtil.createPolyString("Largo LaGrande"));
-        
-    }
+		PrismAsserts.assertPropertyReplace(userSecondaryDelta, UserType.F_NICK_NAME,
+				PrismTestUtil.createPolyString("Largo LaGrande"));        // MID-2149
+	}
 	
-	private void assertNoJackShadow() throws SchemaException, ObjectNotFoundException, SecurityViolationException, CommunicationException, ConfigurationException {
-		PrismObject<ShadowType> jackAccount = findAccountByUsername(ACCOUNT_JACK_DUMMY_USERNAME, resourceDummy);
+	private void assertNoJackShadow() throws SchemaException, ObjectNotFoundException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException {
+		PrismObject<ShadowType> jackAccount = findAccountByUsername(ACCOUNT_JACK_DUMMY_USERNAME, getDummyResourceObject());
         assertNull("Found jack's shadow!", jackAccount);
 	}
 

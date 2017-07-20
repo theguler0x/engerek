@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,36 +19,25 @@ import com.evolveum.midpoint.prism.Containerable;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
-import com.evolveum.midpoint.prism.query.ObjectPaging;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.repo.api.RepoAddOptions;
+import com.evolveum.midpoint.repo.api.RepoModifyOptions;
 import com.evolveum.midpoint.repo.api.RepositoryService;
-import com.evolveum.midpoint.schema.GetOperationOptions;
-import com.evolveum.midpoint.schema.RelationalValueSearchType;
-import com.evolveum.midpoint.schema.RepositoryDiag;
-import com.evolveum.midpoint.schema.ResultHandler;
-import com.evolveum.midpoint.schema.SearchResultList;
-import com.evolveum.midpoint.schema.SearchResultMetadata;
-import com.evolveum.midpoint.schema.SelectorOptions;
+import com.evolveum.midpoint.schema.*;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SequenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.TaskType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 
 import org.apache.commons.lang.Validate;
-
-import java.util.Collection;
-import java.util.List;
+import org.jetbrains.annotations.NotNull;
 
 import javax.xml.namespace.QName;
+import java.util.Collection;
+import java.util.List;
 
 /**
  * Read-through write-through per-session repository cache.
@@ -115,19 +104,25 @@ public class RepositoryCache implements RepositoryService {
 			return repository.getObject(type, oid, options, parentResult);
 		}
 		Cache cache = getCache();
+		boolean readOnly = GetOperationOptions.isReadOnly(SelectorOptions.findRootOptions(options));
 		if (cache == null) {
 			log("Cache: NULL {} ({})", oid, type.getSimpleName());
 		} else {
 			PrismObject<T> object = (PrismObject) cache.getObject(oid);
 			if (object != null) {
 				// TODO: result?
-				log("Cache: HIT {} ({})", oid, type.getSimpleName());
-				return object.clone();
+				if (readOnly) {
+					log("Cache: HIT {} ({})", oid, type.getSimpleName());
+					return object;
+				} else {
+					log("Cache: HIT(clone) {} ({})", oid, type.getSimpleName());
+					return object.clone();
+				}
 			}
 			log("Cache: MISS {} ({})", oid, type.getSimpleName());
 		}
 		PrismObject<T> object = repository.getObject(type, oid, null, parentResult);
-		cacheObject(cache, object);
+		cacheObject(cache, object, readOnly);
 		return object;
 	}
 
@@ -157,6 +152,7 @@ public class RepositoryCache implements RepositoryService {
 		return oid;
 	}
 	
+	@NotNull
 	@Override
 	public <T extends ObjectType> SearchResultList<PrismObject<T>> searchObjects(Class<T> type, ObjectQuery query, 
 			Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult) throws SchemaException {
@@ -165,13 +161,19 @@ public class RepositoryCache implements RepositoryService {
 			return repository.searchObjects(type, query, options, parentResult);
 		}
 		Cache cache = getCache();
+		boolean readOnly = GetOperationOptions.isReadOnly(SelectorOptions.findRootOptions(options));
 		if (cache == null) {
 			log("Cache: NULL ({})", type.getSimpleName());
 		} else {
 			SearchResultList queryResult = cache.getQueryResult(type, query, prismContext);
 			if (queryResult != null) {
-				log("Cache: HIT {} ({})", query, type.getSimpleName());
-				return queryResult.clone();
+				if (readOnly) {
+					log("Cache: HIT {} ({})", query, type.getSimpleName());
+					return queryResult;
+				} else {
+					log("Cache: HIT(clone) {} ({})", query, type.getSimpleName());
+					return queryResult.clone();
+				}
 			}
 			log("Cache: MISS {} ({})", query, type.getSimpleName());
 		}
@@ -180,7 +182,7 @@ public class RepositoryCache implements RepositoryService {
 		SearchResultList<PrismObject<T>> objects = repository.searchObjects(type, query, options, parentResult);
 		if (cache != null && options == null) {
 			for (PrismObject<T> object : objects) {
-				cacheObject(cache, object);
+				cacheObject(cache, object, readOnly);
 			}
 			// TODO cloning before storing into cache?
 			cache.putQueryResult(type, query, objects, prismContext);
@@ -198,7 +200,7 @@ public class RepositoryCache implements RepositoryService {
 	 */
 	@Override
 	public <T extends ObjectType> SearchResultMetadata searchObjectsIterative(Class<T> type, ObjectQuery query,
-			final ResultHandler<T> handler, Collection<SelectorOptions<GetOperationOptions>> options,
+			final ResultHandler<T> handler, final Collection<SelectorOptions<GetOperationOptions>> options,
 			boolean strictlySequential, OperationResult parentResult) throws SchemaException {
 		// TODO use cached query result if applicable
 		log("Cache: PASS searchObjectsIterative ({})", type.getSimpleName());
@@ -206,7 +208,7 @@ public class RepositoryCache implements RepositoryService {
 		ResultHandler<T> myHandler = new ResultHandler<T>() {
 			@Override
 			public boolean handle(PrismObject<T> object, OperationResult parentResult) {
-				cacheObject(cache, object);
+				cacheObject(cache, object, GetOperationOptions.isReadOnly(SelectorOptions.findRootOptions(options)));
 				return handler.handle(object, parentResult);
 			}
 		};
@@ -222,10 +224,31 @@ public class RepositoryCache implements RepositoryService {
 	}
 
 	@Override
+	public <T extends Containerable> int countContainers(Class<T> type, ObjectQuery query,
+			Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult) {
+		log("Cache: PASS countContainers ({})", type.getSimpleName());
+		return repository.countContainers(type, query, options, parentResult);
+	}
+
+	@Override
+	public <T extends ObjectType> int countObjects(Class<T> type, ObjectQuery query,
+			Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult)
+			throws SchemaException {
+		// TODO use cached query result if applicable
+		log("Cache: PASS countObjects ({})", type.getSimpleName());
+		return repository.countObjects(type, query, options, parentResult);
+	}
+
 	public <T extends ObjectType> void modifyObject(Class<T> type, String oid, Collection<? extends ItemDelta> modifications,
-			OperationResult parentResult) throws ObjectNotFoundException, SchemaException, ObjectAlreadyExistsException {
+													OperationResult parentResult) throws ObjectNotFoundException, SchemaException, ObjectAlreadyExistsException {
+		modifyObject(type, oid, modifications, null, parentResult);
+	}
+
+	@Override
+	public <T extends ObjectType> void modifyObject(Class<T> type, String oid, Collection<? extends ItemDelta> modifications,
+			RepoModifyOptions options, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, ObjectAlreadyExistsException {
 		try {
-			repository.modifyObject(type, oid, modifications, parentResult);
+			repository.modifyObject(type, oid, modifications, options, parentResult);
 		} finally {
 			// this changes the object. We are too lazy to apply changes ourselves, so just invalidate
 			// the object in cache
@@ -257,7 +280,7 @@ public class RepositoryCache implements RepositoryService {
 		// TODO cache the search operation?
 		PrismObject<F> ownerObject = repository.searchShadowOwner(shadowOid, options, parentResult);
 		if (ownerObject != null && nullOrHarmlessOptions(options)) {
-			cacheObject(getCache(), ownerObject);
+			cacheObject(getCache(), ownerObject, GetOperationOptions.isReadOnly(SelectorOptions.findRootOptions(options)));
 		}
 		return ownerObject;
 	}
@@ -341,9 +364,16 @@ public class RepositoryCache implements RepositoryService {
         repository.testOrgClosureConsistency(repairIfNecessary, testResult);
     }
 
-    private <T extends ObjectType> void cacheObject(Cache cache, PrismObject<T> object) {
+    private <T extends ObjectType> void cacheObject(Cache cache, PrismObject<T> object, boolean readOnly) {
 		if (cache != null) {
-			cache.putObject(object.getOid(), (PrismObject<ObjectType>) object.clone());
+			PrismObject<ObjectType> objectToCache;
+			if (readOnly) {
+				object.setImmutable(true);
+				objectToCache = (PrismObject<ObjectType>) object;
+			} else {
+				objectToCache = (PrismObject<ObjectType>) object.clone();
+			}
+			cache.putObject(object.getOid(), objectToCache);
 		}
 	}
 
@@ -357,6 +387,24 @@ public class RepositoryCache implements RepositoryService {
 	public boolean isAnySubordinate(String upperOrgOid, Collection<String> lowerObjectOids)
 			throws SchemaException {
 		return repository.isAnySubordinate(upperOrgOid, lowerObjectOids);
+	}
+	
+	@Override
+	public <O extends ObjectType> boolean isDescendant(PrismObject<O> object, String orgOid)
+			throws SchemaException {
+		return repository.isDescendant(object, orgOid);
+	}
+
+	@Override
+	public <O extends ObjectType> boolean isAncestor(PrismObject<O> object, String oid)
+			throws SchemaException {
+		return repository.isAncestor(object, oid);
+	}
+
+	@Override
+	public <O extends ObjectType> boolean selectorMatches(ObjectSelectorType objectSelector,
+			PrismObject<O> object, Trace logger, String logMessagePrefix) throws SchemaException {
+		return repository.selectorMatches(objectSelector, object, logger, logMessagePrefix);
 	}
 
 	private void log(String message, Object... params) {
@@ -389,7 +437,27 @@ public class RepositoryCache implements RepositoryService {
 	}
 
 	@Override
-	public String executeArbitraryQuery(String query, OperationResult result) {
-		return repository.executeArbitraryQuery(query, result);
+	public RepositoryQueryDiagResponse executeQueryDiagnostics(RepositoryQueryDiagRequest request, OperationResult result) {
+		return repository.executeQueryDiagnostics(request, result);
+	}
+
+	@Override
+	public QName getApproximateSupportedMatchingRule(Class<?> dataType, QName originalMatchingRule) {
+		return repository.getApproximateSupportedMatchingRule(dataType, originalMatchingRule);
+	}
+
+	@Override
+	public void applyFullTextSearchConfiguration(FullTextSearchConfigurationType fullTextSearch) {
+		repository.applyFullTextSearchConfiguration(fullTextSearch);
+	}
+
+	@Override
+	public FullTextSearchConfigurationType getFullTextSearchConfiguration() {
+		return repository.getFullTextSearchConfiguration();
+	}
+
+	@Override
+	public void postInit(OperationResult result) throws SchemaException {
+		repository.postInit(result);
 	}
 }

@@ -16,39 +16,31 @@
 
 package com.evolveum.midpoint.web.page.admin.certification;
 
+import com.evolveum.midpoint.gui.api.page.PageBase;
 import com.evolveum.midpoint.schema.constants.ObjectTypes;
 import com.evolveum.midpoint.web.component.data.column.IconColumn;
 import com.evolveum.midpoint.web.component.data.column.LinkColumn;
-import com.evolveum.midpoint.web.page.PageBase;
-import com.evolveum.midpoint.web.page.admin.certification.dto.CertCaseOrDecisionDto;
-import com.evolveum.midpoint.web.page.admin.certification.dto.CertDecisionDto;
+import com.evolveum.midpoint.web.page.admin.certification.dto.CertCaseOrWorkItemDto;
+import com.evolveum.midpoint.web.page.admin.certification.dto.CertWorkItemDto;
+import com.evolveum.midpoint.web.page.admin.certification.dto.SearchingUtils;
 import com.evolveum.midpoint.web.page.admin.certification.handlers.CertGuiHandler;
 import com.evolveum.midpoint.web.page.admin.certification.handlers.CertGuiHandlerRegistry;
-import com.evolveum.midpoint.web.page.admin.resources.PageResource;
-import com.evolveum.midpoint.web.page.admin.roles.PageRole;
-import com.evolveum.midpoint.web.page.admin.users.PageOrgUnit;
-import com.evolveum.midpoint.web.page.admin.users.PageUser;
 import com.evolveum.midpoint.web.util.ObjectTypeGuiDescriptor;
-import com.evolveum.midpoint.web.util.OnePageParameterEncoder;
 import com.evolveum.midpoint.web.util.TooltipBehavior;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCaseType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.extensions.markup.html.repeater.data.grid.ICellPopulator;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.IColumn;
+import org.apache.wicket.extensions.markup.html.repeater.data.table.PropertyColumn;
 import org.apache.wicket.markup.repeater.Item;
 import org.apache.wicket.model.AbstractReadOnlyModel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
-import org.apache.wicket.request.mapper.parameter.PageParameters;
 
 import javax.xml.namespace.QName;
 import java.io.Serializable;
+
+import static com.evolveum.midpoint.gui.api.util.WebComponentUtil.dispatchToObjectDetailsPage;
 
 /**
  * Some common functionality used from PageCertCampaign and PageCertDecisions.
@@ -58,39 +50,29 @@ import java.io.Serializable;
  */
 public class CertDecisionHelper implements Serializable {
 
-    IColumn createObjectNameColumn(final PageBase page, final String headerKey) {
-        IColumn column;
-        column = new LinkColumn<CertCaseOrDecisionDto>(page.createStringResource(headerKey),
-                AccessCertificationCaseType.F_OBJECT_REF.getLocalPart(), CertCaseOrDecisionDto.F_OBJECT_NAME) {
-
-            @Override
-            public void onClick(AjaxRequestTarget target, IModel<CertCaseOrDecisionDto> rowModel) {
-                CertCaseOrDecisionDto dto = rowModel.getObject();
-                dispatchToObjectDetailsPage(dto.getCertCase().getObjectRef(), page);
-            }
-        };
-        return column;
+    public enum WhichObject {
+        OBJECT, TARGET
     }
 
-    public IColumn createTargetTypeColumn(final PageBase page) {
+    <T extends CertCaseOrWorkItemDto> IColumn<T, String> createTypeColumn(final WhichObject which, final PageBase page) {
         IColumn column;
-        column = new IconColumn<CertCaseOrDecisionDto>(page.createStringResource("")) {
+        column = new IconColumn<CertCaseOrWorkItemDto>(page.createStringResource("")) {
             @Override
-            protected IModel<String> createIconModel(IModel<CertCaseOrDecisionDto> rowModel) {
-                ObjectTypeGuiDescriptor guiDescriptor = getObjectTypeDescriptor(rowModel);
-                String icon = guiDescriptor != null ? guiDescriptor.getIcon() : ObjectTypeGuiDescriptor.ERROR_ICON;
+            protected IModel<String> createIconModel(IModel<CertCaseOrWorkItemDto> rowModel) {
+                ObjectTypeGuiDescriptor guiDescriptor = getObjectTypeDescriptor(which, rowModel);
+                String icon = guiDescriptor != null ? guiDescriptor.getBlackIcon() : ObjectTypeGuiDescriptor.ERROR_ICON;
                 return new Model<>(icon);
             }
 
-            private ObjectTypeGuiDescriptor getObjectTypeDescriptor(IModel<CertCaseOrDecisionDto> rowModel) {
-                QName targetType = rowModel.getObject().getTargetType();
+            private ObjectTypeGuiDescriptor getObjectTypeDescriptor(WhichObject which, IModel<CertCaseOrWorkItemDto> rowModel) {
+                QName targetType = rowModel.getObject().getObjectType(which);
                 return ObjectTypeGuiDescriptor.getDescriptor(ObjectTypes.getObjectTypeFromTypeQName(targetType));
             }
 
             @Override
-            public void populateItem(Item<ICellPopulator<CertCaseOrDecisionDto>> item, String componentId, IModel<CertCaseOrDecisionDto> rowModel) {
+            public void populateItem(Item<ICellPopulator<CertCaseOrWorkItemDto>> item, String componentId, IModel<CertCaseOrWorkItemDto> rowModel) {
                 super.populateItem(item, componentId, rowModel);
-                ObjectTypeGuiDescriptor guiDescriptor = getObjectTypeDescriptor(rowModel);
+                ObjectTypeGuiDescriptor guiDescriptor = getObjectTypeDescriptor(which, rowModel);
                 if (guiDescriptor != null) {
                     item.add(AttributeModifier.replace("title", page.createStringResource(guiDescriptor.getLocalizationKey())));
                     item.add(new TooltipBehavior());
@@ -100,46 +82,44 @@ public class CertDecisionHelper implements Serializable {
         return column;
     }
 
-    IColumn createTargetNameColumn(final PageBase page, final String headerKey) {
+    <T extends CertCaseOrWorkItemDto> IColumn<T, String> createObjectNameColumn(final PageBase page, final String headerKey) {
         IColumn column;
-        column = new LinkColumn<CertCaseOrDecisionDto>(page.createStringResource(headerKey),
-                AccessCertificationCaseType.F_TARGET_REF.getLocalPart(), CertCaseOrDecisionDto.F_TARGET_NAME) {
+        column = new LinkColumn<CertCaseOrWorkItemDto>(page.createStringResource(headerKey),
+                SearchingUtils.OBJECT_NAME, CertCaseOrWorkItemDto.F_OBJECT_NAME) {
 
             @Override
-            public void onClick(AjaxRequestTarget target, IModel<CertCaseOrDecisionDto> rowModel) {
-                CertCaseOrDecisionDto dto = rowModel.getObject();
-                dispatchToObjectDetailsPage(dto.getCertCase().getTargetRef(), page);
+            public void onClick(AjaxRequestTarget target, IModel<CertCaseOrWorkItemDto> rowModel) {
+                CertCaseOrWorkItemDto dto = rowModel.getObject();
+                dispatchToObjectDetailsPage(dto.getCertCase().getObjectRef(), page, false);
             }
         };
         return column;
     }
 
-    public void dispatchToObjectDetailsPage(ObjectReferenceType objectRef, PageBase page) {
-        if (objectRef == null) {
-            return;		// should not occur
-        }
-        QName type = objectRef.getType();
-        PageParameters parameters = new PageParameters();
-        parameters.add(OnePageParameterEncoder.PARAMETER, objectRef.getOid());
-        if (RoleType.COMPLEX_TYPE.equals(type)) {
-            page.setResponsePage(new PageRole(parameters, page));
-        } else if (OrgType.COMPLEX_TYPE.equals(type)) {
-            page.setResponsePage(new PageOrgUnit(parameters, page));
-        } else if (UserType.COMPLEX_TYPE.equals(type)) {
-            page.setResponsePage(new PageUser(parameters, page));
-        } else if (ResourceType.COMPLEX_TYPE.equals(type)) {
-            page.setResponsePage(new PageResource(parameters, page));
-        } else {
-            // nothing to do
-        }
-    }
-
-    public IColumn createDetailedInfoColumn(final PageBase page) {
+    <T extends CertCaseOrWorkItemDto> IColumn<T, String> createTargetNameColumn(final PageBase page, final String headerKey) {
         IColumn column;
-        column = new IconColumn<CertCaseOrDecisionDto>(page.createStringResource("")) {
+        column = new LinkColumn<CertCaseOrWorkItemDto>(page.createStringResource(headerKey),
+                SearchingUtils.TARGET_NAME, CertCaseOrWorkItemDto.F_TARGET_NAME) {
 
             @Override
-            protected IModel<String> createIconModel(final IModel<CertCaseOrDecisionDto> rowModel) {
+            public void onClick(AjaxRequestTarget target, IModel<CertCaseOrWorkItemDto> rowModel) {
+                CertCaseOrWorkItemDto dto = rowModel.getObject();
+                dispatchToObjectDetailsPage(dto.getCertCase().getTargetRef(), page, false);
+            }
+        };
+        return column;
+    }
+
+    <T extends CertCaseOrWorkItemDto> IColumn<T, String> createConflictingNameColumn(final PageBase page, final String headerKey) {
+        return new PropertyColumn<>(page.createStringResource(headerKey), CertCaseOrWorkItemDto.F_CONFLICTING_TARGETS);
+    }
+
+    <T extends CertCaseOrWorkItemDto> IColumn<T, String> createDetailedInfoColumn(final PageBase page) {
+        IColumn column;
+        column = new IconColumn<CertCaseOrWorkItemDto>(page.createStringResource("")) {
+
+            @Override
+            protected IModel<String> createIconModel(final IModel<CertCaseOrWorkItemDto> rowModel) {
                 return new AbstractReadOnlyModel<String>() {
                     @Override
                     public String getObject() {
@@ -149,11 +129,11 @@ public class CertDecisionHelper implements Serializable {
             }
 
             @Override
-            public void populateItem(Item<ICellPopulator<CertCaseOrDecisionDto>> item, String componentId, IModel<CertCaseOrDecisionDto> rowModel) {
+            public void populateItem(Item<ICellPopulator<CertCaseOrWorkItemDto>> item, String componentId, IModel<CertCaseOrWorkItemDto> rowModel) {
                 super.populateItem(item, componentId, rowModel);
-                CertCaseOrDecisionDto aCase = rowModel.getObject();
+                CertCaseOrWorkItemDto aCase = rowModel.getObject();
                 String handlerUri;
-                if (aCase instanceof CertDecisionDto) {
+                if (aCase instanceof CertWorkItemDto) {
                     handlerUri = aCase.getHandlerUri();
                 } else {
                     handlerUri = ((PageCertCampaign) page).getCampaignHandlerUri();

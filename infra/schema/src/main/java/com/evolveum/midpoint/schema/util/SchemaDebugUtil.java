@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,11 +35,12 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.w3c.dom.Text;
 
-import com.evolveum.midpoint.prism.parser.XPathHolder;
+import com.evolveum.midpoint.prism.marshaller.XPathHolder;
 import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.prism.query.ObjectPaging;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.internals.InternalsConfig;
 import com.evolveum.midpoint.util.DebugDumpable;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.JAXBUtil;
@@ -48,18 +49,20 @@ import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ObjectListType;
 import com.evolveum.midpoint.xml.ns._public.common.api_types_3.PropertyReferenceListType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.CachingMetadataType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ConstructionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectDeltaOperationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceAttributeDefinitionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ScheduleType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SynchronizationSituationDescriptionType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UnknownJavaObjectType;
 import com.evolveum.prism.xml.ns._public.query_3.PagingType;
-import com.evolveum.prism.xml.ns._public.query_3.QueryType;
-import com.evolveum.prism.xml.ns._public.query_3.SearchFilterType;
 import com.evolveum.prism.xml.ns._public.types_3.ItemDeltaType;
 import com.evolveum.prism.xml.ns._public.types_3.ItemPathType;
+import com.evolveum.prism.xml.ns._public.types_3.ObjectDeltaType;
 import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
 import com.evolveum.prism.xml.ns._public.types_3.RawType;
 
@@ -295,34 +298,79 @@ public class SchemaDebugUtil {
 		if (vc.getRef() != null) {
 			sb.append("ref=");
 			sb.append(prettyPrint(vc.getRef()));
-			sb.append("...");
+
+			boolean other = !vc.getInbound().isEmpty();
+			if (vc.getOutbound() != null && vc.getOutbound().getExpression() != null ) {
+				Object value = SimpleExpressionUtil.getConstantIfPresent(vc.getOutbound().getExpression());
+				if (value != null) {
+					sb.append(", value='").append(PrettyPrinter.prettyPrint(value)).append("'");
+				} else {
+					other = true;
+				}
+			}
+
+			if (other) {
+				sb.append(", ...");
+			}
 		}
-		
-//		if (vc.getValueConstructor() != null) {
-//			prettyPringValueConstructor(sb, vc.getValueConstructor());
-//			sb.append(",");
-//		}
-//		
-//		if (vc.getSequence() != null) {
-//			sb.append("[");
-//			for (JAXBElement vconstr: vc.getSequence().getValueConstructor()) {
-//				prettyPringValueConstructor(sb,vconstr);
-//				sb.append(",");
-//			}
-//			sb.append("]");
-//		}
 		
 		// TODO: Other properties
 		sb.append(")");
 		return sb.toString();
 	}
 	
-	private static void prettyPringValueConstructor(StringBuilder sb, JAXBElement vconstr) {
-		sb.append("ValueConstructor(");
-		sb.append(prettyPrint(vconstr));
+	public static String prettyPrint(CachingMetadataType cachingMetadata) {
+		if (cachingMetadata == null) {
+			return "null";
+		}
+		StringBuilder sb = new StringBuilder("CachingMetadataType(");
+		if (cachingMetadata.getSerialNumber() != null) {
+			sb.append("serialNumber:");
+			sb.append(prettyPrint(cachingMetadata.getSerialNumber()));
+		}
+		if (cachingMetadata.getRetrievalTimestamp() != null) {
+			sb.append("retrievalTimestamp:");
+			sb.append(prettyPrint(cachingMetadata.getRetrievalTimestamp()));
+		}
 		sb.append(")");
+		return sb.toString();
 	}
-
+	
+	public static String prettyPrint(ScheduleType scheduleType) {
+		if (scheduleType == null) {
+			return "null";
+		}
+		StringBuilder sb = new StringBuilder("ScheduleType(");
+		if (scheduleType.getCronLikePattern() != null) {
+			sb.append("cronLikePattern:");
+			sb.append(scheduleType.getCronLikePattern());
+		}
+		
+		if (scheduleType.getEarliestStartTime() != null) {
+			sb.append("earliestStartTime:");
+			sb.append(prettyPrint(scheduleType.getEarliestStartTime()));
+		}
+		if (scheduleType.getInterval() != null) {
+			sb.append("interval:");
+			sb.append(prettyPrint(scheduleType.getInterval()));
+		}
+		if (scheduleType.getLatestStartTime() != null) {
+			sb.append("latestStartTime:");
+			sb.append(prettyPrint(scheduleType.getLatestStartTime()));
+		}
+		if (scheduleType.getLatestFinishTime() != null) {
+			sb.append("latestFinishTime:");
+			sb.append(prettyPrint(scheduleType.getLatestFinishTime()));
+		}
+		if (scheduleType.getMisfireAction() != null) {
+			sb.append("misfireAction:");
+			sb.append(prettyPrint(scheduleType.getMisfireAction()));
+		}
+		
+		sb.append(")");
+		return sb.toString();
+	}
+	
 	public static String prettyPrint(ObjectReferenceType ref) {
 		if (ref == null) {
 			return "null";
@@ -369,10 +417,18 @@ public class SchemaDebugUtil {
 		if (protectedStringType.getEncryptedDataType() != null) {
 			sb.append("[encrypted data]");
 		}
+		
+		if (protectedStringType.getHashedDataType() != null) {
+			sb.append("[hashed data]");
+		}
 
 		if (protectedStringType.getClearValue() != null) {
 			sb.append("\"");
-			sb.append(protectedStringType.getClearValue());
+			if (InternalsConfig.isAllowClearDataLogging()) {
+				sb.append(protectedStringType.getClearValue());
+			} else {
+				sb.append("[clear data]");
+			}
 			sb.append("\"");
 		}
 
@@ -686,6 +742,41 @@ public class SchemaDebugUtil {
 		sb.append(")");
 		return sb.toString();
 	}
+	
+	public static String prettyPrint(ObjectDeltaType deltaType) {
+		if (deltaType == null) {
+			return "null";
+		}
+		StringBuilder sb = new StringBuilder("ObjectDeltaType(");
+		sb.append(deltaType.getOid()).append(" ");
+		sb.append(deltaType.getChangeType());
+		sb.append(": ");
+		if (deltaType.getObjectToAdd() != null) {
+			sb.append(deltaType.getObjectToAdd());
+		} else {
+			sb.append(deltaType.getItemDelta());
+		}
+		sb.append(")");
+		return sb.toString();
+	}
+	
+	public static String prettyPrint(ObjectDeltaOperationType deltaOpType) {
+		if (deltaOpType == null) {
+			return "null";
+		}
+		StringBuilder sb = new StringBuilder("ObjectDeltaOperationType(");
+		sb.append(prettyPrint(deltaOpType.getObjectDelta()));
+		sb.append(": ");
+		OperationResultType result = deltaOpType.getExecutionResult();
+		if (result == null) {
+			sb.append("null result");
+		} else {
+			sb.append(result.getStatus());
+		}
+		// object, resource?
+		sb.append(")");
+		return sb.toString();
+	}
 		
 	public static String prettyPrint(JAXBElement<?> element) {
 		return "JAXBElement("+PrettyPrinter.prettyPrint(element.getName())+"): "+element.getValue();
@@ -730,7 +821,7 @@ public class SchemaDebugUtil {
 	private static String tryPrettyPrint(Object value) {
 		if (value instanceof Class) {
 			Class<?> c = (Class<?>)value;
-			if (c.getPackage().getName().equals("com.evolveum.midpoint.xml.ns._public.common.common_2")) {
+			if (c.getPackage().getName().equals("com.evolveum.midpoint.xml.ns._public.common.common_3")) {
 				return c.getSimpleName();
 			}
 			return c.getName();
@@ -780,5 +871,7 @@ public class SchemaDebugUtil {
 		PrettyPrinter.registerPrettyPrinter(SchemaDebugUtil.class);
 	}
 
-
+	public static void initialize() {
+		// nothing to do here, we just make sure static initialization will take place
+	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.prism.Matchable;
 import com.evolveum.midpoint.prism.PrismConstants;
-import com.evolveum.midpoint.util.MiscUtil;
 
 /**
  * Default matching rule used as a fall-back if no explicit matching rule is specified.
@@ -61,7 +60,7 @@ public class DefaultMatchingRule<T> implements MatchingRule<T> {
 		if (a == null || b == null) {
 			return false;
 		}
-		if (a instanceof Matchable){
+		if (a instanceof Matchable && b instanceof Matchable) {
 			return ((Matchable)a).match((Matchable)b);
 		}
 		// Just use plain java equals() method

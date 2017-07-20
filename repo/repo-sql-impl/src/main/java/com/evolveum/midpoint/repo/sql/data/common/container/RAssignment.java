@@ -16,8 +16,7 @@
 
 package com.evolveum.midpoint.repo.sql.data.common.container;
 
-import com.evolveum.midpoint.prism.PrismConstants;
-import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.repo.sql.data.RepositoryContext;
 import com.evolveum.midpoint.repo.sql.data.common.Metadata;
 import com.evolveum.midpoint.repo.sql.data.common.RObject;
 import com.evolveum.midpoint.repo.sql.data.common.any.RAssignmentExtension;
@@ -32,26 +31,25 @@ import com.evolveum.midpoint.repo.sql.query.definition.JaxbPath;
 import com.evolveum.midpoint.repo.sql.query.definition.JaxbType;
 import com.evolveum.midpoint.repo.sql.query.definition.OwnerIdGetter;
 import com.evolveum.midpoint.repo.sql.query.definition.QueryEntity;
-import com.evolveum.midpoint.repo.sql.query.definition.VirtualEntity;
 import com.evolveum.midpoint.repo.sql.query2.definition.IdQueryProperty;
 import com.evolveum.midpoint.repo.sql.query2.definition.NotQueryable;
 import com.evolveum.midpoint.repo.sql.util.DtoTranslationException;
 import com.evolveum.midpoint.repo.sql.util.IdGeneratorResult;
+import com.evolveum.midpoint.repo.sql.util.MidPointSingleTablePersister;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ConstructionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.MetadataType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import org.apache.commons.lang.Validate;
-import org.hibernate.annotations.Cascade;
-import org.hibernate.annotations.GenericGenerator;
-import org.hibernate.annotations.Where;
+import org.hibernate.annotations.*;
 
 import javax.persistence.*;
+import javax.persistence.Entity;
+import javax.persistence.ForeignKey;
+import javax.persistence.Index;
+import javax.persistence.Table;
 import javax.xml.datatype.XMLGregorianCalendar;
-import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -86,6 +84,7 @@ import java.util.Set;
         @Index(name = "iTenantRefTargetOid", columnList = "tenantRef_targetOid"),
         @Index(name = "iOrgRefTargetOid", columnList = "orgRef_targetOid"),
         @Index(name = "iResourceRefTargetOid", columnList = "resourceRef_targetOid")})
+@Persister(impl = MidPointSingleTablePersister.class)
 public class RAssignment implements Container, Metadata<RAssignmentReference> {
 
     public static final String F_OWNER = "owner";
@@ -113,6 +112,8 @@ public class RAssignment implements Container, Metadata<RAssignmentReference> {
     private REmbeddedReference tenantRef;
     private REmbeddedReference orgRef;
     private REmbeddedReference resourceRef;
+    private String lifecycleState;
+    private Set<String> policySituation;
     //metadata
     private XMLGregorianCalendar createTimestamp;
     private REmbeddedReference creatorRef;
@@ -271,6 +272,30 @@ public class RAssignment implements Container, Metadata<RAssignmentReference> {
         return trans;
     }
 
+    public String getLifecycleState() {
+        return lifecycleState;
+    }
+
+    @ElementCollection
+    @org.hibernate.annotations.ForeignKey(name = "fk_assignment_policy_situation")
+    @CollectionTable(name = "m_assignment_policy_situation", joinColumns = {
+            @JoinColumn(name = "assignment_oid", referencedColumnName = "owner_oid"),
+            @JoinColumn(name = "assignment_id", referencedColumnName = "id")
+    })
+    @Cascade({org.hibernate.annotations.CascadeType.ALL})
+    public Set<String> getPolicySituation() {
+        return policySituation;
+    }
+
+    public void setPolicySituation(Set<String> policySituation) {
+        this.policySituation = policySituation;
+    }
+
+
+    public void setLifecycleState(String lifecycleState) {
+        this.lifecycleState = lifecycleState;
+    }
+
     @Override
     public void setTransient(Boolean trans) {
         this.trans = trans;
@@ -369,6 +394,8 @@ public class RAssignment implements Container, Metadata<RAssignmentReference> {
         if (tenantRef != null ? !tenantRef.equals(that.tenantRef) : that.tenantRef != null) return false;
         if (orgRef != null ? !orgRef.equals(that.orgRef) : that.orgRef != null) return false;
         if (resourceRef != null ? !resourceRef.equals(that.resourceRef) : that.resourceRef != null) return false;
+        if (lifecycleState != null ? !lifecycleState.equals(that.lifecycleState) : that.lifecycleState != null) return false;
+        if (policySituation != null ? !policySituation.equals(that.policySituation) : that.policySituation != null) return false;
 
         if (!MetadataFactory.equals(this, that)) return false;
 
@@ -387,11 +414,12 @@ public class RAssignment implements Container, Metadata<RAssignmentReference> {
         result = 31 * result + (modifyTimestamp != null ? modifyTimestamp.hashCode() : 0);
         result = 31 * result + (modifierRef != null ? modifierRef.hashCode() : 0);
         result = 31 * result + (modifyChannel != null ? modifyChannel.hashCode() : 0);
+        result = 31 * result + (lifecycleState != null ? lifecycleState.hashCode() : 0);
 
         return result;
     }
 
-    public static void copyFromJAXB(AssignmentType jaxb, RAssignment repo, ObjectType parent, PrismContext prismContext,
+    public static void copyFromJAXB(AssignmentType jaxb, RAssignment repo, ObjectType parent, RepositoryContext repositoryContext,
                                     IdGeneratorResult generatorResult) throws DtoTranslationException {
         Validate.notNull(repo, "Repo object must not be null.");
         Validate.notNull(jaxb, "JAXB object must not be null.");
@@ -401,6 +429,8 @@ public class RAssignment implements Container, Metadata<RAssignmentReference> {
         repo.setOwnerOid(parent.getOid());
         repo.setId(RUtil.toInteger(jaxb.getId()));
         repo.setOrder(jaxb.getOrder());
+        repo.setLifecycleState(jaxb.getLifecycleState());
+        repo.setPolicySituation(RUtil.listToSet(jaxb.getPolicySituation()));
 
         if (jaxb.getExtension() != null) {
             RAssignmentExtension extension = new RAssignmentExtension();
@@ -408,12 +438,12 @@ public class RAssignment implements Container, Metadata<RAssignmentReference> {
 
             repo.setExtension(extension);
             RAssignmentExtension.copyFromJAXB(jaxb.getExtension(), extension, RAssignmentExtensionType.EXTENSION,
-                    prismContext);
+                    repositoryContext);
         }
 
         if (jaxb.getActivation() != null) {
             RActivation activation = new RActivation();
-            RActivation.copyFromJAXB(jaxb.getActivation(), activation, prismContext);
+            RActivation.copyFromJAXB(jaxb.getActivation(), activation, repositoryContext);
             repo.setActivation(activation);
         }
 
@@ -421,17 +451,17 @@ public class RAssignment implements Container, Metadata<RAssignmentReference> {
             LOGGER.warn("Target from assignment type won't be saved. It should be translated to target reference.");
         }
 
-        repo.setTargetRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getTargetRef(), prismContext));
+        repo.setTargetRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getTargetRef(), repositoryContext.prismContext));
 
-        repo.setTenantRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getTenantRef(), prismContext));
+        repo.setTenantRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getTenantRef(), repositoryContext.prismContext));
 
-        repo.setOrgRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getOrgRef(), prismContext));
+        repo.setOrgRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getOrgRef(), repositoryContext.prismContext));
 
         if (jaxb.getConstruction() != null) {
-            repo.setResourceRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getConstruction().getResourceRef(), prismContext));
+            repo.setResourceRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getConstruction().getResourceRef(), repositoryContext.prismContext));
         }
 
-        MetadataFactory.fromJAXB(jaxb.getMetadata(), repo, prismContext);
+        MetadataFactory.fromJAXB(jaxb.getMetadata(), repo, repositoryContext.prismContext);
     }
 
     @Override

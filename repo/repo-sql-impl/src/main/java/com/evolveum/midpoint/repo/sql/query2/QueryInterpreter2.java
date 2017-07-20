@@ -21,33 +21,13 @@ import com.evolveum.midpoint.prism.ItemDefinition;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
-import com.evolveum.midpoint.prism.query.AllFilter;
-import com.evolveum.midpoint.prism.query.AndFilter;
-import com.evolveum.midpoint.prism.query.ExistsFilter;
-import com.evolveum.midpoint.prism.query.InOidFilter;
-import com.evolveum.midpoint.prism.query.NoneFilter;
-import com.evolveum.midpoint.prism.query.NotFilter;
-import com.evolveum.midpoint.prism.query.ObjectFilter;
-import com.evolveum.midpoint.prism.query.ObjectOrdering;
-import com.evolveum.midpoint.prism.query.ObjectPaging;
-import com.evolveum.midpoint.prism.query.ObjectQuery;
-import com.evolveum.midpoint.prism.query.OrFilter;
-import com.evolveum.midpoint.prism.query.OrderDirection;
-import com.evolveum.midpoint.prism.query.OrgFilter;
-import com.evolveum.midpoint.prism.query.PropertyValueFilter;
-import com.evolveum.midpoint.prism.query.RefFilter;
-import com.evolveum.midpoint.prism.query.TypeFilter;
-import com.evolveum.midpoint.prism.query.UndefinedFilter;
+import com.evolveum.midpoint.prism.query.*;
+import com.evolveum.midpoint.repo.sql.ObjectPagingAfterOid;
 import com.evolveum.midpoint.repo.sql.SqlRepositoryConfiguration;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.RPolyString;
 import com.evolveum.midpoint.repo.sql.query.QueryException;
-import com.evolveum.midpoint.repo.sql.query2.definition.JpaAnyContainerDefinition;
-import com.evolveum.midpoint.repo.sql.query2.definition.JpaAnyPropertyDefinition;
-import com.evolveum.midpoint.repo.sql.query2.definition.JpaEntityDefinition;
-import com.evolveum.midpoint.repo.sql.query2.definition.JpaPropertyDefinition;
-import com.evolveum.midpoint.repo.sql.query2.definition.JpaReferenceDefinition;
-import com.evolveum.midpoint.repo.sql.query2.definition.JpaDataNodeDefinition;
-import com.evolveum.midpoint.repo.sql.query2.hqm.ProjectionElement;
+import com.evolveum.midpoint.repo.sql.query2.definition.*;
+import com.evolveum.midpoint.repo.sql.query2.hqm.CountProjectionElement;
 import com.evolveum.midpoint.repo.sql.query2.hqm.RootHibernateQuery;
 import com.evolveum.midpoint.repo.sql.query2.hqm.condition.Condition;
 import com.evolveum.midpoint.repo.sql.query2.matcher.DefaultMatcher;
@@ -56,31 +36,23 @@ import com.evolveum.midpoint.repo.sql.query2.matcher.PolyStringMatcher;
 import com.evolveum.midpoint.repo.sql.query2.matcher.StringMatcher;
 import com.evolveum.midpoint.repo.sql.query2.resolution.ItemPathResolver;
 import com.evolveum.midpoint.repo.sql.query2.resolution.ProperDataSearchResult;
-import com.evolveum.midpoint.repo.sql.query2.restriction.AndRestriction;
-import com.evolveum.midpoint.repo.sql.query2.restriction.AnyPropertyRestriction;
-import com.evolveum.midpoint.repo.sql.query2.restriction.ExistsRestriction;
-import com.evolveum.midpoint.repo.sql.query2.restriction.InOidRestriction;
-import com.evolveum.midpoint.repo.sql.query2.restriction.NotRestriction;
-import com.evolveum.midpoint.repo.sql.query2.restriction.OrRestriction;
-import com.evolveum.midpoint.repo.sql.query2.restriction.OrgRestriction;
-import com.evolveum.midpoint.repo.sql.query2.restriction.PropertyRestriction;
-import com.evolveum.midpoint.repo.sql.query2.restriction.ReferenceRestriction;
-import com.evolveum.midpoint.repo.sql.query2.restriction.Restriction;
-import com.evolveum.midpoint.repo.sql.query2.restriction.TypeRestriction;
+import com.evolveum.midpoint.repo.sql.query2.restriction.*;
+import com.evolveum.midpoint.repo.sql.util.GetCertificationWorkItemResult;
+import com.evolveum.midpoint.repo.sql.util.GetContainerableResult;
 import com.evolveum.midpoint.repo.sql.util.GetObjectResult;
+import com.evolveum.midpoint.repo.sql.util.ResultStyle;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import org.apache.commons.lang.Validate;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCaseType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationWorkItemType;
+import org.apache.commons.lang3.StringUtils;
 import org.hibernate.Session;
+import org.jetbrains.annotations.NotNull;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-
-import com.evolveum.midpoint.repo.sql.ObjectPagingAfterOid;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Interprets midPoint queries by translating them to hibernate (HQL) ones.
@@ -135,63 +107,110 @@ public class QueryInterpreter2 {
         return repoConfiguration;
     }
 
-    public RootHibernateQuery interpret(ObjectQuery query, Class<? extends Containerable> type,
-                                        Collection<SelectorOptions<GetOperationOptions>> options, PrismContext prismContext,
-                                        boolean countingObjects, Session session) throws QueryException {
-        Validate.notNull(type, "Type must not be null.");
-        Validate.notNull(session, "Session must not be null.");
-        Validate.notNull(prismContext, "Prism context must not be null.");
-
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("Interpreting query for type '{}', query:\n{}", new Object[]{type, query});
-        }
+    public RootHibernateQuery interpret(ObjectQuery query, @NotNull Class<? extends Containerable> type,
+			Collection<SelectorOptions<GetOperationOptions>> options, @NotNull PrismContext prismContext,
+			boolean countingObjects, @NotNull Session session) throws QueryException {
+		boolean distinct = GetOperationOptions.isDistinct(SelectorOptions.findRootOptions(options));
+        LOGGER.trace("Interpreting query for type '{}' (counting={}, distinct={}), query:\n{}", type, countingObjects, distinct, query);
 
         InterpretationContext context = new InterpretationContext(this, type, prismContext, session);
+		interpretQueryFilter(context, query);
+		String rootAlias = context.getHibernateQuery().getPrimaryEntityAlias();
+		ResultStyle resultStyle = getResultStyle(context);
 
-        interpretQueryFilter(context, query);
-        interpretPagingAndSorting(context, query, countingObjects);
-
-        RootHibernateQuery hibernateQuery = context.getHibernateQuery();
-
-        if (countingObjects) {
-            hibernateQuery.addProjectionElement(new ProjectionElement("count(*)"));
-        } else {
-            String rootAlias = hibernateQuery.getPrimaryEntityAlias();
-            hibernateQuery.addProjectionElement(new ProjectionElement(rootAlias + ".fullObject"));
-            // TODO other objects if parent is requested?
-            if (context.isObject()) {
-                hibernateQuery.addProjectionElement(new ProjectionElement(rootAlias + ".stringsCount"));
-                hibernateQuery.addProjectionElement(new ProjectionElement(rootAlias + ".longsCount"));
-                hibernateQuery.addProjectionElement(new ProjectionElement(rootAlias + ".datesCount"));
-                hibernateQuery.addProjectionElement(new ProjectionElement(rootAlias + ".referencesCount"));
-                hibernateQuery.addProjectionElement(new ProjectionElement(rootAlias + ".polysCount"));
-                hibernateQuery.addProjectionElement(new ProjectionElement(rootAlias + ".booleansCount"));
-            }
-
-            hibernateQuery.setResultTransformer(GetObjectResult.RESULT_TRANSFORMER);
+		if (countingObjects) {
+			interpretPagingAndSorting(context, query, true);
+        	RootHibernateQuery hibernateQuery = context.getHibernateQuery();
+			hibernateQuery.addProjectionElement(new CountProjectionElement(resultStyle.getCountString(rootAlias), distinct));
+			return hibernateQuery;
         }
 
-        return hibernateQuery;
+		/*
+		   Some databases don't support DISTINCT on BLOBs. In these cases we have to create query like:
+		   select
+		     u.oid, u.fullObject, u.stringsCount, ..., u.booleansCount
+		   from
+		     RUser u
+		   where
+		     u.oid in (select distinct u.oid from RUser u where ...)
+		 */
+		boolean distinctBlobCapable = !repoConfiguration.isUsingOracle() && !repoConfiguration.isUsingSQLServer();
+		RootHibernateQuery hibernateQuery = context.getHibernateQuery();
+		hibernateQuery.setDistinct(distinct);
+		hibernateQuery.addProjectionElementsFor(resultStyle.getIdentifiers(rootAlias));
+		if (distinct && !distinctBlobCapable) {
+			String subqueryText = "\n" + hibernateQuery.getAsHqlText(2, true);
+			InterpretationContext wrapperContext = new InterpretationContext(this, type, prismContext, session);
+			interpretPagingAndSorting(wrapperContext, query, false);
+			RootHibernateQuery wrapperQuery = wrapperContext.getHibernateQuery();
+			if (repoConfiguration.isUsingSQLServer() && resultStyle.getIdentifiers("").size() > 1) {
+				// using 'where exists' clause
+				// FIXME refactor this ugly code
+				String wrappedRootAlias = "_" + wrapperQuery.getPrimaryEntityAlias();	// to distinguish from the same alias in inner query
+				wrapperQuery.setPrimaryEntityAlias(wrappedRootAlias);
+				wrapperQuery.setResultTransformer(resultStyle.getResultTransformer());
+				wrapperQuery.addProjectionElementsFor(resultStyle.getIdentifiers(wrappedRootAlias));
+				wrapperQuery.addProjectionElementsFor(resultStyle.getContentAttributes(wrappedRootAlias));
+				StringBuilder linkingCondition = new StringBuilder();
+				for (String id : resultStyle.getIdentifiers(wrappedRootAlias)) {
+					linkingCondition.append(" and ").append(id).append(" = ").append(id.substring(1));
+				}
+				wrapperQuery.getConditions().add(wrapperQuery.createExists(subqueryText, linkingCondition.toString()));
+			} else {
+				// using 'in' clause (multi-column only for Oracle)
+				String wrappedRootAlias = wrapperQuery.getPrimaryEntityAlias();
+				wrapperQuery.setResultTransformer(resultStyle.getResultTransformer());
+				wrapperQuery.addProjectionElementsFor(resultStyle.getIdentifiers(wrappedRootAlias));
+				wrapperQuery.addProjectionElementsFor(resultStyle.getContentAttributes(wrappedRootAlias));
+				List<String> inVariablesList = resultStyle.getIdentifiers(wrapperQuery.getPrimaryEntityAlias());
+				String inVariablesString = inVariablesList.size() != 1
+						? "(" + StringUtils.join(inVariablesList, ", ") + ")"
+						: inVariablesList.get(0);
+				wrapperQuery.getConditions().add(wrapperQuery.createIn(inVariablesString, subqueryText));
+			}
+			wrapperQuery.addParametersFrom(hibernateQuery.getParameters());
+			return wrapperQuery;
+		} else {
+			interpretPagingAndSorting(context, query, false);
+			hibernateQuery.setResultTransformer(resultStyle.getResultTransformer());
+			hibernateQuery.addProjectionElementsFor(resultStyle.getContentAttributes(rootAlias));
+			if (distinct) {
+				hibernateQuery.addProjectionElementsFor(getOrderingAttributes(context));        // SQL requires this
+			}
+			return hibernateQuery;
+		}
     }
 
-    private void interpretQueryFilter(InterpretationContext context, ObjectQuery query) throws QueryException {
+	private List<String> getOrderingAttributes(InterpretationContext context) {
+		return context.getHibernateQuery().getOrderingList().stream().map(o -> o.getByProperty()).collect(Collectors.toList());
+	}
+
+	private ResultStyle getResultStyle(InterpretationContext context) throws QueryException {
+		if (context.isObject()) {
+			return GetObjectResult.RESULT_STYLE;
+		} else if (AccessCertificationCaseType.class.equals(context.getType())) {
+			return GetContainerableResult.RESULT_STYLE;
+		} else if (AccessCertificationWorkItemType.class.equals(context.getType())) {
+			return GetCertificationWorkItemResult.RESULT_STYLE;
+		} else {
+			throw new QueryException("Unsupported type: " + context.getType());
+		}
+	}
+
+	private void interpretQueryFilter(InterpretationContext context, ObjectQuery query) throws QueryException {
         if (query != null && query.getFilter() != null) {
             Condition c = interpretFilter(context, query.getFilter(), null);
-            context.getHibernateQuery().addCondition(c);
+			context.getHibernateQuery().addCondition(c);
         }
     }
 
     public Condition interpretFilter(InterpretationContext context, ObjectFilter filter, Restriction parent) throws QueryException {
         Restriction restriction = findAndCreateRestriction(filter, context, parent);
-        Condition condition = restriction.interpret();
-        return condition;
+		return restriction.interpret();
     }
 
-    private <T extends ObjectFilter> Restriction findAndCreateRestriction(T filter, InterpretationContext context,
-                                                                          Restriction parent) throws QueryException {
-
-        Validate.notNull(filter, "filter");
-        Validate.notNull(context, "context");
+    private <T extends ObjectFilter> Restriction findAndCreateRestriction(@NotNull T filter,
+		    @NotNull InterpretationContext context, Restriction parent) throws QueryException {
 
         LOGGER.trace("Determining restriction for filter {}", filter);
 
@@ -210,7 +229,7 @@ public class QueryInterpreter2 {
 
     private <T extends ObjectFilter>
     Restriction findAndCreateRestrictionInternal(T filter, InterpretationContext context, Restriction parent,
-                                                 ItemPathResolver resolver, JpaEntityDefinition baseEntityDefinition) throws QueryException {
+		    ItemPathResolver resolver, JpaEntityDefinition baseEntityDefinition) throws QueryException {
 
         // the order of processing restrictions can be important, so we do the selection via handwritten code
 
@@ -220,6 +239,8 @@ public class QueryInterpreter2 {
             return new OrRestriction(context, (OrFilter) filter, baseEntityDefinition, parent);
         } else if (filter instanceof NotFilter) {
             return new NotRestriction(context, (NotFilter) filter, baseEntityDefinition, parent);
+        } else if (filter instanceof FullTextFilter) {
+	        return new FullTextRestriction(context, (FullTextFilter) filter, baseEntityDefinition, parent);
         } else if (filter instanceof InOidFilter) {
             return new InOidRestriction(context, (InOidFilter) filter, baseEntityDefinition, parent);
         } else if (filter instanceof OrgFilter) {
@@ -232,10 +253,10 @@ public class QueryInterpreter2 {
             ExistsFilter existsFilter = (ExistsFilter) filter;
             ItemPath path = existsFilter.getFullPath();
             ItemDefinition definition = existsFilter.getDefinition();
-            ProperDataSearchResult<JpaEntityDefinition> searchResult = resolver.findProperDataDefinition(
-                    baseEntityDefinition, path, definition, JpaEntityDefinition.class);
+            ProperDataSearchResult<JpaDataNodeDefinition> searchResult = resolver.findProperDataDefinition(
+                    baseEntityDefinition, path, definition, JpaDataNodeDefinition.class, context.getPrismContext());
             if (searchResult == null) {
-                throw new QueryException("Path for ExistsFilter (" + path + ") doesn't point to a hibernate entity within " + baseEntityDefinition);
+                throw new QueryException("Path for ExistsFilter (" + path + ") doesn't point to a hibernate entity or property within " + baseEntityDefinition);
             }
             return new ExistsRestriction(context, existsFilter, searchResult.getEntityDefinition(), parent);
         } else if (filter instanceof RefFilter) {
@@ -243,7 +264,7 @@ public class QueryInterpreter2 {
             ItemPath path = refFilter.getFullPath();
             ItemDefinition definition = refFilter.getDefinition();
             ProperDataSearchResult<JpaReferenceDefinition> searchResult = resolver.findProperDataDefinition(
-                    baseEntityDefinition, path, definition, JpaReferenceDefinition.class);
+                    baseEntityDefinition, path, definition, JpaReferenceDefinition.class, context.getPrismContext());
             if (searchResult == null) {
                 throw new QueryException("Path for RefFilter (" + path + ") doesn't point to a reference item within " + baseEntityDefinition);
             }
@@ -254,9 +275,10 @@ public class QueryInterpreter2 {
             ItemPath path = valFilter.getFullPath();
             ItemDefinition definition = valFilter.getDefinition();
 
-            ProperDataSearchResult<JpaPropertyDefinition> propDefRes = resolver.findProperDataDefinition(baseEntityDefinition, path, definition, JpaPropertyDefinition.class);
+            ProperDataSearchResult<JpaPropertyDefinition> propDefRes = resolver.findProperDataDefinition(baseEntityDefinition, path, definition, JpaPropertyDefinition.class,
+                    context.getPrismContext());
             if (propDefRes == null) {
-                throw new QueryException("Couldn't find a proper restriction for a ValueFilter: " + valFilter.debugDump());
+                throw new QueryException("Couldn't find a proper data item to query, given base entity " + baseEntityDefinition + " and this filter: " + valFilter.debugDump());
             }
             // TODO can't be unified?
             if (propDefRes.getTargetDefinition() instanceof JpaAnyPropertyDefinition) {
@@ -293,7 +315,7 @@ public class QueryInterpreter2 {
         }
     }
 
-    protected void updatePagingAndSortingByOid(RootHibernateQuery hibernateQuery, ObjectPagingAfterOid paging) {
+    private void updatePagingAndSortingByOid(RootHibernateQuery hibernateQuery, ObjectPagingAfterOid paging) {
         String rootAlias = hibernateQuery.getPrimaryEntityAlias();
         if (paging.getOrderBy() != null || paging.getDirection() != null || paging.getOffset() != null) {
             throw new IllegalArgumentException("orderBy, direction nor offset is allowed on ObjectPagingAfterOid");
@@ -304,13 +326,10 @@ public class QueryInterpreter2 {
         }
     }
 
-    public <T extends Containerable> void updatePagingAndSorting(InterpretationContext context,
-                                                                 ObjectPaging paging) throws QueryException {
-
-        if (paging == null) {
+    private void updatePagingAndSorting(InterpretationContext context, ObjectPaging paging) throws QueryException {
+		if (paging == null) {
             return;
         }
-
         RootHibernateQuery hibernateQuery = context.getHibernateQuery();
         if (paging.getOffset() != null) {
             hibernateQuery.setFirstResult(paging.getOffset());
@@ -334,7 +353,7 @@ public class QueryInterpreter2 {
 
         // TODO if we'd like to have order-by extension properties, we'd need to provide itemDefinition for them
         ProperDataSearchResult<JpaDataNodeDefinition> result = context.getItemPathResolver().findProperDataDefinition(
-                context.getRootEntityDefinition(), orderByPath, null, JpaDataNodeDefinition.class);
+                context.getRootEntityDefinition(), orderByPath, null, JpaDataNodeDefinition.class, context.getPrismContext());
         if (result == null) {
             LOGGER.error("Unknown path '" + orderByPath + "', couldn't find definition for it, "
                     + "list will not be ordered by it.");
@@ -378,11 +397,11 @@ public class QueryInterpreter2 {
 
     }
 
-    public <T extends Object> Matcher<T> findMatcher(T value) {
+    public <T> Matcher<T> findMatcher(T value) {
         return findMatcher(value != null ? (Class<T>) value.getClass() : null);
     }
 
-    public <T extends Object> Matcher<T> findMatcher(Class<T> type) {
+    public <T> Matcher<T> findMatcher(Class<T> type) {
         Matcher<T> matcher = AVAILABLE_MATCHERS.get(type);
         if (matcher == null) {
             //we return default matcher

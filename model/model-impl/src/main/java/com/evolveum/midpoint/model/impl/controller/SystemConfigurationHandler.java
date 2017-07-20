@@ -15,6 +15,7 @@
  */
 package com.evolveum.midpoint.model.impl.controller;
 
+import com.evolveum.midpoint.common.LoggingConfigurationManager;
 import com.evolveum.midpoint.common.ProfilingConfigurationManager;
 import com.evolveum.midpoint.common.SystemConfigurationHolder;
 import com.evolveum.midpoint.model.api.context.ModelContext;
@@ -23,24 +24,25 @@ import com.evolveum.midpoint.model.api.context.ModelState;
 import com.evolveum.midpoint.model.api.hooks.ChangeHook;
 import com.evolveum.midpoint.model.api.hooks.HookOperationMode;
 import com.evolveum.midpoint.model.api.hooks.HookRegistry;
+import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.repo.api.RepositoryService;
+import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.util.SystemConfigurationTypeUtil;
+import com.evolveum.midpoint.security.api.SecurityUtil;
+import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
+import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-
-import org.apache.commons.configuration.Configuration;
+import com.evolveum.midpoint.util.logging.Trace;
+import com.evolveum.midpoint.util.logging.TraceManager;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.LoggingConfigurationType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemObjectsType;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-
-import com.evolveum.midpoint.common.LoggingConfigurationManager;
-import com.evolveum.midpoint.common.configuration.api.MidpointConfiguration;
-import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.logging.Trace;
-import com.evolveum.midpoint.util.logging.TraceManager;
 
 import javax.annotation.PostConstruct;
 
@@ -57,48 +59,26 @@ public class SystemConfigurationHandler implements ChangeHook {
 
     public static final String HOOK_URI = "http://midpoint.evolveum.com/model/sysconfig-hook-1";
 
-    @Autowired(required = true)
+    @Autowired
     private HookRegistry hookRegistry;
 
-    @Autowired(required = true)
+    @Autowired
     @Qualifier("cacheRepositoryService")
     private transient RepositoryService cacheRepositoryService;
     
-    @Autowired(required = true)
-    private MidpointConfiguration startupConfiguration;
-
     @PostConstruct
     public void init() {
         hookRegistry.registerChangeHook(HOOK_URI, this);
     }
 
-    public void postInit(PrismObject<SystemConfigurationType> systemConfiguration, OperationResult parentResult) {
-        SystemConfigurationHolder.setCurrentConfiguration(systemConfiguration.asObjectable());
-
-    	Configuration systemConfigFromFile = startupConfiguration.getConfiguration(MidpointConfiguration.SYSTEM_CONFIGURATION_SECTION);
-    	boolean skip = false;
-    	if (systemConfigFromFile != null) {
-    		skip = systemConfigFromFile.getBoolean(LoggingConfigurationManager.SYSTEM_CONFIGURATION_SKIP_REPOSITORY_LOGGING_SETTINGS, false);
-    	}
-    	if (skip) {
-    		LOGGER.warn("Skipping application of repository logging configuration because {}=true", LoggingConfigurationManager.SYSTEM_CONFIGURATION_SKIP_REPOSITORY_LOGGING_SETTINGS);
-    	} else {
-	        LoggingConfigurationType loggingConfig = ProfilingConfigurationManager.checkSystemProfilingConfiguration(systemConfiguration);
-	        if (loggingConfig != null) {
-	        	applyLoggingConfiguration(loggingConfig, systemConfiguration.asObjectable().getVersion(), parentResult);
-	        	//applyLoggingConfiguration(systemConfiguration.asObjectable().getLogging(), systemConfiguration.asObjectable().getVersion(), parentResult);
-	        }
-    	}
-    }
-
-    private void applyLoggingConfiguration(LoggingConfigurationType loggingConfig, String version, OperationResult parentResult) {
+    private void applyLoggingConfiguration(LoggingConfigurationType loggingConfig, String version, OperationResult parentResult) throws SchemaException {
         if (loggingConfig != null) {
             LoggingConfigurationManager.configure(loggingConfig, version, parentResult);
         }
     }
 
     @Override
-    public <O extends ObjectType> HookOperationMode invoke(ModelContext<O> context, Task task, OperationResult parentResult) {
+    public <O extends ObjectType> HookOperationMode invoke(@NotNull ModelContext<O> context, @NotNull Task task, @NotNull OperationResult parentResult) {
 
         ModelState state = context.getState();
         if (state != ModelState.FINAL) {
@@ -150,9 +130,13 @@ public class SystemConfigurationHandler implements ChangeHook {
             LOGGER.trace("invoke() SystemConfig from repo: {}, ApplyingLoggingConfiguration", config.getVersion());
 
             SystemConfigurationHolder.setCurrentConfiguration(config.asObjectable());
+            SecurityUtil.setRemoteHostAddressHeaders(config.asObjectable());
 
-            //ProfilingConfigurationManager.checkSystemProfilingConfiguration(config);
             applyLoggingConfiguration(ProfilingConfigurationManager.checkSystemProfilingConfiguration(config), config.asObjectable().getVersion(), result);
+
+			cacheRepositoryService.applyFullTextSearchConfiguration(config.asObjectable().getFullTextSearch());
+            SystemConfigurationTypeUtil.applyOperationResultHandling(config.asObjectable());
+
             result.recordSuccessIfUnknown();
 
         } catch (ObjectNotFoundException e) {
@@ -169,7 +153,7 @@ public class SystemConfigurationHandler implements ChangeHook {
     }
 
     @Override
-    public void invokeOnException(ModelContext context, Throwable throwable, Task task, OperationResult result) {
+    public void invokeOnException(@NotNull ModelContext context, @NotNull Throwable throwable, @NotNull Task task, @NotNull OperationResult result) {
         // do nothing
     }
 }

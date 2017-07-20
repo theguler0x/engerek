@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2014 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -30,17 +30,28 @@
             classpath:ctx-repo-cache.xml,
             classpath:ctx-task.xml,
             classpath:ctx-provisioning.xml,
+            classpath:ctx-ucf-connid.xml,
+            classpath:ctx-ucf-builtin.xml,
             classpath:ctx-audit.xml,
             classpath:ctx-security.xml,
             classpath:ctx-model.xml,
+            classpath:ctx-model-common.xml,
             classpath:ctx-report.xml,
             classpath*:ctx-workflow.xml,
             classpath*:ctx-notifications.xml,
             classpath:ctx-certification.xml,
+<<<<<<< HEAD
 		<!-- classpath:ctx-camel-imports.xml, -->
             /WEB-INF/ctx-webapp.xml,
             /WEB-INF/ctx-web-security.xml,
             /WEB-INF/ctx-init.xml
+=======
+            classpath:ctx-interceptor.xml,
+            classpath*:ctx-overlay.xml,
+            /WEB-INF/ctx-init.xml,
+            /WEB-INF/ctx-webapp.xml  
+            /WEB-INF/ctx-web-security.xml
+>>>>>>> midpoint/master
         </param-value>
     </context-param>
 
@@ -57,6 +68,10 @@
         <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
     </listener>
 
+    <listener>	<!-- needed for retrieving original HTTP request in SecurityUtil (e.g. for auditing) -->
+        <listener-class>org.springframework.web.context.request.RequestContextListener</listener-class>
+    </listener>
+
     <filter>
         <filter-name>MidPointProfilingServletFilter</filter-name>
         <filter-class>com.evolveum.midpoint.web.util.MidPointProfilingServletFilter</filter-class>
@@ -68,7 +83,7 @@
     </filter-mapping>
 
 	<!-- For CAS SLO integration uncomment following -->
-<!--
+<!-- 
 	 <filter>
     <filter-name>characterEncodingFilter</filter-name>
     <filter-class>org.springframework.web.filter.CharacterEncodingFilter</filter-class>
@@ -84,7 +99,7 @@
   <listener>
     <listener-class>org.jasig.cas.client.session.SingleSignOutHttpSessionListener</listener-class>
   </listener>
-	-->
+ -->
     <filter>
         <filter-name>wicket</filter-name>
         <filter-class>org.apache.wicket.protocol.http.WicketFilter</filter-class>
@@ -134,8 +149,23 @@
         <servlet-class>
             org.apache.cxf.transport.servlet.CXFServlet
         </servlet-class>
-        <load-on-startup>1</load-on-startup>
+        <init-param>
+			<param-name>service-list-path</param-name>
+			<param-value>midpointservices</param-value>
+		</init-param>
+	<load-on-startup>1</load-on-startup>
     </servlet>
+
+    <servlet>
+        <servlet-name>ReportPeerQueryInterceptor</servlet-name>
+        <servlet-class>com.evolveum.midpoint.gui.impl.util.ReportPeerQueryInterceptor</servlet-class>
+    </servlet>
+
+
+    <servlet-mapping>
+        <servlet-name>ReportPeerQueryInterceptor</servlet-name>
+        <url-pattern>/report</url-pattern>
+    </servlet-mapping>
     <servlet-mapping>
     	<!-- Deprecated -->
         <servlet-name>CXFServlet</servlet-name>
@@ -163,6 +193,10 @@
     <error-page>
         <error-code>404</error-code>
         <location>/error/404</location>
+    </error-page>
+    <error-page>
+        <error-code>410</error-code>
+        <location>/error/410</location>
     </error-page>
     <error-page>
         <error-code>500</error-code>

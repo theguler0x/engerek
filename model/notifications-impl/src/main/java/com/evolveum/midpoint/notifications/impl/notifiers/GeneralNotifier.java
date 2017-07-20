@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,18 @@
 
 package com.evolveum.midpoint.notifications.impl.notifiers;
 
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.model.api.ProgressInformation;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.notifications.api.NotificationManager;
 import com.evolveum.midpoint.notifications.api.events.Event;
 import com.evolveum.midpoint.notifications.api.events.ModelEvent;
 import com.evolveum.midpoint.notifications.api.events.SimpleObjectRef;
-import com.evolveum.midpoint.notifications.impl.NotificationsUtil;
+import com.evolveum.midpoint.notifications.api.transports.Message;
+import com.evolveum.midpoint.notifications.api.transports.Transport;
+import com.evolveum.midpoint.notifications.impl.NotificationFunctionsImpl;
 import com.evolveum.midpoint.notifications.impl.formatters.TextFormatter;
 import com.evolveum.midpoint.notifications.impl.handlers.AggregatedEventHandler;
 import com.evolveum.midpoint.notifications.impl.handlers.BaseHandler;
-import com.evolveum.midpoint.notifications.api.transports.Message;
-import com.evolveum.midpoint.notifications.api.transports.Transport;
 import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
@@ -42,16 +42,13 @@ import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-
 import org.apache.cxf.common.util.StringUtils;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
-
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static com.evolveum.midpoint.model.api.ProgressInformation.ActivityType.NOTIFICATIONS;
@@ -69,28 +66,13 @@ public class GeneralNotifier extends BaseHandler {
     protected NotificationManager notificationManager;
 
     @Autowired
-    protected NotificationsUtil notificationsUtil;
+    protected NotificationFunctionsImpl functions;
 
     @Autowired
     protected TextFormatter textFormatter;
 
     @Autowired
     protected AggregatedEventHandler aggregatedEventHandler;
-
-    protected static final List<ItemPath> auxiliaryPaths = Collections.unmodifiableList(Arrays.asList(
-            new ItemPath(ShadowType.F_METADATA),
-            new ItemPath(ShadowType.F_ACTIVATION, ActivationType.F_VALIDITY_STATUS),                // works for user activation as well
-            new ItemPath(ShadowType.F_ACTIVATION, ActivationType.F_VALIDITY_CHANGE_TIMESTAMP),
-            new ItemPath(ShadowType.F_ACTIVATION, ActivationType.F_EFFECTIVE_STATUS),
-            new ItemPath(ShadowType.F_ACTIVATION, ActivationType.F_DISABLE_TIMESTAMP),
-            new ItemPath(ShadowType.F_ACTIVATION, ActivationType.F_ARCHIVE_TIMESTAMP),
-            new ItemPath(ShadowType.F_ACTIVATION, ActivationType.F_ENABLE_TIMESTAMP),
-            new ItemPath(ShadowType.F_ITERATION),
-            new ItemPath(ShadowType.F_ITERATION_TOKEN),
-            new ItemPath(UserType.F_LINK_REF),
-            new ItemPath(ShadowType.F_TRIGGER))
-    );
-
 
     @PostConstruct
     public void init() {
@@ -101,7 +83,7 @@ public class GeneralNotifier extends BaseHandler {
     public boolean processEvent(Event event, EventHandlerType eventHandlerType, NotificationManager notificationManager, 
     		Task task, OperationResult parentResult) throws SchemaException {
 
-        OperationResult result = parentResult.createSubresult(GeneralNotifier.class.getName() + ".processEvent");
+        OperationResult result = parentResult.createMinorSubresult(GeneralNotifier.class.getName() + ".processEvent");
 
         logStart(getLogger(), event, eventHandlerType);
 
@@ -143,6 +125,8 @@ public class GeneralNotifier extends BaseHandler {
 
                                 String body = getBodyFromExpression(event, generalNotifierType, variables, task, result);
                                 String subject = getSubjectFromExpression(event, generalNotifierType, variables, task, result);
+                                String from = getFromFromExpression(event, generalNotifierType, variables, task, result);
+                                String contentType = getContentTypeFromExpression(event, generalNotifierType, variables, task, result);
 
                                 if (body == null) {
                                     body = getBody(event, generalNotifierType, transportName, task, result);
@@ -154,12 +138,22 @@ public class GeneralNotifier extends BaseHandler {
 
                                 Message message = new Message();
                                 message.setBody(body != null ? body : "");
-                                //message.setContentType("text/plain");           // todo make more flexible
-                                message.setSubject(subject != null ? subject : "");
-                                message.setTo(recipientsAddresses);                      // todo cc/bcc recipients
+                                if (contentType != null) {
+                                    message.setContentType(contentType);
+                                } else if (generalNotifierType.getContentType() != null) {
+                                    message.setContentType(generalNotifierType.getContentType());
+                                }
+                                message.setSubject(subject);
+
+                                if (from != null) {
+                                	message.setFrom(from);
+								}
+                                message.setTo(recipientsAddresses);
+                                message.setCc(getCcBccAddresses(generalNotifierType.getCcExpression(), variables, "notification cc-expression", task, result));
+								message.setBcc(getCcBccAddresses(generalNotifierType.getBccExpression(), variables, "notification bcc-expression", task, result));
 
                                 getLogger().trace("Sending notification via transport {}:\n{}", transportName, message);
-                                transport.send(message, transportName, task, result);
+                                transport.send(message, transportName, event, task, result);
                             } else {
                                 getLogger().info("No recipients addresses for transport " + transportName + ", message corresponding to event " + event.getId() + " will not be send.");
                             }
@@ -195,7 +189,7 @@ public class GeneralNotifier extends BaseHandler {
     }
 
     protected UserType getDefaultRecipient(Event event, GeneralNotifierType generalNotifierType, OperationResult result) {
-        ObjectType objectType = notificationsUtil.getObjectType(event.getRequestee(), result);
+        ObjectType objectType = functions.getObjectType(event.getRequestee(), true, result);
         if (objectType instanceof UserType) {
             return (UserType) objectType;
         } else {
@@ -209,7 +203,7 @@ public class GeneralNotifier extends BaseHandler {
 
     protected List<String> getRecipientsAddresses(Event event, GeneralNotifierType generalNotifierType, ExpressionVariables variables, 
     		UserType defaultRecipient, String transportName, Transport transport, Task task, OperationResult result) {
-        List<String> addresses = new ArrayList<String>();
+        List<String> addresses = new ArrayList<>();
         if (!generalNotifierType.getRecipientExpression().isEmpty()) {
             for (ExpressionType expressionType : generalNotifierType.getRecipientExpression()) {
                 List<String> r = evaluateExpressionChecked(expressionType, variables, "notification recipient", task, result);
@@ -233,6 +227,19 @@ public class GeneralNotifier extends BaseHandler {
         return addresses;
     }
 
+    @NotNull
+    protected List<String> getCcBccAddresses(List<ExpressionType> expressions, ExpressionVariables variables,
+			String shortDesc, Task task, OperationResult result) {
+    	List<String> addresses = new ArrayList<>();
+		for (ExpressionType expressionType : expressions) {
+			List<String> r = evaluateExpressionChecked(expressionType, variables, shortDesc, task, result);
+			if (r != null) {
+				addresses.addAll(r);
+			}
+        }
+        return addresses;
+    }
+
     protected String getSubjectFromExpression(Event event, GeneralNotifierType generalNotifierType, ExpressionVariables variables, 
     		Task task, OperationResult result) {
         if (generalNotifierType.getSubjectExpression() != null) {
@@ -246,6 +253,42 @@ public class GeneralNotifier extends BaseHandler {
                 getLogger().warn("Subject expression for event " + event.getId() + " returned more than 1 item.");
             }
             return subjectList.get(0);
+        } else {
+            return null;
+        }
+    }
+
+    protected String getFromFromExpression(Event event, GeneralNotifierType generalNotifierType, ExpressionVariables variables,
+    		Task task, OperationResult result) {
+        if (generalNotifierType.getFromExpression() != null) {
+            List<String> fromList = evaluateExpressionChecked(generalNotifierType.getFromExpression(), variables, "from expression",
+            		task, result);
+            if (fromList == null || fromList.isEmpty()) {
+                getLogger().info("from expression for event " + event.getId() + " returned nothing.");
+                return null;
+            }
+            if (fromList.size() > 1) {
+                getLogger().warn("from expression for event " + event.getId() + " returned more than 1 item.");
+            }
+            return fromList.get(0);
+        } else {
+            return null;
+        }
+    }
+
+    protected String getContentTypeFromExpression(Event event, GeneralNotifierType generalNotifierType, ExpressionVariables variables,
+    		Task task, OperationResult result) {
+        if (generalNotifierType.getContentTypeExpression() != null) {
+            List<String> contentTypeList = evaluateExpressionChecked(generalNotifierType.getContentTypeExpression(), variables, "contentType expression",
+            		task, result);
+            if (contentTypeList == null || contentTypeList.isEmpty()) {
+                getLogger().info("contentType expression for event " + event.getId() + " returned nothing.");
+                return null;
+            }
+            if (contentTypeList.size() > 1) {
+                getLogger().warn("contentType expression for event " + event.getId() + " returned more than 1 item.");
+            }
+            return contentTypeList.get(0);
         } else {
             return null;
         }
@@ -275,7 +318,7 @@ public class GeneralNotifier extends BaseHandler {
     protected boolean deltaContainsOtherPathsThan(ObjectDelta<? extends ObjectType> delta, List<ItemPath> paths) {
 
         for (ItemDelta itemDelta : delta.getModifications()) {
-            if (!NotificationsUtil.isAmongHiddenPaths(itemDelta.getPath(), paths)) {
+            if (!NotificationFunctionsImpl.isAmongHiddenPaths(itemDelta.getPath(), paths)) {
                 return true;
             }
         }
@@ -290,7 +333,7 @@ public class GeneralNotifier extends BaseHandler {
 
         boolean showValues = !Boolean.FALSE.equals(showValuesBoolean);
         for (ItemDelta<?,?> itemDelta : delta.getModifications()) {
-            if (NotificationsUtil.isAmongHiddenPaths(itemDelta.getPath(), hiddenPaths)) {
+            if (NotificationFunctionsImpl.isAmongHiddenPaths(itemDelta.getPath(), hiddenPaths)) {
                 continue;
             }
             body.append(" - ");
@@ -350,16 +393,12 @@ public class GeneralNotifier extends BaseHandler {
         return variables;
     }
 
-    public static List<ItemPath> getAuxiliaryPaths() {
-        return auxiliaryPaths;
-    }
-
     public String formatRequester(Event event, OperationResult result) {
         SimpleObjectRef requesterRef = event.getRequester();
         if (requesterRef == null) {
             return "(unknown or none)";
         }
-        ObjectType requester = requesterRef.resolveObjectType(result);
+        ObjectType requester = requesterRef.resolveObjectType(result, false);
         String name = PolyString.getOrig(requester.getName());
         if (requester instanceof UserType) {
             return name + " (" + PolyString.getOrig(((UserType) requester).getFullName()) + ")";

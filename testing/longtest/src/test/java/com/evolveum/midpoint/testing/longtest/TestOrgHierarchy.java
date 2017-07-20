@@ -23,7 +23,6 @@ import com.evolveum.midpoint.test.util.TestUtil;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
 
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
@@ -75,9 +74,9 @@ public class TestOrgHierarchy extends AbstractModelIntegrationTest {
         modelService.postInit(initResult);
 
         // System Configuration and administrator
-        repoAddObjectFromFile(SYSTEM_CONFIGURATION_FILENAME, SystemConfigurationType.class, initResult);
-        PrismObject<UserType> userAdministrator = repoAddObjectFromFile(USER_ADMINISTRATOR_FILENAME, UserType.class, initResult);
-        repoAddObjectFromFile(ROLE_SUPERUSER_FILENAME, RoleType.class, initResult);
+        repoAddObjectFromFile(SYSTEM_CONFIGURATION_FILENAME, initResult);
+        PrismObject<UserType> userAdministrator = repoAddObjectFromFile(USER_ADMINISTRATOR_FILENAME, initResult);
+        repoAddObjectFromFile(ROLE_SUPERUSER_FILENAME, initResult);
         login(userAdministrator);
 
         // Resources
@@ -124,10 +123,10 @@ public class TestOrgHierarchy extends AbstractModelIntegrationTest {
             throws Exception {
         UserType user = new UserType();
         user.setOid("1" + createOid(u, oidPrefix + i));
-        user.setName(createPolyString("u" + oidPrefix + i + u));
-        user.setFullName(createPolyString("fu" + oidPrefix + i + u));
-        user.setFamilyName(createPolyString("fa" + oidPrefix + i + u));
-        user.setGivenName(createPolyString("gi" + oidPrefix + i + u));
+        user.setName(createPolyStringType("u" + oidPrefix + i + u));
+        user.setFullName(createPolyStringType("fu" + oidPrefix + i + u));
+        user.setFamilyName(createPolyStringType("fa" + oidPrefix + i + u));
+        user.setGivenName(createPolyStringType("gi" + oidPrefix + i + u));
         if (parentOid != null) {
             ObjectReferenceType ref = new ObjectReferenceType();
             ref.setOid(parentOid);
@@ -143,8 +142,8 @@ public class TestOrgHierarchy extends AbstractModelIntegrationTest {
             throws Exception {
         OrgType org = new OrgType();
         org.setOid("2" + createOid(i, oidPrefix));
-        org.setDisplayName(createPolyString("o" + oidPrefix + i));
-        org.setName(createPolyString("o" + oidPrefix + i));
+        org.setDisplayName(createPolyStringType("o" + oidPrefix + i));
+        org.setName(createPolyStringType("o" + oidPrefix + i));
         if (parentOid != null) {
             ObjectReferenceType ref = new ObjectReferenceType();
             ref.setOid(parentOid);
@@ -171,11 +170,5 @@ public class TestOrgHierarchy extends AbstractModelIntegrationTest {
         sb.append(oid.substring(19, 31));
 
         return sb.toString();
-    }
-
-    private PolyStringType createPolyString(String orig) {
-        PolyStringType poly = new PolyStringType();
-        poly.setOrig(orig);
-        return poly;
     }
 }

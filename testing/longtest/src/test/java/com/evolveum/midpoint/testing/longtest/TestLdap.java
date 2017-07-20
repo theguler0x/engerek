@@ -1,6 +1,6 @@
 package com.evolveum.midpoint.testing.longtest;
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,6 +62,7 @@ import com.evolveum.midpoint.schema.ResultHandler;
 import com.evolveum.midpoint.schema.RetrieveOption;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.schema.constants.MidPointConstants;
+import com.evolveum.midpoint.schema.internals.InternalCounters;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.ObjectQueryUtil;
 import com.evolveum.midpoint.task.api.Task;
@@ -70,6 +71,7 @@ import com.evolveum.midpoint.test.util.MidPointTestConstants;
 import com.evolveum.midpoint.test.util.TestUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
@@ -77,7 +79,6 @@ import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnforcementType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemObjectsType;
@@ -136,8 +137,10 @@ public class TestLdap extends AbstractModelIntegrationTest {
     
     public static final String DOT_JPG_FILENAME = "src/test/resources/common/dot.jpg";
 	
+    private static final int NUM_INITIAL_USERS = 3;
 	// Make it at least 1501 so it will go over the 3000 entries size limit
 	private static final int NUM_LDAP_ENTRIES = 1600;
+//	private static final int NUM_LDAP_ENTRIES = 100;
 
 	private static final String LDAP_GROUP_PIRATES_DN = "cn=Pirates,ou=groups,dc=example,dc=com";
 	
@@ -169,7 +172,7 @@ public class TestLdap extends AbstractModelIntegrationTest {
 		// System Configuration
         PrismObject<SystemConfigurationType> config;
 		try {
-			config = repoAddObjectFromFile(SYSTEM_CONFIGURATION_FILE, SystemConfigurationType.class, initResult);
+			config = repoAddObjectFromFile(SYSTEM_CONFIGURATION_FILE, initResult);
 		} catch (ObjectAlreadyExistsException e) {
 			throw new ObjectAlreadyExistsException("System configuration already exists in repository;" +
 					"looks like the previous test haven't cleaned it up", e);
@@ -181,16 +184,16 @@ public class TestLdap extends AbstractModelIntegrationTest {
 //                config.asObjectable().getVersion(), initResult);
 
         // administrator
-		PrismObject<UserType> userAdministrator = repoAddObjectFromFile(USER_ADMINISTRATOR_FILE, UserType.class, initResult);
-		repoAddObjectFromFile(ROLE_SUPERUSER_FILE, RoleType.class, initResult);
+		PrismObject<UserType> userAdministrator = repoAddObjectFromFile(USER_ADMINISTRATOR_FILE, initResult);
+		repoAddObjectFromFile(ROLE_SUPERUSER_FILE, initResult);
 		login(userAdministrator);
 		
 		// Users
-		repoAddObjectFromFile(USER_BARBOSSA_FILE, UserType.class, initResult);
-		repoAddObjectFromFile(USER_GUYBRUSH_FILE, UserType.class, initResult);
+		repoAddObjectFromFile(USER_BARBOSSA_FILE, initResult);
+		repoAddObjectFromFile(USER_GUYBRUSH_FILE, initResult);
 		
 		// Roles
-		repoAddObjectFromFile(ROLE_PIRATE_FILE, RoleType.class, initResult);
+		repoAddObjectFromFile(ROLE_PIRATE_FILE, initResult);
 		
 		// Resources
 		resourceOpenDj = importAndGetObjectFromFile(ResourceType.class, RESOURCE_OPENDJ_FILE, RESOURCE_OPENDJ_OID, initTask, initResult);
@@ -211,6 +214,14 @@ public class TestLdap extends AbstractModelIntegrationTest {
         //initProfiling - end
 
 		display("initial LDAP content", openDJController.dumpEntries());
+	}
+
+	@Test
+    public void test000Sanity() throws Exception {
+		final String TEST_NAME = "test000Sanity";
+        TestUtil.displayTestTile(this, TEST_NAME);
+
+        assertUsers(NUM_INITIAL_USERS);
 	}
 	
 	/**
@@ -237,6 +248,8 @@ public class TestLdap extends AbstractModelIntegrationTest {
 
         String accountDn = assertOpenDjAccount(USER_BARBOSSA_USERNAME, USER_BARBOSSA_FULL_NAME, true).getDN().toString();
         openDJController.assertUniqueMember(LDAP_GROUP_PIRATES_DN, accountDn);
+        
+        assertUsers(NUM_INITIAL_USERS);
 	}
 	
 	/**
@@ -294,6 +307,8 @@ public class TestLdap extends AbstractModelIntegrationTest {
 		
 		assertEquals("Photo byte length changed (shadow)", photoIn.length, photoBytesOut.length);
 		assertTrue("Photo bytes do not match (shadow)", Arrays.equals(photoIn, photoBytesOut));
+		
+		assertUsers(NUM_INITIAL_USERS);
 	}
 
 	/**
@@ -326,6 +341,8 @@ public class TestLdap extends AbstractModelIntegrationTest {
 
         String accountDn = assertOpenDjAccount(USER_GUYBRUSH_USERNAME, USER_GUYBRUSH_FULL_NAME, true).getDN().toString();
         openDJController.assertUniqueMember(LDAP_GROUP_PIRATES_DN, accountDn);
+        
+        assertUsers(NUM_INITIAL_USERS);
 	}
 
 	
@@ -363,6 +380,8 @@ public class TestLdap extends AbstractModelIntegrationTest {
         assertOpenDjAccount(ACCOUNT_CHARLES_NAME, "Charles L. Charles", true);
         assertOpenDjAccount(ACCOUNT_CHARLES_NAME + "1", "LeChuck", true);
         assertNoOpenDjAccount(ACCOUNT_LECHUCK_NAME);
+        
+        assertUsers(NUM_INITIAL_USERS + 1);
 	}
 	
 	@Test
@@ -371,6 +390,8 @@ public class TestLdap extends AbstractModelIntegrationTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
+        
+        assertUsers(NUM_INITIAL_USERS + 1);
         
         loadEntries("a");
         
@@ -404,6 +425,8 @@ public class TestLdap extends AbstractModelIntegrationTest {
         TestUtil.displayThen(TEST_NAME);
         
         assertEquals("Unexpected number of search results", NUM_LDAP_ENTRIES + 8, count.getValue());
+        
+        assertUsers(NUM_INITIAL_USERS + 1);
 	}
 
 	@Test
@@ -412,6 +435,8 @@ public class TestLdap extends AbstractModelIntegrationTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
+        
+        assertUsers(NUM_INITIAL_USERS + 1);
         
         loadEntries("u");
         
@@ -489,7 +514,7 @@ public class TestLdap extends AbstractModelIntegrationTest {
         task.setOwner(getUser(USER_ADMINISTRATOR_OID));
         OperationResult result = task.getResult();
         
-        rememberShadowFetchOperationCount();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
 
         // WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -503,7 +528,7 @@ public class TestLdap extends AbstractModelIntegrationTest {
         // THEN
         TestUtil.displayThen(TEST_NAME);
         
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
         
         
@@ -538,7 +563,7 @@ public class TestLdap extends AbstractModelIntegrationTest {
         task.setOwner(getUser(USER_ADMINISTRATOR_OID));
         OperationResult result = task.getResult();
         
-        rememberShadowFetchOperationCount();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
 
         // WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -552,7 +577,7 @@ public class TestLdap extends AbstractModelIntegrationTest {
         // THEN
         TestUtil.displayThen(TEST_NAME);
         
-        assertShadowFetchOperationCountIncrement((2*NUM_LDAP_ENTRIES)/100+2);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, (2*NUM_LDAP_ENTRIES)/100+2);
         
         
         PrismObject<TaskType> deleteTask = getTask(TASK_DELETE_OPENDJ_SHADOWS_OID);
@@ -573,7 +598,7 @@ public class TestLdap extends AbstractModelIntegrationTest {
         assertOpenDjAccountShadows(1, false, task, result);
     }
     
-    private void assertOpenDjAccountShadows(int expected, boolean raw, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException {
+    private void assertOpenDjAccountShadows(int expected, boolean raw, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
     	ObjectQuery query = ObjectQueryUtil.createResourceAndObjectClassQuery(RESOURCE_OPENDJ_OID, 
         		new QName(RESOURCE_OPENDJ_NAMESPACE, "inetOrgPerson"), prismContext);
         

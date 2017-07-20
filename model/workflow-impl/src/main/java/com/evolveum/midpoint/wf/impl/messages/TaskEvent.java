@@ -16,10 +16,6 @@
 
 package com.evolveum.midpoint.wf.impl.messages;
 
-import com.evolveum.midpoint.wf.impl.processes.common.CommonProcessVariableNames;
-
-import org.activiti.engine.delegate.DelegateTask;
-
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -31,7 +27,7 @@ import java.util.Map;
  *
  * @author mederly
  */
-public class TaskEvent extends ActivitiToMidPointMessage {
+public class TaskEvent {
 
     /**
      * Workflow process instance variables, merged with form properties (TODO: verify this).
@@ -68,6 +64,8 @@ public class TaskEvent extends ActivitiToMidPointMessage {
      */
     private Date createTime;
 
+    private Date dueDate;
+
     private List<String> candidateUsers = new ArrayList<>();
     private List<String> candidateGroups = new ArrayList<>();
 
@@ -79,7 +77,11 @@ public class TaskEvent extends ActivitiToMidPointMessage {
         this.createTime = createTime;
     }
 
-    private String owner;
+	public void setDueDate(Date dueDate) {
+		this.dueDate = dueDate;
+	}
+
+	private String owner;
     private String executionId;
 
 
@@ -131,7 +133,11 @@ public class TaskEvent extends ActivitiToMidPointMessage {
         return createTime;
     }
 
-    public String getOwner() {
+	public Date getDueDate() {
+		return dueDate;
+	}
+
+	public String getOwner() {
         return owner;
     }
 
@@ -171,6 +177,21 @@ public class TaskEvent extends ActivitiToMidPointMessage {
 //        return (String) delegateTask.getVariable(CommonProcessVariableNames.VARIABLE_PROCESS_INSTANCE_NAME);
 //    }
 
-
-
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + "{" +
+                "taskId='" + taskId + '\'' +
+                ", taskName='" + taskName + '\'' +
+                ", assigneeOid='" + assigneeOid + '\'' +
+                ", processInstanceName='" + processInstanceName + '\'' +
+                ", processInstanceId='" + processInstanceId + '\'' +
+                ", createTime=" + createTime +
+                ", dueDate=" + dueDate +
+                ", candidateUsers=" + candidateUsers +
+                ", candidateGroups=" + candidateGroups +
+                ", owner='" + owner + '\'' +
+                ", executionId='" + executionId + '\'' +
+                ", variables=" + variables +
+                '}';
+    }
 }

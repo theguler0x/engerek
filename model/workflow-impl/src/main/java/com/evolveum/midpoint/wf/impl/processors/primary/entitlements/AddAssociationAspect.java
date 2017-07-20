@@ -16,13 +16,11 @@
 
 package com.evolveum.midpoint.wf.impl.processors.primary.entitlements;
 
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.model.api.context.ModelContext;
 import com.evolveum.midpoint.model.api.context.ModelProjectionContext;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.prism.PrismContainerValue;
-import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismObjectDefinition;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.builder.DeltaBuilder;
@@ -30,36 +28,27 @@ import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.schema.ResourceShadowDiscriminator;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.wf.impl.processes.addrole.AddRoleVariableNames;
 import com.evolveum.midpoint.wf.impl.processes.itemApproval.ApprovalRequest;
 import com.evolveum.midpoint.wf.impl.processes.itemApproval.ApprovalRequestImpl;
-import com.evolveum.midpoint.wf.impl.processes.itemApproval.ItemApprovalProcessInterface;
-import com.evolveum.midpoint.wf.impl.processes.itemApproval.ProcessVariableNames;
-import com.evolveum.midpoint.wf.impl.processors.primary.ObjectTreeDeltas;
-import com.evolveum.midpoint.wf.impl.processors.primary.PcpChildJobCreationInstruction;
+import com.evolveum.midpoint.schema.ObjectTreeDeltas;
+import com.evolveum.midpoint.wf.impl.processors.primary.ModelInvocationContext;
+import com.evolveum.midpoint.wf.impl.processors.primary.PcpChildWfTaskCreationInstruction;
 import com.evolveum.midpoint.wf.impl.processors.primary.aspect.BasePrimaryChangeAspect;
-import com.evolveum.midpoint.wf.impl.processors.primary.aspect.PrimaryChangeAspectHelper;
-import com.evolveum.midpoint.wf.impl.processors.primary.assignments.AssignmentHelper;
 import com.evolveum.midpoint.wf.impl.util.MiscDataUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-import com.evolveum.midpoint.xml.ns.model.workflow.common_forms_3.AssociationCreationApprovalFormType;
-import com.evolveum.midpoint.xml.ns.model.workflow.common_forms_3.QuestionFormType;
 import org.apache.commons.lang.Validate;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
 
 import javax.xml.datatype.XMLGregorianCalendar;
 import java.text.DateFormat;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Aspect for adding associations.
@@ -73,31 +62,22 @@ public class AddAssociationAspect extends BasePrimaryChangeAspect {
 
     private static final Trace LOGGER = TraceManager.getTrace(AddAssociationAspect.class);
 
-    @Autowired
-    protected PrismContext prismContext;
+	//region ------------------------------------------------------------ Things that execute on request arrival
 
-    @Autowired
-    protected ItemApprovalProcessInterface itemApprovalProcessInterface;
-
-    @Autowired
-    protected AssignmentHelper assignmentHelper;
-
-    @Autowired
-    protected PrimaryChangeAspectHelper primaryChangeAspectHelper;
-
-    //region ------------------------------------------------------------ Things that execute on request arrival
-
-    @Override
-    public List<PcpChildJobCreationInstruction> prepareJobCreationInstructions(ModelContext<?> modelContext, WfConfigurationType wfConfigurationType, ObjectTreeDeltas objectTreeDeltas, Task taskFromModel, OperationResult result) throws SchemaException, ObjectNotFoundException {
-        if (!isFocusRelevant(modelContext)) {
-            return null;
+    @NotNull
+	@Override
+    public List<PcpChildWfTaskCreationInstruction> prepareTasks(@NotNull ObjectTreeDeltas objectTreeDeltas,
+			ModelInvocationContext ctx, @NotNull OperationResult result) throws SchemaException, ObjectNotFoundException {
+        if (!isFocusRelevant(ctx.modelContext)) {
+            return Collections.emptyList();
         }
         List<ApprovalRequest<AssociationAdditionType>> approvalRequestList =
-                getApprovalRequests(modelContext, wfConfigurationType, objectTreeDeltas, taskFromModel, result);
+                getApprovalRequests(ctx.modelContext, baseConfigurationHelper.getPcpConfiguration(ctx.wfConfiguration),
+                        objectTreeDeltas, ctx.taskFromModel, result);
         if (approvalRequestList == null || approvalRequestList.isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
-        return prepareJobCreateInstructions(modelContext, taskFromModel, result, approvalRequestList);
+        return prepareJobCreateInstructions(ctx.modelContext, ctx.taskFromModel, result, approvalRequestList);
     }
 
     protected boolean isFocusRelevant(ModelContext modelContext) {
@@ -105,7 +85,7 @@ public class AddAssociationAspect extends BasePrimaryChangeAspect {
         return true;
     }
 
-    private List<ApprovalRequest<AssociationAdditionType>> getApprovalRequests(ModelContext<?> modelContext, WfConfigurationType wfConfigurationType,
+    private List<ApprovalRequest<AssociationAdditionType>> getApprovalRequests(ModelContext<?> modelContext, PrimaryChangeProcessorConfigurationType wfConfigurationType,
                                                                                ObjectTreeDeltas changes, Task taskFromModel, OperationResult result) {
 
         List<ApprovalRequest<AssociationAdditionType>> requests = new ArrayList<>();
@@ -139,8 +119,9 @@ public class AddAssociationAspect extends BasePrimaryChangeAspect {
             ShadowAssociationType a = associationIterator.next();
             AssociationAdditionType itemToApprove = createItemToApprove(a, rsd);
             if (isAssociationRelevant(config, itemToApprove, rsd, modelContext, taskFromModel, result)) {
-                approvalRequestList.add(createApprovalRequest(config, itemToApprove));
+                approvalRequestList.add(createApprovalRequest(config, itemToApprove, modelContext, taskFromModel, result));
                 associationIterator.remove();
+                miscDataUtil.generateProjectionOidIfNeeded(modelContext, shadowType, rsd);
             }
         }
         return approvalRequestList;
@@ -225,25 +206,23 @@ public class AddAssociationAspect extends BasePrimaryChangeAspect {
         ShadowAssociationType association = associationCval.asContainerable();
         AssociationAdditionType itemToApprove = createItemToApprove(association, rsd);
         if (isAssociationRelevant(config, itemToApprove, rsd, modelContext, taskFromModel, result)) {
-            return createApprovalRequest(config, itemToApprove);
+            return createApprovalRequest(config, itemToApprove, modelContext, taskFromModel, result);
         } else {
             return null;
         }
     }
 
-    private List<PcpChildJobCreationInstruction>
+    private List<PcpChildWfTaskCreationInstruction>
     prepareJobCreateInstructions(ModelContext<?> modelContext, Task taskFromModel,
                                  OperationResult result, List<ApprovalRequest<AssociationAdditionType>> approvalRequestList)
             throws SchemaException, ObjectNotFoundException {
 
-        List<PcpChildJobCreationInstruction> instructions = new ArrayList<>();
+        List<PcpChildWfTaskCreationInstruction> instructions = new ArrayList<>();
         String assigneeName = MiscDataUtil.getFocusObjectName(modelContext);
-        String assigneeOid = primaryChangeAspectHelper.getObjectOid(modelContext);
-        PrismObject<UserType> requester = primaryChangeAspectHelper.getRequester(taskFromModel, result);
+        String assigneeOid = MiscDataUtil.getFocusObjectOid(modelContext);
+        PrismObject<UserType> requester = baseModelInvocationProcessingHelper.getRequester(taskFromModel, result);
 
         for (ApprovalRequest<AssociationAdditionType> approvalRequest : approvalRequestList) {
-
-            assert approvalRequest.getPrismContext() != null;
 
             LOGGER.trace("Approval request = {}", approvalRequest);
             AssociationAdditionType associationAddition = approvalRequest.getItemToApprove();
@@ -253,28 +232,31 @@ public class AddAssociationAspect extends BasePrimaryChangeAspect {
 
             String targetName = target.getName() != null ? target.getName().getOrig() : "(unnamed)";
 
+            String approvalTaskName = "Approve adding " + targetName + " to " + assigneeName;
+
             // create a JobCreateInstruction for a given change processor (primaryChangeProcessor in this case)
-            PcpChildJobCreationInstruction instruction =
-                    PcpChildJobCreationInstruction.createInstruction(getChangeProcessor());
+            PcpChildWfTaskCreationInstruction instruction =
+                    PcpChildWfTaskCreationInstruction.createItemApprovalInstruction(
+                    		getChangeProcessor(), approvalTaskName,
+							approvalRequest.getApprovalSchemaType(), null);
 
             // set some common task/process attributes
-            instruction.prepareCommonAttributes(this, modelContext, assigneeOid, requester);
+            instruction.prepareCommonAttributes(this, modelContext, requester);
 
             // prepare and set the delta that has to be approved
             ObjectTreeDeltas objectTreeDeltas = associationAdditionToDelta(modelContext, associationAddition, assigneeOid);
-            instruction.setObjectTreeDeltasProcessAndTaskVariables(objectTreeDeltas);
+            instruction.setDeltasToProcesses(objectTreeDeltas);
+
+            instruction.setObjectRef(modelContext, result);     // TODO - or should we take shadow as an object?
+            instruction.setTargetRef(ObjectTypeUtil.createObjectRef(target), result);
 
             // set the names of midPoint task and activiti process instance
-            String andExecuting = instruction.isExecuteApprovedChangeImmediately() ? "and executing " : "";
-            instruction.setTaskName("Workflow for approving " + andExecuting + "adding " + targetName + " to " + assigneeName);
+            String andExecuting = instruction.isExecuteApprovedChangeImmediately() ? "and execution " : "";
+            instruction.setTaskName("Approval " + andExecuting + "of adding " + targetName + " to " + assigneeName);
             instruction.setProcessInstanceName("Adding " + targetName + " to " + assigneeName);
 
             // setup general item approval process
-            String approvalTaskName = "Approve adding " + targetName + " to " + assigneeName;
-            itemApprovalProcessInterface.prepareStartInstruction(instruction, approvalRequest, approvalTaskName);
-
-            // set some aspect-specific variables
-            instruction.addProcessVariable(AddRoleVariableNames.FOCUS_NAME, assigneeName);
+            itemApprovalProcessInterface.prepareStartInstruction(instruction);
 
             instructions.add(instruction);
         }
@@ -288,7 +270,7 @@ public class AddAssociationAspect extends BasePrimaryChangeAspect {
         ResourceShadowDiscriminator shadowDiscriminator =
                 ResourceShadowDiscriminator.fromResourceShadowDiscriminatorType(addition.getResourceShadowDiscriminator());
         String projectionOid = modelContext.findProjectionContext(shadowDiscriminator).getOid();
-        ObjectDelta<ShadowType> objectDelta = DeltaBuilder.deltaFor(ShadowType.class, prismContext)
+        ObjectDelta<ShadowType> objectDelta = (ObjectDelta<ShadowType>) DeltaBuilder.deltaFor(ShadowType.class, prismContext)
                 .item(ShadowType.F_ASSOCIATION).add(addition.getAssociation().clone())
                 .asObjectDelta(projectionOid);
 
@@ -300,50 +282,15 @@ public class AddAssociationAspect extends BasePrimaryChangeAspect {
 
     //region ------------------------------------------------------------ Things that execute when item is being approved
 
-    @Override
-    public PrismObject<? extends QuestionFormType> prepareQuestionForm(org.activiti.engine.task.Task task, Map<String, Object> variables, OperationResult result) throws SchemaException, ObjectNotFoundException {
-
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("prepareQuestionForm starting: execution id {}, pid {}, variables = {}", task.getExecutionId(), task.getProcessInstanceId(), variables);
-        }
-
-        // todo check type compatibility
-        ApprovalRequest request = (ApprovalRequest) variables.get(ProcessVariableNames.APPROVAL_REQUEST);
-        request.setPrismContext(prismContext);
-        Validate.notNull(request, "Approval request is not present among process variables");
-
-        AssociationAdditionType aat = (AssociationAdditionType) request.getItemToApprove();
-        Validate.notNull(aat, "Approval request does not contain the association addition information");
-
-        ShadowType target = getAssociationApprovalTarget(aat.getAssociation(), result);     // may throw an (unchecked) exception
-
-        PrismObjectDefinition<AssociationCreationApprovalFormType> formDefinition = prismContext.getSchemaRegistry().findObjectDefinitionByType(AssociationCreationApprovalFormType.COMPLEX_TYPE);
-        PrismObject<AssociationCreationApprovalFormType> formPrism = formDefinition.instantiate();
-        AssociationCreationApprovalFormType form = formPrism.asObjectable();
-
-        String focusName = (String) variables.get(AddRoleVariableNames.FOCUS_NAME);
-        form.setFocusName(focusName);                                   // TODO distinguish somehow between users/roles/orgs
-        form.setAssociatedObjectName(getTargetDisplayName(target));
-
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("Resulting prism object instance = {}", formPrism.debugDump());
-        }
-        return formPrism;
-    }
-
     private static String formatTime(XMLGregorianCalendar time) {
         DateFormat formatter = DateFormat.getDateInstance();
         return formatter.format(time.toGregorianCalendar().getTime());
     }
 
-    @Override
-    public PrismObject<? extends ObjectType> prepareRelatedObject(org.activiti.engine.task.Task task, Map<String, Object> variables, OperationResult result) throws SchemaException, ObjectNotFoundException {
-        return null;
-    }
     //endregion
 
-    protected boolean isAssociationRelevant(PcpAspectConfigurationType config, AssociationAdditionType itemToApprove,
-                                            ResourceShadowDiscriminator rsd, ModelContext<?> modelContext, Task task, OperationResult result) {
+    private boolean isAssociationRelevant(PcpAspectConfigurationType config, AssociationAdditionType itemToApprove,
+            ResourceShadowDiscriminator rsd, ModelContext<?> modelContext, Task task, OperationResult result) {
         LOGGER.trace(" - considering: {}", itemToApprove);
         ExpressionVariables variables = new ExpressionVariables();
         variables.addVariableDefinition(SchemaConstants.C_ASSOCIATION, itemToApprove.getAssociation());
@@ -354,27 +301,24 @@ public class AddAssociationAspect extends BasePrimaryChangeAspect {
         return applicable;
     }
 
-    protected ShadowAssociationType cloneAndCanonicalizeAssociation(ShadowAssociationType a) {
+    private ShadowAssociationType cloneAndCanonicalizeAssociation(ShadowAssociationType a) {
         return a.clone();       // TODO - should we canonicalize?
     }
 
     // creates an approval requests (e.g. by providing approval schema) for a given assignment and a target
-    protected ApprovalRequest<AssociationAdditionType>
-    createApprovalRequest(PcpAspectConfigurationType config, AssociationAdditionType itemToApprove) {
-        return new ApprovalRequestImpl<>(itemToApprove, config, prismContext);
+    private ApprovalRequest<AssociationAdditionType>
+    createApprovalRequest(PcpAspectConfigurationType config, AssociationAdditionType itemToApprove, ModelContext<?> modelContext,
+			Task taskFromModel, OperationResult result) {
+        ApprovalRequest<AssociationAdditionType> request = new ApprovalRequestImpl<>(itemToApprove, config, prismContext);
+        approvalSchemaHelper.prepareSchema(request.getApprovalSchemaType(),
+                createRelationResolver((PrismObject<?>) null, result),		// TODO rel resolver
+				createReferenceResolver(modelContext, taskFromModel, result));
+        return request;
     }
 
     // retrieves the relevant target for a given assignment - a role, an org, or a resource
-    protected ShadowType getAssociationApprovalTarget(ShadowAssociationType association, OperationResult result) throws SchemaException, ObjectNotFoundException {
+    private ShadowType getAssociationApprovalTarget(ShadowAssociationType association, OperationResult result) throws SchemaException, ObjectNotFoundException {
         return primaryChangeAspectHelper.resolveTargetUnchecked(association, result);
     }
 
-    // creates name to be displayed in the question form (may be overriden by child objects)
-    protected String getTargetDisplayName(ShadowType target) {
-        if (target.getName() != null) {
-            return target.getName().getOrig();
-        } else {
-            return target.getOid();
-        }
-    }
 }

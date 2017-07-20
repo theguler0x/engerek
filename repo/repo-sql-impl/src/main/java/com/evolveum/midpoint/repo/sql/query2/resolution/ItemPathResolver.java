@@ -17,13 +17,15 @@
 package com.evolveum.midpoint.repo.sql.query2.resolution;
 
 import com.evolveum.midpoint.prism.ItemDefinition;
+import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.repo.sql.data.common.RObject;
 import com.evolveum.midpoint.repo.sql.data.common.any.RAnyValue;
 import com.evolveum.midpoint.repo.sql.query.QueryException;
 import com.evolveum.midpoint.repo.sql.query.definition.VirtualQueryParam;
 import com.evolveum.midpoint.repo.sql.query2.InterpretationContext;
 import com.evolveum.midpoint.repo.sql.query2.QueryDefinitionRegistry2;
-import com.evolveum.midpoint.repo.sql.query2.definition.JpaAnyPropertyLinkDefinition;
+import com.evolveum.midpoint.repo.sql.query2.definition.JpaAnyItemLinkDefinition;
 import com.evolveum.midpoint.repo.sql.query2.definition.JpaEntityDefinition;
 import com.evolveum.midpoint.repo.sql.query2.definition.JpaDataNodeDefinition;
 import com.evolveum.midpoint.repo.sql.query2.definition.JpaLinkDefinition;
@@ -80,7 +82,7 @@ public class ItemPathResolver {
 
         while (!currentState.isFinal()) {
             LOGGER.trace("Current resolution state:\n{}", currentState.debugDumpNoParent());
-            currentState = currentState.nextState(itemDefinition, singletonOnly);
+            currentState = currentState.nextState(itemDefinition, singletonOnly, context.getPrismContext());
         }
 
         LOGGER.trace("resolveItemPath({}) ending in resolution state of:\n{}", relativePath, currentState.debugDump());
@@ -128,10 +130,19 @@ public class ItemPathResolver {
         return joinedItemAlias;
     }
 
+    public String addTextInfoJoin(String currentHqlPath) throws QueryException {
+        RootHibernateQuery hibernateQuery = context.getHibernateQuery();
+        String joinedItemJpaName = RObject.F_TEXT_INFO_ITEMS;
+        String joinedItemFullPath = currentHqlPath + "." + joinedItemJpaName;
+        String joinedItemAlias = hibernateQuery.createAlias(joinedItemJpaName, false);
+        hibernateQuery.getPrimaryEntity().addJoin(new JoinSpecification(joinedItemAlias, joinedItemFullPath, null));
+        return joinedItemAlias;
+    }
+
     private Condition createJoinCondition(String joinedItemAlias, JpaLinkDefinition joinedItemDefinition, RootHibernateQuery hibernateQuery) throws QueryException {
         Condition condition = null;
-        if (joinedItemDefinition instanceof JpaAnyPropertyLinkDefinition) {
-            JpaAnyPropertyLinkDefinition anyLinkDef = (JpaAnyPropertyLinkDefinition) joinedItemDefinition;
+        if (joinedItemDefinition instanceof JpaAnyItemLinkDefinition) {
+            JpaAnyItemLinkDefinition anyLinkDef = (JpaAnyItemLinkDefinition) joinedItemDefinition;
             AndCondition conjunction = hibernateQuery.createAnd();
             if (anyLinkDef.getOwnerType() != null) {        // null for assignment extensions
                 conjunction.add(hibernateQuery.createEq(joinedItemAlias + ".ownerType", anyLinkDef.getOwnerType()));
@@ -192,17 +203,18 @@ public class ItemPathResolver {
      * @param path Path to be found (non-empty!)
      * @param itemDefinition Definition of target property, required/used only for "any" properties
      * @param clazz Kind of definition to be looked for
+     * @param prismContext
      * @return Entity type definition + item definition, or null if nothing was found
      */
     public <T extends JpaDataNodeDefinition>
     ProperDataSearchResult<T> findProperDataDefinition(JpaEntityDefinition baseEntityDefinition,
-                                                       ItemPath path, ItemDefinition itemDefinition,
-                                                       Class<T> clazz) throws QueryException {
+            ItemPath path, ItemDefinition itemDefinition,
+            Class<T> clazz, PrismContext prismContext) throws QueryException {
         QueryDefinitionRegistry2 registry = QueryDefinitionRegistry2.getInstance();
         ProperDataSearchResult<T> candidateResult = null;
 
         for (JpaEntityDefinition entityDefinition : findPossibleBaseEntities(baseEntityDefinition, registry)) {
-            DataSearchResult<T> result = entityDefinition.findDataNodeDefinition(path, itemDefinition, clazz);
+            DataSearchResult<T> result = entityDefinition.findDataNodeDefinition(path, itemDefinition, clazz, prismContext);
             if (result != null) {
                 if (candidateResult == null) {
                     candidateResult = new ProperDataSearchResult<>(entityDefinition, result);

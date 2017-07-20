@@ -18,13 +18,14 @@ package com.evolveum.midpoint.wf.impl.processes.itemApproval;
 
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.wf.impl.processes.BaseProcessMidPointInterface;
-import com.evolveum.midpoint.wf.impl.processes.common.SpringApplicationContextHolder;
+import com.evolveum.midpoint.wf.impl.processes.common.ActivitiUtil;
+import com.evolveum.midpoint.wf.impl.processes.common.CommonProcessVariableNames;
 import com.evolveum.midpoint.wf.util.ApprovalUtils;
-
 import org.activiti.engine.delegate.DelegateExecution;
 import org.activiti.engine.delegate.JavaDelegate;
 import org.apache.commons.lang.Validate;
+
+import static com.evolveum.midpoint.wf.impl.processes.common.SpringApplicationContextHolder.getActivitiInterface;
 
 public class PrepareResult implements JavaDelegate {
 
@@ -32,14 +33,12 @@ public class PrepareResult implements JavaDelegate {
 
     public void execute(DelegateExecution execution) {
 
-        Boolean loopLevelsStop = (Boolean) execution.getVariable(ProcessVariableNames.LOOP_LEVELS_STOP);
-        Validate.notNull(loopLevelsStop, "loopLevels_stop is undefined");
-        boolean approved = !loopLevelsStop;
+        Boolean loopStagesStop = ActivitiUtil.getRequiredVariable(execution, ProcessVariableNames.LOOP_STAGES_STOP, Boolean.class, null);
+        boolean approved = !loopStagesStop;
 
-        execution.setVariable(BaseProcessMidPointInterface.VARIABLE_WF_ANSWER, ApprovalUtils.approvalStringValue(approved));
-        execution.setVariable(BaseProcessMidPointInterface.VARIABLE_WF_STATE, "Final decision is " + (approved ? "APPROVED" : "REFUSED"));
+        execution.setVariable(CommonProcessVariableNames.VARIABLE_OUTCOME, ApprovalUtils.toUri(approved));
 
-        SpringApplicationContextHolder.getActivitiInterface().notifyMidpointAboutProcessFinishedEvent(execution);
+        getActivitiInterface().notifyMidpointAboutProcessFinishedEvent(execution);
     }
 
 }

@@ -19,9 +19,9 @@ user:
     longType:
     - 299792458
     dateType:
-    - 170721000000
+    - "1975-05-30T22:30:00Z"
     durationType:
-    - !<com.sun.org.apache.xerces.internal.jaxp.datatype.DurationImpl> "P17Y3M2D"
+    - "P17Y3M2D"
     locations:
     - location:
       - key: "sk"

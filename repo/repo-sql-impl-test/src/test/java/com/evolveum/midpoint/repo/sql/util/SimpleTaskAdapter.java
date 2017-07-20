@@ -39,25 +39,14 @@ import com.evolveum.midpoint.task.api.TaskWaitingReason;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.IterativeTaskInformationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultStatusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.EnvironmentalPerformanceInformationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ActionsExecutedInformationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationStatsType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ScheduleType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SynchronizationInformationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.TaskType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ThreadStopActionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UriStack;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
+import org.jetbrains.annotations.NotNull;
 
 import javax.xml.namespace.QName;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -195,11 +184,16 @@ public class SimpleTaskAdapter implements Task {
 
     @Override
     public String getChannel() {
-        throw new UnsupportedOperationException("not implemented yet.");
+        return null;
     }
 
     @Override
     public void setChannel(String channelUri) {
+        throw new UnsupportedOperationException("not implemented yet.");
+    }
+
+    @Override
+    public void setChannelImmediate(String channelUri, OperationResult parentResult) {
         throw new UnsupportedOperationException("not implemented yet.");
     }
 
@@ -211,6 +205,13 @@ public class SimpleTaskAdapter implements Task {
     @Override
     public void setRequesteeTransient(PrismObject<UserType> user) {
 
+    }
+
+    @Override public LensContextType getModelOperationContext() {
+        return null;
+    }
+
+    @Override public void setModelOperationContext(LensContextType modelOperationContext) {
     }
 
     @Override
@@ -308,6 +309,11 @@ public class SimpleTaskAdapter implements Task {
 
     @Override
     public <T> PrismProperty<T> getExtensionProperty(QName propertyName) {
+        throw new UnsupportedOperationException("not implemented yet.");
+    }
+
+    @Override
+    public <T> T getExtensionPropertyRealValue(QName propertyName) {
         throw new UnsupportedOperationException("not implemented yet.");
     }
 
@@ -587,6 +593,11 @@ public class SimpleTaskAdapter implements Task {
     }
 
     @Override
+    public Task getParentForLightweightAsynchronousTask() {
+        throw new UnsupportedOperationException("not implemented yet.");
+    }
+
+    @Override
     public TaskWaitingReason getWaitingReason() {
         throw new UnsupportedOperationException("not implemented yet.");
     }
@@ -635,6 +646,11 @@ public class SimpleTaskAdapter implements Task {
     @Override
     public Collection<ItemDelta<?,?>> getPendingModifications() {
         throw new UnsupportedOperationException("not implemented yet.");
+    }
+    
+    @Override
+    public PolicyRuleType getPolicyRule() {
+    	throw new UnsupportedOperationException("not implemented yet.");
     }
 
 
@@ -700,11 +716,12 @@ public class SimpleTaskAdapter implements Task {
     }
 
     @Override
-    public void recordMappingOperation(String objectOid, String objectName, String mappingName, long duration) {
+    public void recordMappingOperation(String objectOid, String objectName, String objectTypeName, String mappingName, long duration) {
     }
 
     @Override
-    public void recordSynchronizationOperationEnd(String objectName, String objectDisplayName, QName objectType, String objectOid, long started, Throwable exception, SynchronizationInformation.Record increment) {
+    public void recordSynchronizationOperationEnd(String objectName, String objectDisplayName, QName objectType, String objectOid, long started,
+			Throwable exception, SynchronizationInformation.Record originalStateIncrement, SynchronizationInformation.Record newStateIncrement) {
     }
 
     @Override
@@ -777,5 +794,43 @@ public class SimpleTaskAdapter implements Task {
     @Override
     public void storeOperationStats() {
 
+    }
+
+    @Override
+    public void initializeWorkflowContextImmediate(String processInstanceId, OperationResult result) throws SchemaException {
+    }
+
+    @Override public void addModification(ItemDelta<?, ?> delta) throws SchemaException {
+    }
+
+    @Override public void addModifications(Collection<ItemDelta<?, ?>> deltas) throws SchemaException {
+
+    }
+
+    @Override public void addModificationImmediate(ItemDelta<?, ?> delta, OperationResult parentResult) throws SchemaException {
+    }
+
+    @Override
+    public WfContextType getWorkflowContext() {
+        return null;
+    }
+
+    @Override public void setWorkflowContext(WfContextType context) throws SchemaException {
+    }
+
+    @Override
+    public TaskExecutionConstraintsType getExecutionConstraints() {
+        return null;
+    }
+
+    @Override
+    public String getGroup() {
+        return null;
+    }
+
+    @NotNull
+    @Override
+    public List<String> getLastFailures() {
+        return Collections.emptyList();
     }
 }

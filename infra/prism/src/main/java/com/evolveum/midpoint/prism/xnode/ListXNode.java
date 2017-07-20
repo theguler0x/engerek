@@ -26,7 +26,7 @@ import com.evolveum.midpoint.util.DebugUtil;
 
 public class ListXNode extends XNode implements List<XNode> {
 	
-	private List<XNode> subnodes = new ArrayList<XNode>();
+	private final List<XNode> subnodes = new ArrayList<>();
 
 	@Override
 	public int size() {
@@ -147,14 +147,18 @@ public class ListXNode extends XNode implements List<XNode> {
 	public void accept(Visitor visitor) {
 		visitor.visit(this);
 		for (XNode subnode: subnodes) {
-			subnode.accept(visitor);
+			if (subnode != null) {
+				subnode.accept(visitor);
+			} else {
+				// !!!!! TODO
+			}
 		}
 	}
 
 	@Override
 	public String debugDump(int indent) {
 		StringBuilder sb = new StringBuilder();
-		DebugUtil.debugDump(sb, (Collection)this, indent, true, dumpSuffix());
+		DebugUtil.debugDump(sb, this, indent, true, dumpSuffix());
 		return sb.toString();
 	}
 
@@ -184,4 +188,9 @@ public class ListXNode extends XNode implements List<XNode> {
     public int hashCode() {
         return subnodes.hashCode();
     }
+
+	@Override
+	public boolean isHeterogeneousList() {
+		return subnodes.stream().anyMatch(n -> n != null && n.getElementName() != null);		// TODO - or allMatch?
+	}
 }

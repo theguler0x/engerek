@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,71 +17,42 @@
 package com.evolveum.midpoint.notifications.api.events;
 
 import com.evolveum.midpoint.notifications.api.OperationStatus;
-import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ChangeType;
 import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.task.api.LightweightIdentifierGenerator;
+import com.evolveum.midpoint.util.DebugUtil;
+import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.wf.util.ApprovalUtils;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.EventOperationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.EventStatusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-
-import com.evolveum.midpoint.xml.ns.model.workflow.process_instance_state_3.ItemApprovalProcessState;
-import com.evolveum.midpoint.xml.ns.model.workflow.process_instance_state_3.ItemApprovalRequestType;
-import com.evolveum.midpoint.xml.ns.model.workflow.process_instance_state_3.PrimaryChangeProcessorState;
-import com.evolveum.midpoint.xml.ns.model.workflow.process_instance_state_3.ProcessInstanceState;
-import com.evolveum.midpoint.xml.ns.model.workflow.process_instance_state_3.ProcessSpecificState;
-import com.evolveum.midpoint.xml.ns.model.workflow.process_instance_state_3.ProcessorSpecificState;
-import org.apache.commons.lang.Validate;
-
-import java.io.Serializable;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * @author mederly
  */
 abstract public class WorkflowEvent extends BaseEvent {
 
-    private String processInstanceName;
-    private PrismObject<? extends ObjectType> processInstanceState;
-    private String operationStatusCustom;                // exact string representation of the status (useful for work items that return custom statuses)
-    private ChangeType changeType;                      // ADD = process/task start, DELETE = process/task finish (for now)
+    @NotNull protected final WfContextType workflowContext;
+    @NotNull private final ChangeType changeType;
 
-    public WorkflowEvent(LightweightIdentifierGenerator lightweightIdentifierGenerator, ChangeType changeType) {
-        super(lightweightIdentifierGenerator);
-
-        Validate.notNull(changeType, "changeType is null");
+    public WorkflowEvent(@NotNull LightweightIdentifierGenerator lightweightIdentifierGenerator, @NotNull ChangeType changeType,
+            @NotNull WfContextType workflowContext, EventHandlerType handler) {
+        super(lightweightIdentifierGenerator, handler);
         this.changeType = changeType;
+		this.workflowContext = workflowContext;
     }
 
     public String getProcessInstanceName() {
-        return processInstanceName;
-    }
-
-    public void setProcessInstanceName(String processInstanceName) {
-        this.processInstanceName = processInstanceName;
-    }
-
-    public PrismObject<? extends ObjectType> getProcessInstanceState() {
-        return processInstanceState;
-    }
-
-    public void setProcessInstanceState(PrismObject<? extends ObjectType> processInstanceState) {
-        this.processInstanceState = processInstanceState;
+        return workflowContext.getProcessInstanceName();
     }
 
     public OperationStatus getOperationStatus() {
-        return resultToStatus(changeType, operationStatusCustom);
+        return outcomeToStatus(changeType, getOutcome());
     }
 
-    public String getOperationStatusCustom() {
-        return operationStatusCustom;
-    }
+	protected abstract String getOutcome();
 
-    public void setOperationStatusCustom(String operationStatusCustom) {
-        this.operationStatusCustom = operationStatusCustom;
-    }
-
-    @Override
+	@Override
     public boolean isStatusType(EventStatusType eventStatusType) {
         return getOperationStatus().matchesEventStatusType(eventStatusType);
     }
@@ -107,15 +78,15 @@ abstract public class WorkflowEvent extends BaseEvent {
         return isFailure();             // for now
     }
 
-    private OperationStatus resultToStatus(ChangeType changeType, String decision) {
+    private OperationStatus outcomeToStatus(ChangeType changeType, String outcome) {
         if (changeType != ChangeType.DELETE) {
             return OperationStatus.SUCCESS;
         } else {
-            if (decision == null) {
+            if (outcome == null) {
                 return OperationStatus.IN_PROGRESS;
-            } else if (decision.equals(ApprovalUtils.DECISION_APPROVED)) {
+            } else if (QNameUtil.matchUri(outcome, SchemaConstants.MODEL_APPROVAL_OUTCOME_APPROVE)) {
                 return OperationStatus.SUCCESS;
-            } else if (decision.equals(ApprovalUtils.DECISION_REJECTED)) {
+            } else if (QNameUtil.matchUri(outcome, SchemaConstants.MODEL_APPROVAL_OUTCOME_REJECT)) {
                 return OperationStatus.FAILURE;
             } else {
                 return OperationStatus.OTHER;
@@ -128,52 +99,33 @@ abstract public class WorkflowEvent extends BaseEvent {
         return false;
     }
 
-    public ProcessorSpecificState getProcessorSpecificState() {
-        if (processInstanceState == null) {
-            return null;
-        }
-        return ((ProcessInstanceState) processInstanceState.asObjectable()).getProcessorSpecificState();
+    public WfProcessorSpecificStateType getProcessorSpecificState() {
+        return workflowContext.getProcessorSpecificState();
     }
 
-    public ProcessSpecificState getProcessSpecificState() {
-        if (processInstanceState == null) {
-            return null;
-        }
-        return ((ProcessInstanceState) processInstanceState.asObjectable()).getProcessSpecificState();
+    public WfProcessSpecificStateType getProcessSpecificState() {
+		return workflowContext.getProcessSpecificState();
     }
 
-    public PrimaryChangeProcessorState getPrimaryChangeProcessorState() {
-        ProcessorSpecificState state = getProcessorSpecificState();
-        if (state instanceof PrimaryChangeProcessorState) {
-            return (PrimaryChangeProcessorState) state;
+	@NotNull
+	public WfContextType getWorkflowContext() {
+		return workflowContext;
+	}
+
+	public WfPrimaryChangeProcessorStateType getPrimaryChangeProcessorState() {
+        WfProcessorSpecificStateType state = getProcessorSpecificState();
+        if (state instanceof WfPrimaryChangeProcessorStateType) {
+            return (WfPrimaryChangeProcessorStateType) state;
         } else {
             return null;
         }
     }
 
     // the following three methods are specific to ItemApproval process
-    public ItemApprovalProcessState getItemApprovalProcessState() {
-        ProcessSpecificState state = getProcessSpecificState();
-        if (state instanceof ItemApprovalProcessState) {
-            return (ItemApprovalProcessState) state;
-        } else {
-            return null;
-        }
-    }
-
-    public ItemApprovalRequestType getItemApprovalRequest() {
-        ItemApprovalProcessState state = getItemApprovalProcessState();
-        if (state != null) {
-            return state.getApprovalRequest();
-        } else {
-            return null;
-        }
-    }
-
-    public Object getItemToApprove() {
-        ItemApprovalRequestType request = getItemApprovalRequest();
-        if (request != null) {
-            return request.getItemToApprove();
+    public ItemApprovalProcessStateType getItemApprovalProcessState() {
+        WfProcessSpecificStateType state = getProcessSpecificState();
+        if (state instanceof ItemApprovalProcessStateType) {
+            return (ItemApprovalProcessStateType) state;
         } else {
             return null;
         }
@@ -183,10 +135,25 @@ abstract public class WorkflowEvent extends BaseEvent {
     public String toString() {
         return "WorkflowEvent{" +
                 "event=" + super.toString() +
-                ", processInstanceName='" + processInstanceName + '\'' +
+                ", processInstanceName='" + getProcessInstanceName() + '\'' +
                 ", changeType=" + changeType +
-                ", operationStatusCustom=" + operationStatusCustom +
+                ", outcome=" + getOutcome() +
                 '}';
     }
+
+    // This method is not used. It is here just for maven dependency plugin to detect the
+    // dependency on workflow-api
+    @SuppressWarnings("unused")
+	private void notUsed() {
+    	ApprovalUtils.approvalBooleanValueFromUri("");
+    }
+
+	@Override
+	protected void debugDumpCommon(StringBuilder sb, int indent) {
+		super.debugDumpCommon(sb, indent);
+		DebugUtil.debugDumpWithLabelLn(sb, "processInstanceName", getProcessInstanceName(), indent + 1);
+		DebugUtil.debugDumpWithLabelToStringLn(sb, "changeType", changeType, indent + 1);
+		DebugUtil.debugDumpWithLabelLn(sb, "outcome", getOutcome(), indent + 1);
+	}
 
 }

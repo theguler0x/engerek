@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2015 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -33,6 +33,10 @@
         <tenantRef oid="00000000-8888-6666-0000-100000000001" type="c:OrgType"/>    <!-- governor office - has no meaning: just to test tenant ref in cert cases -->
         <orgRef oid="00000000-8888-6666-0000-100000000006" type="c:OrgType"/>       <!-- scumm bar - only to test orgRef -->
     </assignment>
+    <assignment id="3">
+        <targetRef oid="00000000-d34d-b33f-f00d-ffffffff0000" type="c:RoleType"/>		<!-- reviewer -->
+    </assignment>
+
     <activation>
         <administrativeStatus>enabled</administrativeStatus>
     </activation>

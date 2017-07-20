@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
     
     <mapping>
     	<!-- This mapping is NOT initial so if will in fact FORCE fullname consistency -->
+        <strength>strong</strength>
     	<source>
     		<path>$user/givenName</path>
     	</source>

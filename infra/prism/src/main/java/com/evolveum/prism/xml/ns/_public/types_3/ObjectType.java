@@ -28,17 +28,13 @@ import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlAccessorType;
 import javax.xml.bind.annotation.XmlType;
 
-import com.evolveum.midpoint.prism.Objectable;
-import com.evolveum.midpoint.prism.PrismContainerValue;
 import com.evolveum.midpoint.prism.PrismObject;
 
 @XmlAccessorType(XmlAccessType.FIELD)
 @XmlType(name = "ObjectType", propOrder = {
 })
 
-public class ObjectType{
-
-	
+public class ObjectType {
 	public PrismObject asPrismObject(){
 		return null;
 	}

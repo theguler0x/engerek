@@ -16,42 +16,36 @@
 
 package com.evolveum.midpoint.web.page.admin.configuration;
 
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
 import com.evolveum.midpoint.model.api.ModelExecuteOptions;
+import com.evolveum.midpoint.prism.PrismConstants;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
-import com.evolveum.midpoint.schema.GetOperationOptions;
-import com.evolveum.midpoint.schema.RetrieveOption;
-import com.evolveum.midpoint.schema.SchemaConstantsGenerated;
-import com.evolveum.midpoint.schema.SelectorOptions;
+import com.evolveum.midpoint.prism.query.ObjectPaging;
+import com.evolveum.midpoint.prism.query.OrderDirection;
+import com.evolveum.midpoint.schema.*;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.schema.util.ReportTypeUtil;
 import com.evolveum.midpoint.security.api.AuthorizationConstants;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.Holder;
 import com.evolveum.midpoint.util.MiscUtil;
+import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.application.AuthorizationAction;
 import com.evolveum.midpoint.web.application.PageDescriptor;
+import com.evolveum.midpoint.web.component.AceEditor;
 import com.evolveum.midpoint.web.component.AjaxButton;
 import com.evolveum.midpoint.web.component.AjaxSubmitButton;
-import com.evolveum.midpoint.web.component.assignment.AssignmentEditorDto;
-import com.evolveum.midpoint.web.component.util.LoadableModel;
-import com.evolveum.midpoint.web.component.AceEditor;
+import com.evolveum.midpoint.web.component.input.MultiStateHorizontalButton;
 import com.evolveum.midpoint.web.page.admin.dto.ObjectViewDto;
 import com.evolveum.midpoint.web.security.MidPointApplication;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.LookupTableType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
-
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import org.apache.commons.lang.StringUtils;
-import org.apache.wicket.Page;
 import org.apache.wicket.RestartResponseException;
 import org.apache.wicket.ajax.AjaxRequestTarget;
+import org.apache.wicket.ajax.form.AjaxFormComponentUpdatingBehavior;
 import org.apache.wicket.ajax.markup.html.form.AjaxCheckBox;
 import org.apache.wicket.markup.html.form.Form;
 import org.apache.wicket.markup.html.form.TextArea;
@@ -62,8 +56,9 @@ import org.apache.wicket.model.PropertyModel;
 import org.apache.wicket.util.string.StringValue;
 
 import javax.xml.namespace.QName;
-
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 
 @PageDescriptor(url = "/admin/config/debug", action = {
         @AuthorizationAction(actionUri = PageAdminConfiguration.AUTH_CONFIGURATION_ALL,
@@ -75,7 +70,9 @@ public class PageDebugView extends PageAdminConfiguration {
     private static final String DOT_CLASS = PageDebugView.class.getName() + ".";
     private static final String OPERATION_LOAD_OBJECT = DOT_CLASS + "loadObject";
     private static final String OPERATION_SAVE_OBJECT = DOT_CLASS + "saveObject";
+    private static final String OPERATION_VALIDATE_OBJECT = DOT_CLASS + "validateObject";
     private static final String ID_PLAIN_TEXTAREA = "plain-textarea";
+    private static final String ID_VIEW_BUTTON_PANEL = "viewButtonPanel";
 
     private static final Trace LOGGER = TraceManager.getTrace(PageDebugView.class);
 
@@ -83,32 +80,79 @@ public class PageDebugView extends PageAdminConfiguration {
     public static final String PARAM_OBJECT_TYPE = "objectType";
     private IModel<ObjectViewDto> model;
     private AceEditor editor;
-    private final IModel<Boolean> encrypt = new Model<Boolean>(true);
+    private final IModel<Boolean> encrypt = new Model<>(true);
     private final IModel<Boolean> saveAsRaw = new Model<>(true);
     private final IModel<Boolean> reevaluateSearchFilters = new Model<>(false);
-    private final IModel<Boolean> validateSchema = new Model<Boolean>(false);
-    private final IModel<Boolean> switchToPlainText = new Model<Boolean>(false);
+    private final IModel<Boolean> validateSchema = new Model<>(false);
+    private final IModel<Boolean> switchToPlainText = new Model<>(false);
     private TextArea<String> plainTextarea;
     final Form mainForm = new Form("mainForm");
+    private String dataLanguage;
+    private ObjectViewDto objectViewDto;
+    private boolean isInitialized = false;
 
     public PageDebugView() {
-        model = new LoadableModel<ObjectViewDto>(false) {
+        model = new IModel<ObjectViewDto>() {
 
             @Override
-            protected ObjectViewDto load() {
-                return loadObject();
+            public ObjectViewDto getObject() {
+                if (!isInitialized) {
+                    objectViewDto = loadObject();
+                    isInitialized = true;
+                }
+                return objectViewDto;
+            }
+
+            @Override
+            public void setObject(ObjectViewDto o) {
+                objectViewDto = o;
+            }
+
+            @Override
+            public void detach() {
             }
         };
+        dataLanguage = determineDataLanguage();
         initLayout();
     }
 
+    private String determineDataLanguage() {
+        AdminGuiConfigurationType config = loadAdminGuiConfiguration();
+        if (config != null && config.getPreferredDataLanguage() != null) {
+            if (PrismContext.LANG_JSON.equals(config.getPreferredDataLanguage())){
+                return PrismContext.LANG_JSON;
+            } else if (PrismContext.LANG_YAML.equals(config.getPreferredDataLanguage())){
+                return PrismContext.LANG_YAML;
+            } else {
+                return PrismContext.LANG_XML;
+            }
+        } else {
+            return PrismContext.LANG_XML;
+        }
+    }
+
     @Override
-    protected IModel<String> createPageSubTitleModel() {
+    protected IModel<String> createPageTitleModel() {
         return new AbstractReadOnlyModel<String>() {
 
             @Override
             public String getObject() {
-                return createStringResource("PageDebugView.subTitle", model.getObject().getName()).getString();
+                if (model == null) {
+                    return "";
+                }
+                ObjectViewDto object;
+                try {
+                    object = model.getObject();
+                } catch (RuntimeException e) {
+                    // e.g. when the object is unreadable
+                    LoggingUtils.logUnexpectedException(LOGGER, "Couldn't get object", e);
+                    return "";
+                }
+                if (object == null) {
+            		return "";
+            	} else {
+                    return createStringResource("PageDebugView.title", object.getName()).getString();
+                }
             }
         };
     }
@@ -129,6 +173,7 @@ public class PageDebugView extends PageAdminConfiguration {
             GetOperationOptions rootOptions = GetOperationOptions.createRaw();
 
             rootOptions.setResolveNames(true);
+			rootOptions.setTolerateRawData(true);
             Collection<SelectorOptions<GetOperationOptions>> options = SelectorOptions.createCollection(rootOptions);
             // FIXME: ObjectType.class will not work well here. We need more specific type.
             //todo on page debug list create page params, put there oid and class for object type and send that to this page....read it here
@@ -145,19 +190,21 @@ public class PageDebugView extends PageAdminConfiguration {
             }
             if (LookupTableType.class.isAssignableFrom(type)) {
                 options.add(SelectorOptions.create(LookupTableType.F_ROW,
-                        GetOperationOptions.createRetrieve(RetrieveOption.INCLUDE)));
+                        GetOperationOptions.createRetrieve(
+                        		new RelationalValueSearchQuery(
+                        				ObjectPaging.createPaging(PrismConstants.T_ID, OrderDirection.ASCENDING)))));
             }
             if (AccessCertificationCampaignType.class.isAssignableFrom(type)) {
                 options.add(SelectorOptions.create(AccessCertificationCampaignType.F_CASE,
                         GetOperationOptions.createRetrieve(RetrieveOption.INCLUDE)));
             }
 
-
             PrismObject<ObjectType> object = getModelService().getObject(type, objectOid.toString(), options, task, result);
 
             PrismContext context = application.getPrismContext();
-            String xml = context.serializeObjectToString(object, PrismContext.LANG_XML);
-            dto = new ObjectViewDto(object.getOid(), WebMiscUtil.getName(object), object, xml);
+
+            String lex = context.serializerFor(dataLanguage).serialize(object);
+            dto = new ObjectViewDto(object.getOid(), WebComponentUtil.getName(object), object, lex);
 
             result.recomputeStatus();
         } catch (Exception ex) {
@@ -165,16 +212,14 @@ public class PageDebugView extends PageAdminConfiguration {
         }
 
         if (dto == null) {
-            showResultInSession(result);
+            showResult(result);
             throw new RestartResponseException(PageDebugList.class);
         }
 
-        if (!result.isSuccess()) {
-            showResult(result);
-        }
-
-        if (!WebMiscUtil.isSuccessOrHandledErrorOrWarning(result)) {
-            showResultInSession(result);
+        showResult(result, false);
+      
+        if (!WebComponentUtil.isSuccessOrHandledErrorOrWarning(result)) {
+            showResult(result, false);
             throw new RestartResponseException(PageDebugList.class);
         }
 
@@ -183,8 +228,6 @@ public class PageDebugView extends PageAdminConfiguration {
 
     private void initLayout() {
         add(mainForm);
-
-        final IModel<Boolean> editable = new Model<Boolean>(false);
 
         mainForm.add(new AjaxCheckBox("encrypt", encrypt) {
 
@@ -214,19 +257,11 @@ public class PageDebugView extends PageAdminConfiguration {
 			}
         });
 
-        mainForm.add(new AjaxCheckBox("edit", editable) {
-
-            @Override
-            protected void onUpdate(AjaxRequestTarget target) {
-                editPerformed(target, editable.getObject());
-            }
-        });
-
         mainForm.add(new AjaxCheckBox("switchToPlainText", switchToPlainText) {
 
             @Override
             protected void onUpdate(AjaxRequestTarget target) {
-                if (switchToPlainText.getObject().booleanValue()){
+                if (switchToPlainText.getObject()){
                     editor.setVisible(false);
                     plainTextarea.setVisible(true);
                 } else {
@@ -240,15 +275,75 @@ public class PageDebugView extends PageAdminConfiguration {
         plainTextarea = new TextArea<>(ID_PLAIN_TEXTAREA,
                 new PropertyModel<String>(model, ObjectViewDto.F_XML));
         plainTextarea.setVisible(false);
-        plainTextarea.setEnabled(editable.getObject());
 
         mainForm.add(plainTextarea);
 
-        editor = new AceEditor("aceEditor", new PropertyModel<String>(model, ObjectViewDto.F_XML));
-        editor.setReadonly(!editable.getObject());
-        mainForm.add(editor);
+        addOrReplaceEditor();
 
         initButtons(mainForm);
+        initViewButton(mainForm);
+
+    }
+
+    private void addOrReplaceEditor(){
+        editor = new AceEditor("aceEditor", new PropertyModel<String>(model, ObjectViewDto.F_XML));
+        editor.setModeForDataLanguage(dataLanguage);
+        editor.add(new AjaxFormComponentUpdatingBehavior("blur") {
+
+            @Override
+            protected void onUpdate(AjaxRequestTarget target) {
+            }
+        });
+        mainForm.addOrReplace(editor);
+    }
+
+    private void initViewButton(Form mainForm) {
+        List<String> propertyKeysList = Arrays.asList("PageDebugView.xmlViewButton",
+                "PageDebugView.xmlJsonButton", "PageDebugView.xmlYamlButton");
+        int selectedIndex = 0;
+        if (PrismContext.LANG_JSON.equals(dataLanguage)){
+            selectedIndex = 1;
+        } else if (PrismContext.LANG_YAML.equals(dataLanguage)){
+            selectedIndex = 2;
+        }
+        MultiStateHorizontalButton viewButtonPanel =
+                new MultiStateHorizontalButton(ID_VIEW_BUTTON_PANEL, selectedIndex, propertyKeysList,PageDebugView.this){
+                    @Override
+                    protected void onStateChanged(int index, AjaxRequestTarget target){
+                        OperationResult result = new OperationResult(OPERATION_VALIDATE_OBJECT);
+                        Holder<PrismObject<ObjectType>> objectHolder = new Holder<>(null);
+
+                        try {
+                            validateObject(result, objectHolder);
+                            if (result.isAcceptable()) {
+                                if (index == 1){
+                                    dataLanguage = PrismContext.LANG_JSON;
+                                } else if (index == 2){
+                                    dataLanguage = PrismContext.LANG_YAML;
+                                } else {
+                                    dataLanguage = PrismContext.LANG_XML;
+                                }
+                                PrismObject<ObjectType> updatedObject = objectHolder.getValue();
+                                PrismContext context = getMidpointApplication().getPrismContext();
+                                String objectStr = context.serializerFor(dataLanguage).serialize(updatedObject);
+                                objectViewDto.setXml(objectStr);
+                                setSelectedIndex(index);
+                                addOrReplaceEditor();
+                                target.add(mainForm);
+                                target.add(getFeedbackPanel());
+                            } else {
+                                showResult(result);
+                                target.add(getFeedbackPanel());
+                            }
+                        } catch (Exception ex) {
+                            result.recordFatalError("Couldn't change the language.", ex);
+                            showResult(result);
+                            target.add(getFeedbackPanel());
+                        }
+                    }
+                };
+        viewButtonPanel.setOutputMarkupId(true);
+        mainForm.add(viewButtonPanel);
     }
 
     private void initButtons(final Form mainForm) {
@@ -272,26 +367,10 @@ public class PageDebugView extends PageAdminConfiguration {
 
             @Override
             public void onClick(AjaxRequestTarget target) {
-                //target.appendJavaScript("history.go(-1)");
-                //todo wtf????
-                Page requestPage = (Page)getSession().getAttribute("requestPage");
-
-                if(requestPage != null){
-                	setResponsePage(requestPage);
-                	getSession().setAttribute("requestPage", null);
-                } else {
-                	setResponsePage(new PageDebugList(false));
-                }
+                redirectBack();
             }
         };
         mainForm.add(backButton);
-    }
-
-    public void editPerformed(AjaxRequestTarget target, boolean editable) {
-        editor.setReadonly(!editable);
-        plainTextarea.setEnabled(editable);
-        target.add(mainForm);
-        editor.refreshReadonly(target);
     }
     
     private boolean isReport(PrismObject object){
@@ -321,17 +400,13 @@ public class PageDebugView extends PageAdminConfiguration {
             PrismObject<ObjectType> oldObject = dto.getObject();
             oldObject.revive(getPrismContext());
 
-            Holder<PrismObject<ObjectType>> objectHolder = new Holder<PrismObject<ObjectType>>(null);
-            if (editor.isVisible()) {
-                validateObject(editor.getModel().getObject(), objectHolder, validateSchema.getObject(), result);
-            } else {
-                validateObject(plainTextarea.getModel().getObject(), objectHolder, validateSchema.getObject(), result);
-            }
+            Holder<PrismObject<ObjectType>> objectHolder = new Holder<>(null);
+            validateObject(result, objectHolder);
 
-            if (result.isAcceptable()) {
+			if (result.isAcceptable()) {
                 PrismObject<ObjectType> newObject = objectHolder.getValue();
 
-                ObjectDelta<ObjectType> delta = oldObject.diff(newObject, true, true);
+				ObjectDelta<ObjectType> delta = oldObject.diff(newObject, true, true);
 
                 if (delta.getPrismContext() == null) {
                 	LOGGER.warn("No prism context in delta {} after diff, adding it", delta);
@@ -371,8 +446,12 @@ public class PageDebugView extends PageAdminConfiguration {
             showResult(result);
             target.add(getFeedbackPanel());
         } else {
-            showResultInSession(result);
-            setResponsePage(new PageDebugList(false));
+            showResult(result);
+            redirectBack();
         }
+    }
+
+    private void validateObject(OperationResult result, Holder<PrismObject<ObjectType>> objectHolder){
+            validateObject(objectViewDto.getXml(), objectHolder, dataLanguage, validateSchema.getObject(), result);
     }
 }

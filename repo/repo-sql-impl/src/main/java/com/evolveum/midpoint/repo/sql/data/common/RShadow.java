@@ -16,10 +16,9 @@
 
 package com.evolveum.midpoint.repo.sql.data.common;
 
-import com.evolveum.midpoint.prism.Definition;
 import com.evolveum.midpoint.prism.ItemDefinition;
 import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismObjectDefinition;
+import com.evolveum.midpoint.repo.sql.data.RepositoryContext;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.REmbeddedReference;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.RPolyString;
 import com.evolveum.midpoint.repo.sql.data.common.enums.RFailedOperationType;
@@ -27,10 +26,12 @@ import com.evolveum.midpoint.repo.sql.data.common.enums.ROperationResultStatus;
 import com.evolveum.midpoint.repo.sql.data.common.enums.RShadowKind;
 import com.evolveum.midpoint.repo.sql.data.common.enums.RSynchronizationSituation;
 import com.evolveum.midpoint.repo.sql.data.common.type.RObjectExtensionType;
+import com.evolveum.midpoint.repo.sql.query.definition.Count;
 import com.evolveum.midpoint.repo.sql.query.definition.QueryEntity;
 import com.evolveum.midpoint.repo.sql.query.definition.VirtualAny;
 import com.evolveum.midpoint.repo.sql.util.DtoTranslationException;
 import com.evolveum.midpoint.repo.sql.util.IdGeneratorResult;
+import com.evolveum.midpoint.repo.sql.util.MidPointJoinedPersister;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
@@ -40,12 +41,13 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 
 import org.hibernate.annotations.ForeignKey;
 import org.hibernate.annotations.Index;
+import org.hibernate.annotations.Persister;
 
 import javax.persistence.*;
 import javax.xml.datatype.XMLGregorianCalendar;
 
 import java.util.Collection;
-
+import java.util.Objects;
 
 /**
  * @author lazyman
@@ -53,11 +55,20 @@ import java.util.Collection;
 @Entity
 @Table(name = "m_shadow")
 @org.hibernate.annotations.Table(appliesTo = "m_shadow",
-        indexes = {@Index(name = "iShadowResourceRef", columnNames = "resourceRef_targetOid"),
-                @Index(name = "iShadowDead", columnNames = "dead")})
+		indexes = {
+				@Index(name = "iShadowResourceRef", columnNames = "resourceRef_targetOid"),
+                @Index(name = "iShadowDead", columnNames = "dead"),
+                @Index(name = "iShadowKind", columnNames = "kind"),
+                @Index(name = "iShadowIntent", columnNames = "intent"),
+                @Index(name = "iShadowObjectClass", columnNames = "objectClass"),
+                @Index(name = "iShadowFailedOperationType", columnNames = "failedOperationType"),
+                @Index(name = "iShadowSyncSituation", columnNames = "synchronizationSituation"),
+                @Index(name = "iShadowPendingOperationCount", columnNames = "pendingOperationCount")
+		})
 @ForeignKey(name = "fk_shadow")
 @QueryEntity(anyElements = {
         @VirtualAny(jaxbNameLocalPart = "attributes", ownerType = RObjectExtensionType.ATTRIBUTES)})
+@Persister(impl = MidPointJoinedPersister.class)
 public class RShadow<T extends ShadowType> extends RObject<T> implements OperationResult {
 
     private static final Trace LOGGER = TraceManager.getTrace(RShadow.class);
@@ -78,6 +89,8 @@ public class RShadow<T extends ShadowType> extends RObject<T> implements Operati
     private RShadowKind kind;
     private Boolean exists;
     private XMLGregorianCalendar fullSynchronizationTimestamp;
+
+    private Integer pendingOperationCount;
 
     @Column(name = "exist")
     public Boolean isExists() {
@@ -194,7 +207,16 @@ public class RShadow<T extends ShadowType> extends RObject<T> implements Operati
         this.exists = exists;
     }
 
-    @Override
+	@Count
+	public Integer getPendingOperationCount() {
+		return pendingOperationCount;
+	}
+
+	public void setPendingOperationCount(Integer pendingOperationCount) {
+		this.pendingOperationCount = pendingOperationCount;
+	}
+
+	@Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
@@ -214,6 +236,7 @@ public class RShadow<T extends ShadowType> extends RObject<T> implements Operati
         if (kind != null ? !kind.equals(that.kind) : that.kind != null) return false;
         if (exists != null ? !exists.equals(that.exists) : that.exists != null) return false;
         if (status != that.status) return false;
+        if (!Objects.equals(pendingOperationCount, that.pendingOperationCount)) return false;
 
         return true;
     }
@@ -236,9 +259,8 @@ public class RShadow<T extends ShadowType> extends RObject<T> implements Operati
     }
 
     public static <T extends ShadowType> void copyFromJAXB(ShadowType jaxb, RShadow<T> repo,
-                                                           PrismContext prismContext, IdGeneratorResult generatorResult)
-            throws DtoTranslationException {
-        RObject.copyFromJAXB(jaxb, repo, prismContext, generatorResult);
+            RepositoryContext repositoryContext, IdGeneratorResult generatorResult) throws DtoTranslationException {
+        RObject.copyFromJAXB(jaxb, repo, repositoryContext, generatorResult);
 
         repo.setName(RPolyString.copyFromJAXB(jaxb.getName()));
         repo.setObjectClass(RUtil.qnameToString(jaxb.getObjectClass()));
@@ -247,7 +269,7 @@ public class RShadow<T extends ShadowType> extends RObject<T> implements Operati
         repo.setFullSynchronizationTimestamp(jaxb.getFullSynchronizationTimestamp());
 
         ItemDefinition def = jaxb.asPrismObject().getDefinition();
-        RUtil.copyResultFromJAXB(def, ShadowType.F_RESULT, jaxb.getResult(), repo, prismContext);
+        RUtil.copyResultFromJAXB(def, ShadowType.F_RESULT, jaxb.getResult(), repo, repositoryContext.prismContext);
 
         if (jaxb.getSynchronizationSituation() != null) {
             repo.setSynchronizationSituation(RUtil.getRepoEnumValue(jaxb.getSynchronizationSituation(),
@@ -255,7 +277,7 @@ public class RShadow<T extends ShadowType> extends RObject<T> implements Operati
         }
 
         repo.setSynchronizationTimestamp(jaxb.getSynchronizationTimestamp());
-        repo.setResourceRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getResourceRef(), prismContext));
+        repo.setResourceRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getResourceRef(), repositoryContext.prismContext));
 
         repo.setAttemptNumber(jaxb.getAttemptNumber());
         repo.setExists(jaxb.isExists());
@@ -268,8 +290,9 @@ public class RShadow<T extends ShadowType> extends RObject<T> implements Operati
         }
 
         if (jaxb.getAttributes() != null) {
-            copyFromJAXB(jaxb.getAttributes().asPrismContainerValue(), repo, prismContext, RObjectExtensionType.ATTRIBUTES);
+            copyFromJAXB(jaxb.getAttributes().asPrismContainerValue(), repo, repositoryContext, RObjectExtensionType.ATTRIBUTES);
         }
+        repo.pendingOperationCount = jaxb.getPendingOperation().size();
     }
 
     @Override

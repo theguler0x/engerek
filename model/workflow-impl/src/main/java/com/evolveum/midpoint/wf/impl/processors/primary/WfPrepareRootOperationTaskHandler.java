@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ package com.evolveum.midpoint.wf.impl.processors.primary;
 import com.evolveum.midpoint.model.api.context.ModelProjectionContext;
 import com.evolveum.midpoint.model.impl.lens.LensContext;
 import com.evolveum.midpoint.model.impl.lens.LensFocusContext;
-import com.evolveum.midpoint.prism.Objectable;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
+import com.evolveum.midpoint.schema.ObjectTreeDeltas;
 import com.evolveum.midpoint.schema.ResourceShadowDiscriminator;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.*;
@@ -29,10 +29,8 @@ import com.evolveum.midpoint.util.exception.*;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.wf.impl.WfConfiguration;
-import com.evolveum.midpoint.wf.impl.jobs.Job;
-import com.evolveum.midpoint.wf.impl.jobs.JobController;
-import com.evolveum.midpoint.wf.impl.jobs.WfTaskUtil;
+import com.evolveum.midpoint.wf.impl.tasks.WfTask;
+import com.evolveum.midpoint.wf.impl.tasks.WfTaskController;
 
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,8 +50,7 @@ import java.util.Set;
 @Component
 public class WfPrepareRootOperationTaskHandler implements TaskHandler {
 
-    // should be available only within the context of primary change processor
-	static final String HANDLER_URI = "http://midpoint.evolveum.com/xml/ns/public/workflow/prepare-root-operation/handler-3";
+	public static final String HANDLER_URI = "http://midpoint.evolveum.com/xml/ns/public/workflow/prepare-root-operation/handler-3";
 
     private static final Trace LOGGER = TraceManager.getTrace(WfPrepareRootOperationTaskHandler.class);
 
@@ -62,7 +59,7 @@ public class WfPrepareRootOperationTaskHandler implements TaskHandler {
     private TaskManager taskManager;
 
     @Autowired
-    private JobController jobController;
+    private WfTaskController wfTaskController;
 
     @PostConstruct
     public void init() {
@@ -81,13 +78,13 @@ public class WfPrepareRootOperationTaskHandler implements TaskHandler {
 
             OperationResult result = task.getResult();
 
-            Job rootJob = jobController.recreateRootJob(task);
-            List<Job> children = rootJob.listChildren(result);
+            WfTask rootWfTask = wfTaskController.recreateRootWfTask(task);
+            List<WfTask> children = rootWfTask.listChildren(result);
 
-            LensContext rootContext = (LensContext) rootJob.retrieveModelContext(result);
+            LensContext rootContext = (LensContext) rootWfTask.retrieveModelContext(result);
 
             boolean changed = false;
-            for (Job child : children) {
+            for (WfTask child : children) {
 
                 if (child.getTaskExecutionStatus() != TaskExecutionStatus.CLOSED) {
                     throw new IllegalStateException("Child task " + child + " is not in CLOSED state; its state is " + child.getTaskExecutionStatus());
@@ -140,30 +137,21 @@ public class WfPrepareRootOperationTaskHandler implements TaskHandler {
 
 
             if (!rootContext.hasAnyPrimaryChange()) {
-                rootJob.setSkipModelContextProcessingProperty(true, result);
+                rootContext = null; // deletes the model context
                 changed = true;     // regardless of whether rootContext was changed or not
             }
 
             if (changed) {
-                rootJob.storeModelContext(rootContext);
-                rootJob.commitChanges(result);
+                rootWfTask.storeModelContext(rootContext, true);
+                rootWfTask.commitChanges(result);
             }
 
-        } catch (SchemaException e) {
-            LoggingUtils.logException(LOGGER, "Couldn't aggregate resulting deltas from child workflow-monitoring tasks due to schema exception", e);
-            status = TaskRunResultStatus.PERMANENT_ERROR;
-        } catch (ObjectNotFoundException e) {
-            LoggingUtils.logException(LOGGER, "Couldn't aggregate resulting deltas from child workflow-monitoring tasks", e);
-            status = TaskRunResultStatus.PERMANENT_ERROR;
-        } catch (ObjectAlreadyExistsException e) {
-            LoggingUtils.logException(LOGGER, "Couldn't aggregate resulting deltas from child workflow-monitoring tasks", e);
+        } catch (SchemaException | ObjectNotFoundException | ObjectAlreadyExistsException | ConfigurationException | ExpressionEvaluationException e) {
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't aggregate resulting deltas from child workflow-monitoring tasks due to schema exception", e);
             status = TaskRunResultStatus.PERMANENT_ERROR;
         } catch (CommunicationException e) {
-            LoggingUtils.logException(LOGGER, "Couldn't aggregate resulting deltas from child workflow-monitoring tasks", e);
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't aggregate resulting deltas from child workflow-monitoring tasks", e);
             status = TaskRunResultStatus.TEMPORARY_ERROR;
-        } catch (ConfigurationException e) {
-            LoggingUtils.logException(LOGGER, "Couldn't aggregate resulting deltas from child workflow-monitoring tasks", e);
-            status = TaskRunResultStatus.PERMANENT_ERROR;
         }
 
         TaskRunResult runResult = new TaskRunResult();

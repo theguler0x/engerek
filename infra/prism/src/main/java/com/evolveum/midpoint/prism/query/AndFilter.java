@@ -30,6 +30,11 @@ import com.evolveum.midpoint.prism.match.MatchingRuleRegistry;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
 
+import javax.xml.namespace.QName;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 public class AndFilter extends NaryLogicalFilter {
 	
 	public static final QName ELEMENT_NAME = new QName(PrismConstants.NS_QUERY, "and");
@@ -39,11 +44,8 @@ public class AndFilter extends NaryLogicalFilter {
 	}
 	
 	public static AndFilter createAnd(ObjectFilter... conditions){
-		List<ObjectFilter> filters = new ArrayList<ObjectFilter>();
-		for (ObjectFilter condition : conditions){
-			filters.add(condition);
-		}
-		
+		List<ObjectFilter> filters = new ArrayList<>(conditions.length);
+		Collections.addAll(filters, conditions);
 		return new AndFilter(filters);
 	}
 	
@@ -51,6 +53,7 @@ public class AndFilter extends NaryLogicalFilter {
 		return new AndFilter(conditions);
 	}
 	
+	@SuppressWarnings("CloneDoesntCallSuperClone")
 	@Override
 	public AndFilter clone() {
 		return new AndFilter(getClonedConditions());
@@ -60,42 +63,12 @@ public class AndFilter extends NaryLogicalFilter {
 	public AndFilter cloneEmpty() {
 		return new AndFilter(new ArrayList<ObjectFilter>());
 	}
-
-	@Override
-	public String debugDump() {
-		return debugDump(0);
-	}
 	
 	@Override
-	public String debugDump(int indent) {
-		StringBuilder sb = new StringBuilder();
-		DebugUtil.indentDebugDump(sb, indent);
-		sb.append("AND:");
-		for (ObjectFilter filter : getConditions()){
-			sb.append("\n");
-			sb.append(filter.debugDump(indent + 1));
-		}
-
-		return sb.toString();
-
+	protected String getDebugDumpOperationName() {
+		return "AND";
 	}
 	
-	@Override
-	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		sb.append("AND");
-		sb.append("(");
-		for (int i = 0; i < getConditions().size(); i++){
-			sb.append(getConditions().get(i));
-			if (i != getConditions().size() -1){
-				sb.append(",");
-			}
-		}
-		sb.append(")");
-		return sb.toString();
-	}
-
-
 	@Override
 	public boolean match(PrismContainerValue value, MatchingRuleRegistry matchingRuleRegistry) throws SchemaException {
 		for (ObjectFilter filter : getConditions()){
@@ -106,4 +79,8 @@ public class AndFilter extends NaryLogicalFilter {
 		return true;
 	}
 
+	@Override
+	public boolean equals(Object obj, boolean exact) {
+		return super.equals(obj, exact) && obj instanceof AndFilter;
+	}
 }

@@ -40,12 +40,12 @@ public class ModelInitialSetup {
     public void init() {
         LOGGER.info("Model post initialization.");
 
-        OperationResult mainResult = new OperationResult("Model Post Initialisation");
+        OperationResult mainResult = new OperationResult("Model Post Initialization");
         try {
             model.postInit(mainResult);
-            LOGGER.info("Model post initialization finished successful.");
+            LOGGER.info("Model post initialization finished successfully.");
         } catch (Exception ex) {
-            LoggingUtils.logException(LOGGER, "Model post initialization failed", ex);
+            LoggingUtils.logUnexpectedException(LOGGER, "Model post initialization failed", ex);
             mainResult.recordFatalError("Model post initialization failed.", ex);
         } finally {
             mainResult.computeStatus("Model post initialization failed.");

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,14 @@
 package com.evolveum.midpoint.prism.xml;
 
 import com.evolveum.midpoint.prism.PrismConstants;
-import com.evolveum.midpoint.prism.parser.XPathHolder;
+import com.evolveum.midpoint.prism.marshaller.XPathHolder;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
-import com.evolveum.midpoint.util.ClassPathUtil;
 import com.evolveum.midpoint.util.DOMUtil;
 import com.evolveum.midpoint.util.JAXBUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
 
 import org.apache.commons.codec.binary.Base64;
 import org.w3c.dom.Document;
@@ -33,7 +31,6 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-import javax.xml.XMLConstants;
 import javax.xml.bind.annotation.XmlEnumValue;
 import javax.xml.datatype.DatatypeConfigurationException;
 import javax.xml.datatype.DatatypeFactory;
@@ -42,7 +39,6 @@ import javax.xml.datatype.XMLGregorianCalendar;
 import javax.xml.namespace.QName;
 
 import java.io.File;
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -230,9 +226,9 @@ public class XmlTypeConverter {
      * @param doc
      * @param recordType
      * @return created element
-     * @throws JAXBException
+     * @throws SchemaException
      */
-    public static Object toXsdElement(Object val, QName elementName, Document doc, boolean recordType) throws SchemaException {
+    public static Element toXsdElement(Object val, QName elementName, Document doc, boolean recordType) throws SchemaException {
         if (val == null) {
             // if no value is specified, do not create element
             return null;
@@ -331,8 +327,46 @@ public class XmlTypeConverter {
     public static boolean canConvert(QName xsdType) {
         return (XsdTypeMapper.getXsdToJavaMapping(xsdType) != null);
     }
+    
+	public static boolean isMatchingType(Class<?> expectedClass, Class<?> actualClass) {
+		if (expectedClass.isAssignableFrom(actualClass)) {
+			return true;
+		}
+		if (isMatchingType(expectedClass, actualClass, int.class, Integer.class)) {
+			return true;
+		}
+		if (isMatchingType(expectedClass, actualClass, long.class, Long.class)) {
+			return true;
+		}
+		if (isMatchingType(expectedClass, actualClass, boolean.class, Boolean.class)) {
+			return true;
+		}
+		if (isMatchingType(expectedClass, actualClass, byte.class, Byte.class)) {
+			return true;
+		}
+		if (isMatchingType(expectedClass, actualClass, char.class, Character.class)) {
+			return true;
+		}
+		if (isMatchingType(expectedClass, actualClass, float.class, Float.class)) {
+			return true;
+		}
+		if (isMatchingType(expectedClass, actualClass, double.class, Double.class)) {
+			return true;
+		}
+		return false;
+	}
 
-    public static <T> T convertValueElementAsScalar(Element valueElement, Class<T> type) throws SchemaException {
+    private static boolean isMatchingType(Class<?> expectedClass, Class<?> actualClass, Class<?> lowerClass, Class<?> upperClass) {
+		if (lowerClass.isAssignableFrom(expectedClass) && upperClass.isAssignableFrom(actualClass)) {
+			return true;
+		}
+		if (lowerClass.isAssignableFrom(actualClass) && upperClass.isAssignableFrom(expectedClass)) {
+			return true;
+		}
+		return false;
+	}
+
+	public static <T> T convertValueElementAsScalar(Element valueElement, Class<T> type) throws SchemaException {
         return toJavaValue(valueElement, type);
     }
 
@@ -488,7 +522,7 @@ public class XmlTypeConverter {
     	}
         return xmlCal.toGregorianCalendar().getTimeInMillis();
     }
-    
+
 	public static Date toDate(XMLGregorianCalendar xmlCal) {
 		return xmlCal != null ? new Date(xmlCal.toGregorianCalendar().getTimeInMillis()) : null;
 	}
@@ -498,7 +532,7 @@ public class XmlTypeConverter {
     }
     
     public static Duration createDuration(String lexicalRepresentation) {
-    	return getDatatypeFactory().newDuration(lexicalRepresentation);
+    	return lexicalRepresentation != null ? getDatatypeFactory().newDuration(lexicalRepresentation) : null;
     }
 
     public static Duration createDuration(boolean isPositive, int years, int months, int days, int hours, int minutes, int seconds) {
@@ -586,6 +620,12 @@ public class XmlTypeConverter {
 		later.add(duration);
 		return later;
 	}
+	
+	public static XMLGregorianCalendar addDuration(XMLGregorianCalendar now, String duration) {
+		XMLGregorianCalendar later = createXMLGregorianCalendar(toMillis(now));
+		later.add(createDuration(duration));
+		return later;
+	}
 
 	public static XMLGregorianCalendar addMillis(XMLGregorianCalendar now, long duration) {
 		return createXMLGregorianCalendar(toMillis(now) + duration);
@@ -593,6 +633,19 @@ public class XmlTypeConverter {
 
 	public static String formatDateXml(Date date) {
 		return createXMLGregorianCalendar(date).toXMLFormat();
+	}
+
+	public static int compare(XMLGregorianCalendar o1, XMLGregorianCalendar o2) {
+		if (o1 == null && o2 == null) {
+			return 0;
+		}
+		if (o1 == null) {
+			return -1;
+		}
+		if (o2 == null) {
+			return 1;
+		}
+		return o1.compare(o2);
 	}
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 Evolveum
+ * Copyright (c) 2014-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,13 +20,13 @@ import java.util.Collection;
 import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluationContext;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluator;
 import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismContainerDefinition;
 import com.evolveum.midpoint.prism.PrismContainerValue;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluationContext;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluator;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
@@ -39,9 +39,10 @@ import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AbstractRoleType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.AssociationFromLinkExpressionEvaluatorType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowAssociationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowDiscriminatorExpressionEvaluatorType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowDiscriminatorType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
@@ -56,12 +57,12 @@ public class AssociationFromLinkExpressionEvaluator
 	
 	private static final Trace LOGGER = TraceManager.getTrace(AssociationFromLinkExpressionEvaluator.class);
 
-	private ShadowDiscriminatorExpressionEvaluatorType evaluatorType;
+	private AssociationFromLinkExpressionEvaluatorType evaluatorType;
 	private PrismContainerDefinition<ShadowAssociationType> outputDefinition;
 	private ObjectResolver objectResolver;
 	private PrismContext prismContext;
 
-	AssociationFromLinkExpressionEvaluator(ShadowDiscriminatorExpressionEvaluatorType evaluatorType, 
+	AssociationFromLinkExpressionEvaluator(AssociationFromLinkExpressionEvaluatorType evaluatorType, 
 			PrismContainerDefinition<ShadowAssociationType> outputDefinition, ObjectResolver objectResolver, PrismContext prismContext) {
 		this.evaluatorType = evaluatorType;
 		this.outputDefinition = outputDefinition;
@@ -73,11 +74,11 @@ public class AssociationFromLinkExpressionEvaluator
 	 * @see com.evolveum.midpoint.common.expression.ExpressionEvaluator#evaluate(java.util.Collection, java.util.Map, boolean, java.lang.String, com.evolveum.midpoint.schema.result.OperationResult)
 	 */
 	@Override
-	public PrismValueDeltaSetTriple<PrismContainerValue<ShadowAssociationType>> evaluate(ExpressionEvaluationContext params) throws SchemaException,
+	public PrismValueDeltaSetTriple<PrismContainerValue<ShadowAssociationType>> evaluate(ExpressionEvaluationContext context) throws SchemaException,
 			ExpressionEvaluationException, ObjectNotFoundException {
 				            
-		String desc = params.getContextDescription();
-		Object orderOneObject = params.getVariables().get(ExpressionConstants.VAR_ORDER_ONE_OBJECT);
+		String desc = context.getContextDescription();
+		Object orderOneObject = context.getVariables().get(ExpressionConstants.VAR_ORDER_ONE_OBJECT);
 		if (orderOneObject == null) {
 			throw new ExpressionEvaluationException("No order one object variable in "+desc+"; the expression may be used in a wrong place. It is only supposed to work in a role.");
 		}
@@ -87,7 +88,9 @@ public class AssociationFromLinkExpressionEvaluator
 		}
 		AbstractRoleType thisRole = (AbstractRoleType)orderOneObject;
 		
-		RefinedObjectClassDefinition rAssocTargetDef = (RefinedObjectClassDefinition) params.getVariables().get(ExpressionConstants.VAR_ASSOCIATION_TARGET_OBJECT_CLASS_DEFINITION);
+		LOGGER.trace("Evaluating association from link on: {}", thisRole); 
+		
+		RefinedObjectClassDefinition rAssocTargetDef = (RefinedObjectClassDefinition) context.getVariables().get(ExpressionConstants.VAR_ASSOCIATION_TARGET_OBJECT_CLASS_DEFINITION);
 		if (rAssocTargetDef == null) {
 			throw new ExpressionEvaluationException("No association target object class definition variable in "+desc+"; the expression may be used in a wrong place. It is only supposed to create an association.");
 		}		
@@ -104,9 +107,25 @@ public class AssociationFromLinkExpressionEvaluator
 		
 		PrismContainer<ShadowAssociationType> output = outputDefinition.instantiate();
 		
-		QName assocName = params.getMappingQName();
+		QName assocName = context.getMappingQName();
 		String resourceOid = rAssocTargetDef.getResourceType().getOid();
 		Collection<SelectorOptions<GetOperationOptions>> options = null;
+		
+		// Always process the first role (myself) regardless of recursion setting
+		gatherAssociationsFromAbstractRole(thisRole, output, resourceOid, kind, intent, assocName, options, desc, context);
+		
+		if (thisRole instanceof OrgType && matchesForRecursion((OrgType)thisRole)) {
+			gatherAssociationsFromAbstractRoleRecurse((OrgType)thisRole, output, resourceOid, kind, intent, assocName, options, desc,
+					context);
+		}
+		
+		return ItemDelta.toDeltaSetTriple(output, null);
+	}
+
+	private void gatherAssociationsFromAbstractRole(AbstractRoleType thisRole,
+			PrismContainer<ShadowAssociationType> output, String resourceOid, ShadowKindType kind,
+			String intent, QName assocName, Collection<SelectorOptions<GetOperationOptions>> options,
+			String desc, ExpressionEvaluationContext params) throws SchemaException {
 		for (ObjectReferenceType linkRef: thisRole.getLinkRef()) {
 			ShadowType shadowType;
 			try {
@@ -126,8 +145,29 @@ public class AssociationFromLinkExpressionEvaluator
 				shadowAssociationType.setShadowRef(shadowRef);
 			}
 		}
+	}
+	
+	private void gatherAssociationsFromAbstractRoleRecurse(OrgType thisOrg,
+			PrismContainer<ShadowAssociationType> output, String resourceOid, ShadowKindType kind,
+			String intent, QName assocName, Collection<SelectorOptions<GetOperationOptions>> options,
+			String desc, ExpressionEvaluationContext params) throws SchemaException, ObjectNotFoundException {
 		
-		return ItemDelta.toDeltaSetTriple(output, null);
+		gatherAssociationsFromAbstractRole(thisOrg, output, resourceOid, kind, intent, assocName, options, desc, params);
+		
+		for (ObjectReferenceType parentOrgRef: thisOrg.getParentOrgRef()) {
+			OrgType parent = objectResolver.resolve(parentOrgRef, OrgType.class, options, desc, params.getTask(), params.getResult());
+			if (matchesForRecursion(parent)) {
+				gatherAssociationsFromAbstractRoleRecurse(parent, output, resourceOid, kind, intent, assocName, options, desc, params);
+			}
+		}
+	}
+	
+	private boolean matchesForRecursion(OrgType thisOrg) {
+		for (String recurseUpOrgType: evaluatorType.getRecurseUpOrgType()) {
+			thisOrg.getOrgType().contains(recurseUpOrgType);
+			return true;
+		}
+		return false;
 	}
 
 	/* (non-Javadoc)

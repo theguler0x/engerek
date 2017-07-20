@@ -27,6 +27,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
  * 
  * @author Radovan Semancik
  */
+@FunctionalInterface
 public interface ResultHandler<T extends ObjectType> {
 
     /**
@@ -34,6 +35,6 @@ public interface ResultHandler<T extends ObjectType> {
      * @param object Resource object to process.
      * @return true if the operation should proceed, false if it should stop
      */
-    public boolean handle(PrismObject<T> object, OperationResult parentResult);
+	boolean handle(PrismObject<T> object, OperationResult parentResult);
     
 }

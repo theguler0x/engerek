@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,13 +48,19 @@ public class PrismConstants {
 	
 	public static final String NS_MATCHING_RULE = NS_PREFIX + "matching-rule-3";
 	public static final String PREFIX_NS_MATCHING = "mr";
+	
+	public static final String NS_PREFIX_CRYPTO = NS_PREFIX + "crypto/";
+	public static final String NS_PREFIX_CRYPTO_ALGORITHM = NS_PREFIX_CRYPTO + "algorithm/";
+	public static final String NS_CRYPTO_ALGORITHM_PBKD = NS_PREFIX_CRYPTO_ALGORITHM + "pbkd-3";
 
 	// Annotations
 
 	public static final QName A_PROPERTY_CONTAINER = new QName(NS_ANNOTATION, "container");
 	public static final QName A_OBJECT = new QName(NS_ANNOTATION, "object");
 
-	
+	public static final QName A_DEFAULT_NAMESPACE = new QName(NS_ANNOTATION, "defaultNamespace");
+	public static final QName A_IGNORED_NAMESPACE = new QName(NS_ANNOTATION, "ignoredNamespace");
+
 	public static final QName A_TYPE = new QName(NS_ANNOTATION, "type");
 	public static final QName A_DISPLAY_NAME = new QName(NS_ANNOTATION, "displayName");
 	public static final QName A_DISPLAY_ORDER = new QName(NS_ANNOTATION, "displayOrder");
@@ -73,7 +79,11 @@ public class PrismConstants {
 	public static final QName A_COMPOSITE = new QName(NS_ANNOTATION, "composite");
 	public static final QName A_DEPRECATED = new QName(NS_ANNOTATION, "deprecated");
 	public static final QName A_LABEL = new QName(NS_ANNOTATION, "label");
-	
+	public static final QName A_MATCHING_RULE = new QName(NS_ANNOTATION, "matchingRule");
+	public static final QName A_EMPHASIZED = new QName(NS_ANNOTATION, "emphasized");
+	public static final QName A_VALUE_ENUMERATION_REF = new QName(NS_ANNOTATION, "valueEnumerationRef");
+	public static final QName A_HETEROGENEOUS_LIST_ITEM = new QName(NS_ANNOTATION, "heterogeneousListItem");
+
 	public static final QName SCHEMA_DOCUMENTATION = new QName(W3C_XML_SCHEMA_NS_URI, "documentation");
 	public static final QName SCHEMA_APP_INFO = new QName(W3C_XML_SCHEMA_NS_URI, "appinfo");
 	
@@ -109,4 +119,9 @@ public class PrismConstants {
 
     // a bit of hack: by this local name we know if a object is a reference (c:ObjectReferenceType)
     public static final String REFERENCE_TYPE_NAME = "ObjectReferenceType";
+    
+    public static final boolean EQUALS_DEFAULT_IGNORE_METADATA = true;
+    public static final boolean EQUALS_DEFAULT_IS_LITERAL = false;
+    
+    public static final String EXPRESSION_LOCAL_PART = "expression";
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,13 @@
 
 package com.evolveum.midpoint.prism.query;
 
-import com.evolveum.midpoint.prism.Containerable;
-import com.evolveum.midpoint.prism.ItemDefinition;
-import com.evolveum.midpoint.prism.PrismContainerDefinition;
-import com.evolveum.midpoint.prism.PrismContainerValue;
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismPropertyDefinition;
+import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.prism.match.MatchingRuleRegistry;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.PrettyPrinter;
 import com.evolveum.midpoint.util.exception.SchemaException;
-
-import javax.xml.namespace.QName;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * TODO think about creating abstract ItemFilter (ItemRelatedFilter) for this filter and ValueFilter.
@@ -36,20 +30,22 @@ import javax.xml.namespace.QName;
  * @author lazyman
  * @author mederly
  */
-public class ExistsFilter extends ObjectFilter {
+public class ExistsFilter extends ObjectFilter implements ItemFilter {
 
-    private ItemPath fullPath;
+	@NotNull private final ItemPath fullPath;
     private ItemDefinition definition;
     private ObjectFilter filter;
 
-    public ExistsFilter(ItemPath fullPath, ItemDefinition definition, ObjectFilter filter) {
+    public ExistsFilter(@NotNull ItemPath fullPath, ItemDefinition definition, ObjectFilter filter) {
         this.fullPath = fullPath;
         this.definition = definition;
         this.filter = filter;
-        checkConsistence();
+        checkConsistence(true);
     }
 
-    public ItemPath getFullPath() {
+    @NotNull
+    @Override
+	public ItemPath getFullPath() {
         return fullPath;
     }
 
@@ -61,40 +57,49 @@ public class ExistsFilter extends ObjectFilter {
         return filter;
     }
 
-    public static <C extends Containerable> ExistsFilter createExists(ItemPath itemPath, PrismContainerDefinition<C> containerDef,
+	public void setFilter(ObjectFilter filter) {
+		this.filter = filter;
+	}
+
+	public static <C extends Containerable> ExistsFilter createExists(ItemPath itemPath, PrismContainerDefinition<C> containerDef,
                                                                       ObjectFilter filter) throws SchemaException {
         ItemDefinition itemDefinition = FilterUtils.findItemDefinition(itemPath, containerDef);
         return new ExistsFilter(itemPath, itemDefinition, filter);
     }
 
     public static <C extends Containerable> ExistsFilter createExists(ItemPath itemPath, Class<C> clazz, PrismContext prismContext,
-                                                                      ObjectFilter filter) throws SchemaException {
+                                                                      ObjectFilter filter) {
         ItemDefinition itemDefinition = FilterUtils.findItemDefinition(itemPath, clazz, prismContext);
         return new ExistsFilter(itemPath, itemDefinition, filter);
     }
 
-    @Override
+    @SuppressWarnings("CloneDoesntCallSuperClone")
+	@Override
     public ObjectFilter clone() {
         ObjectFilter f = filter != null ? filter.clone() : null;
         return new ExistsFilter(fullPath, definition, f);
     }
 
-    @Override
+	public ExistsFilter cloneEmpty() {
+		return new ExistsFilter(fullPath, definition, null);
+	}
+
+	@Override
     public boolean match(PrismContainerValue value, MatchingRuleRegistry matchingRuleRegistry) throws SchemaException {
         throw new UnsupportedOperationException();
     }
     
     @Override
-	public void checkConsistence() {
-		if (fullPath == null || fullPath.isEmpty()) {
+	public void checkConsistence(boolean requireDefinitions) {
+		if (fullPath.isEmpty()) {
 			throw new IllegalArgumentException("Null or empty path in "+this);
 		}
-        if (definition == null) {
+        if (requireDefinitions && definition == null) {
             throw new IllegalArgumentException("Null definition in "+this);
         }
 		// null subfilter is legal. It means "ALL".
 		if (filter != null) {
-			filter.checkConsistence();
+			filter.checkConsistence(requireDefinitions);
 		}
 	}
 
@@ -124,28 +129,7 @@ public class ExistsFilter extends ObjectFilter {
         return sb.toString();
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof ExistsFilter)) return false;
-
-        ExistsFilter that = (ExistsFilter) o;
-
-        if (fullPath != null ? !fullPath.equals(that.fullPath) : that.fullPath != null) return false;
-        if (definition != null ? !definition.equals(that.definition) : that.definition != null) return false;
-        return !(filter != null ? !filter.equals(that.filter) : that.filter != null);
-
-    }
-
-    @Override
-    public int hashCode() {
-        int result = fullPath != null ? fullPath.hashCode() : 0;
-        result = 31 * result + (definition != null ? definition.hashCode() : 0);
-        result = 31 * result + (filter != null ? filter.hashCode() : 0);
-        return result;
-    }
-
-    @Override
+	@Override
     public String toString() {
     	StringBuilder sb = new StringBuilder();
 		sb.append("EXISTS(");
@@ -163,4 +147,30 @@ public class ExistsFilter extends ObjectFilter {
             visitor.visit(filter);
         }
     }
+
+	@Override
+	public boolean equals(Object o, boolean exact) {
+		if (this == o)
+			return true;
+		if (o == null || getClass() != o.getClass())
+			return false;
+
+		ExistsFilter that = (ExistsFilter) o;
+
+		if (!fullPath.equals(that.fullPath, exact))
+			return false;
+		if (exact) {
+			if (definition != null ? !definition.equals(that.definition) : that.definition != null)
+				return false;
+		}
+		return filter != null ? filter.equals(that.filter, exact) : that.filter == null;
+	}
+
+	@Override
+	public int hashCode() {
+		int result = 1;
+		result = 31 * result + (definition != null ? definition.hashCode() : 0);
+		result = 31 * result + (filter != null ? filter.hashCode() : 0);
+		return result;
+	}
 }

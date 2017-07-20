@@ -16,10 +16,7 @@
 
 package com.evolveum.midpoint.prism.xjc;
 
-import com.evolveum.midpoint.prism.Containerable;
-import com.evolveum.midpoint.prism.PrismContainer;
-import com.evolveum.midpoint.prism.PrismContainerDefinition;
-import com.evolveum.midpoint.prism.PrismContainerValue;
+import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SystemException;
 
@@ -41,6 +38,7 @@ import java.util.List;
 public abstract class PrismContainerArrayList<T extends Containerable> extends AbstractList<T> implements Serializable {
 
     private PrismContainer<T> container;
+    private PrismContainerValue<?> parent;
 
     // For deserialization
     public PrismContainerArrayList() {
@@ -51,13 +49,19 @@ public abstract class PrismContainerArrayList<T extends Containerable> extends A
         this.container = container;
     }
 
+    public PrismContainerArrayList(PrismContainer<T> container, PrismContainerValue<?> parent) {
+        Validate.notNull(container);
+        this.container = container;
+        this.parent = parent;
+    }
+
     protected abstract PrismContainerValue getValueFrom(T t);
 
     protected T createItemInternal(PrismContainerValue value) {
-        PrismContainerDefinition concreteDef = value.getConcreteTypeDefinition();
+        ComplexTypeDefinition concreteDef = value.getComplexTypeDefinition();
         if (concreteDef != null &&
-                !(container.getCompileTimeClass() != null &&
-                        container.getCompileTimeClass().equals(concreteDef.getCompileTimeClass()))) {
+                (container.getCompileTimeClass() == null ||
+                        !container.getCompileTimeClass().equals(concreteDef.getCompileTimeClass()))) {
             // the dynamic definition exists and the compile time class is different from the one at the container level
             // ("different" here means it is a subclass)
             // so we have to instantiate dynamically
@@ -135,6 +139,9 @@ public abstract class PrismContainerArrayList<T extends Containerable> extends A
     public boolean add(T t) {
         PrismContainerValue value = getValueFrom(t);
         try {
+            if (container.getParent() == null) {
+                parent.add(container);
+            }
             return container.add(value);
         } catch (SchemaException ex) {
             throw new SystemException(ex.getMessage(), ex);

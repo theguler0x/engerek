@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,15 @@ package com.evolveum.midpoint.certification.impl;
 
 import com.evolveum.midpoint.certification.api.AccessCertificationEventListener;
 import com.evolveum.midpoint.certification.api.CertificationManager;
+import com.evolveum.midpoint.certification.api.OutcomeUtils;
 import com.evolveum.midpoint.certification.impl.handlers.CertificationHandler;
+import com.evolveum.midpoint.model.api.ModelAuthorizationAction;
 import com.evolveum.midpoint.model.api.ModelService;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
 import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
+import com.evolveum.midpoint.prism.query.builder.*;
 import com.evolveum.midpoint.repo.api.RepositoryService;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
@@ -30,42 +34,51 @@ import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.CertCampaignTypeUtil;
 import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.security.api.SecurityEnforcer;
+import com.evolveum.midpoint.security.api.SecurityUtil;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.util.exception.CommunicationException;
-import com.evolveum.midpoint.util.exception.ConfigurationException;
-import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
-import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
-import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.exception.SecurityViolationException;
+import com.evolveum.midpoint.util.exception.*;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignStateType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCaseType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCasesStatisticsType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationDecisionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationDefinitionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationStageType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Validate;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import javax.xml.namespace.QName;
+import java.util.*;
 
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignStateType.CLOSED;
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignStateType.CREATED;
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignStateType.IN_REMEDIATION;
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignStateType.IN_REVIEW_STAGE;
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignStateType.REVIEW_STAGE_DONE;
+import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignStateType.*;
 
 /**
+ * All operations carried out by CertificationManager have to be authorized by it. ModelController does NOT execute
+ * any authorizations before passing method calls to this module.
+ *
+ * All repository read operations are invoked on repository cache (even if we currently don't enter the cache).
+ *
+ * All write operations are passed to model, with the flag of preAuthorized set to TRUE (and currently in raw mode).
+ * The reason is that we want the changes to be audited.
+ *
+ * In the future, the raw mode could be eventually changed to non-raw, in order to allow e.g. lower-level notifications
+ * to be sent (that means, for example, notifications related to changing certification campaign as a result of carrying
+ * out open/close stage operations). But currently we are satisfied with notifications that are emitted by the
+ * certification module itself.
+ *
+ * Also, in the future, we could do some higher-level audit by this module. But for now we are OK with the lower-level
+ * audit generated by the model.
+ *
+ * TODO: consider the enormous size of audit events in case of big campaigns (e.g. thousands or tens of thousands
+ * certification cases).
+ *
+ * We try to carry out repo update in one operation to ensure atomicity; unless we need to carry out them on separate
+ * objects (e.g. certification definition + certification campaign).
+ *
+ * Methods in this module (e.g. searchCases) are to be called from outside only, as they carry out the authorization.
+ * For pre-authorized versions please see various helpers, e.g. AccCertQueryHelper.
+ *
  * @author mederly
  */
 @Service(value = "certificationManager")
@@ -74,46 +87,28 @@ public class CertificationManagerImpl implements CertificationManager {
     private static final transient Trace LOGGER = TraceManager.getTrace(CertificationManager.class);
 
     public static final String INTERFACE_DOT = CertificationManager.class.getName() + ".";
+    public static final String CLASS_DOT = CertificationManagerImpl.class.getName() + ".";
     public static final String OPERATION_CREATE_CAMPAIGN = INTERFACE_DOT + "createCampaign";
+    public static final String OPERATION_CREATE_AD_HOC_CAMPAIGNS = INTERFACE_DOT + "createAdHocCampaigns";
     public static final String OPERATION_OPEN_NEXT_STAGE = INTERFACE_DOT + "openNextStage";
     public static final String OPERATION_CLOSE_CURRENT_STAGE = INTERFACE_DOT + "closeCurrentStage";
     public static final String OPERATION_RECORD_DECISION = INTERFACE_DOT + "recordDecision";
-    public static final String OPERATION_SEARCH_CASES = INTERFACE_DOT + "searchCases";
-    public static final String OPERATION_SEARCH_DECISIONS = INTERFACE_DOT + "searchDecisions";
+    public static final String OPERATION_SEARCH_OPEN_WORK_ITEMS = INTERFACE_DOT + "searchOpenWorkItems";
+    public static final String OPERATION_COUNT_OPEN_WORK_ITEMS = INTERFACE_DOT + "countOpenWorkItems";
     public static final String OPERATION_CLOSE_CAMPAIGN = INTERFACE_DOT + "closeCampaign";
+    public static final String OPERATION_DELEGATE_WORK_ITEMS = INTERFACE_DOT + "delegateWorkItems";
     public static final String OPERATION_GET_CAMPAIGN_STATISTICS = INTERFACE_DOT + "getCampaignStatistics";
 
-    @Autowired
-    private PrismContext prismContext;
-
-    @Autowired
-    private ModelService modelService;
-
-    @Autowired
-    protected SecurityEnforcer securityEnforcer;
-
-    @Autowired
-    protected AccCertGeneralHelper helper;
-
-    @Autowired
-    protected AccCertEventHelper eventHelper;
-
-    @Autowired
-    protected AccCertResponseComputationHelper computationHelper;
-
-    @Autowired
-    protected AccCertQueryHelper queryHelper;
-
-    @Autowired
-    protected AccCertUpdateHelper updateHelper;
-
-    @Autowired
-    private AccessCertificationRemediationTaskHandler remediationTaskHandler;
-
-    // TODO temporary hack because of some problems in model service...
-    @Autowired
-    @Qualifier("cacheRepositoryService")
-    protected RepositoryService repositoryService;
+    @Autowired private PrismContext prismContext;
+    @Autowired @Qualifier("cacheRepositoryService") private RepositoryService repositoryService;
+    @Autowired private ModelService modelService;
+    @Autowired protected SecurityEnforcer securityEnforcer;
+    @Autowired protected AccCertGeneralHelper generalHelper;
+    @Autowired protected AccCertEventHelper eventHelper;
+    @Autowired protected AccCertQueryHelper queryHelper;
+    @Autowired protected AccCertUpdateHelper updateHelper;
+    @Autowired protected AccCertCaseOperationsHelper caseHelper;
+    @Autowired private AccessCertificationRemediationTaskHandler remediationTaskHandler;
 
     private Map<String,CertificationHandler> registeredHandlers = new HashMap<>();
 
@@ -136,21 +131,17 @@ public class CertificationManagerImpl implements CertificationManager {
     }
 
     @Override
-    public AccessCertificationCampaignType createCampaign(String definitionOid, AccessCertificationCampaignType campaign,
-                                                          Task task, OperationResult parentResult) throws SchemaException, SecurityViolationException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException, ObjectAlreadyExistsException, PolicyViolationException {
+    public AccessCertificationCampaignType createCampaign(String definitionOid, Task task, OperationResult parentResult)
+            throws SchemaException, SecurityViolationException, ObjectNotFoundException, ObjectAlreadyExistsException {
+        Validate.notNull(definitionOid, "definitionOid");
         Validate.notNull(task, "task");
         Validate.notNull(parentResult, "parentResult");
-        if (definitionOid == null && campaign == null) {
-            throw new IllegalArgumentException("Both definitionOid and campaign are null");
-        }
 
         OperationResult result = parentResult.createSubresult(OPERATION_CREATE_CAMPAIGN);
         try {
-            AccessCertificationDefinitionType definition = null;
-            if (definitionOid != null) {
-                definition = modelService.getObject(AccessCertificationDefinitionType.class, definitionOid, null, task, result).asObjectable();
-            }
-            AccessCertificationCampaignType newCampaign = helper.createCampaignObject(definition, campaign, task, result);
+            PrismObject<AccessCertificationDefinitionType> definition = repositoryService.getObject(AccessCertificationDefinitionType.class, definitionOid, null, result);
+            securityEnforcer.authorize(ModelAuthorizationAction.CREATE_CERTIFICATION_CAMPAIGN.getUrl(), null, definition, null, null, null, result);
+            AccessCertificationCampaignType newCampaign = updateHelper.createCampaignObject(definition.asObjectable(), task, result);
             updateHelper.addObject(newCampaign, task, result);
             return newCampaign;
         } catch (RuntimeException e) {
@@ -161,8 +152,65 @@ public class CertificationManagerImpl implements CertificationManager {
         }
     }
 
+    // This is an action that can be run in unprivileged context. No authorizations are checked. Take care when and where you call it.
+    // Child result is intentionally created only when a certification campaign is to be started (to avoid useless creation of many empty records)
+	<O extends ObjectType> void startAdHocCertifications(PrismObject<O> focus,
+			List<CertificationPolicyActionType> actions, Task task, OperationResult parentResult)
+			throws SchemaException, ObjectNotFoundException {
+        Set<String> definitionOids = new HashSet<>();
+        for (CertificationPolicyActionType action : actions) {
+            if (action.getDefinitionRef() != null) {
+                for (ObjectReferenceType definitionRef : action.getDefinitionRef()) {
+                    if (definitionRef.getOid() != null) {
+                        definitionOids.add(definitionRef.getOid());
+                    } else {
+                        // TODO resolve dynamic reference
+                        LOGGER.warn("Certification action having definition reference with no OID; the reference will be ignored: {}", definitionRef);
+                    }
+                }
+            } else {
+                LOGGER.warn("Certification action without definition reference; will be ignored: {}", action);
+            }
+        }
+        if (!definitionOids.isEmpty()) {
+			OperationResult result = parentResult.createSubresult(OPERATION_CREATE_AD_HOC_CAMPAIGNS);
+			result.addParam("focus", focus);
+			result.addCollectionOfSerializablesAsParam("definitionOids", definitionOids);
+			try {
+				PrismObject<UserType> administrator = repositoryService
+						.getObject(UserType.class, SystemObjectsType.USER_ADMINISTRATOR.value(), null, result);
+				securityEnforcer.runAs(() -> {
+					for (String definitionOid : definitionOids) {
+						startAdHocCertification(focus, definitionOid, task, result);
+					}
+					parentResult.computeStatus();
+					return null;
+				}, administrator);
+			} catch (RuntimeException e) {
+				result.recordFatalError(e.getMessage(), e);		// TODO
+				throw e;
+			}
+		}
+    }
+
+    private <O extends ObjectType> void startAdHocCertification(PrismObject<O> focus, String definitionOid, Task task,
+            OperationResult result) {
+		try {
+			AccessCertificationDefinitionType definition = repositoryService.getObject(AccessCertificationDefinitionType.class, definitionOid, null, result).asObjectable();
+			AccessCertificationCampaignType newCampaign = updateHelper.createAdHocCampaignObject(definition, focus, task, result);
+			updateHelper.addObject(newCampaign, task, result);
+			openNextStage(newCampaign.getOid(), 1, task, result);
+			result.computeStatus();
+		} catch (RuntimeException|SchemaException|ObjectNotFoundException|SecurityViolationException|ObjectAlreadyExistsException e) {
+			result.recordFatalError("Couldn't create ad-hoc certification campaign: " + e.getMessage(), e);
+			throw new SystemException("Couldn't create ad-hoc certification campaign: " + e.getMessage(), e);
+		}
+    }
+
+
+
     @Override
-    public void openNextStage(String campaignOid, int requestedStageNumber, Task task, OperationResult parentResult) throws SchemaException, SecurityViolationException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException, ObjectAlreadyExistsException, PolicyViolationException {
+    public void openNextStage(String campaignOid, int requestedStageNumber, Task task, OperationResult parentResult) throws SchemaException, SecurityViolationException, ObjectNotFoundException, ObjectAlreadyExistsException {
         Validate.notNull(campaignOid, "campaignOid");
         Validate.notNull(task, "task");
         Validate.notNull(parentResult, "parentResult");
@@ -172,12 +220,15 @@ public class CertificationManagerImpl implements CertificationManager {
         result.addParam("requestedStageNumber", requestedStageNumber);
 
         try {
-            AccessCertificationCampaignType campaign = helper.getCampaign(campaignOid, null, task, result);
+            AccessCertificationCampaignType campaign = generalHelper.getCampaign(campaignOid, null, task, result);
             result.addParam("campaign", ObjectTypeUtil.toShortString(campaign));
 
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("openNextStage starting for {}", ObjectTypeUtil.toShortString(campaign));
             }
+
+            securityEnforcer.authorize(ModelAuthorizationAction.OPEN_CERTIFICATION_CAMPAIGN_REVIEW_STAGE.getUrl(), null,
+                    campaign.asPrismObject(), null, null, null, result);
 
             final int currentStageNumber = campaign.getStageNumber();
             final int stages = CertCampaignTypeUtil.getNumberOfStages(campaign);
@@ -198,10 +249,11 @@ public class CertificationManagerImpl implements CertificationManager {
             } else if (requestedStageNumber > stages) {
                 result.recordFatalError("Couldn't advance to review stage " + requestedStageNumber + " as the campaign has only " + stages + " stages");
             } else {
-                CertificationHandler handler = findCertificationHandler(campaign);
-                AccessCertificationStageType stage = updateHelper.createStage(campaign, currentStageNumber+1);
-                updateHelper.moveToNextStage(campaign, stage, handler, task, result);
-                updateHelper.recordMoveToNextStage(campaign, stage, task, result);
+                final CertificationHandler handler = findCertificationHandler(campaign);
+                final AccessCertificationStageType stage = updateHelper.createStage(campaign, currentStageNumber+1);
+                final List<ItemDelta<?,?>> deltas = updateHelper.getDeltasForStageOpen(campaign, stage, handler, task, result);
+                updateHelper.modifyObjectViaModel(AccessCertificationCampaignType.class, campaignOid, deltas, task, result);
+                updateHelper.afterStageOpen(campaignOid, stage, task, result);
             }
         } catch (RuntimeException e) {
             result.recordFatalError("Couldn't move to certification campaign stage " + requestedStageNumber + ": unexpected exception: " + e.getMessage(), e);
@@ -212,7 +264,7 @@ public class CertificationManagerImpl implements CertificationManager {
     }
 
     @Override
-    public void closeCurrentStage(String campaignOid, int stageNumberToClose, Task task, OperationResult parentResult) throws SchemaException, SecurityViolationException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException, ObjectAlreadyExistsException, PolicyViolationException {
+    public void closeCurrentStage(String campaignOid, int stageNumberToClose, Task task, OperationResult parentResult) throws SchemaException, SecurityViolationException, ObjectNotFoundException, ObjectAlreadyExistsException {
         Validate.notNull(campaignOid, "campaignOid");
         Validate.notNull(task, "task");
         Validate.notNull(parentResult, "parentResult");
@@ -222,12 +274,15 @@ public class CertificationManagerImpl implements CertificationManager {
         result.addParam("stageNumber", stageNumberToClose);
 
         try {
-            AccessCertificationCampaignType campaign = helper.getCampaign(campaignOid, null, task, result);
+            AccessCertificationCampaignType campaign = generalHelper.getCampaign(campaignOid, null, task, result);
             result.addParam("campaign", ObjectTypeUtil.toShortString(campaign));
 
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("closeCurrentStage starting for {}", ObjectTypeUtil.toShortString(campaign));
             }
+
+            securityEnforcer.authorize(ModelAuthorizationAction.CLOSE_CERTIFICATION_CAMPAIGN_REVIEW_STAGE.getUrl(), null,
+                    campaign.asPrismObject(), null, null, null, result);
 
             final int currentStageNumber = campaign.getStageNumber();
             final int stages = CertCampaignTypeUtil.getNumberOfStages(campaign);
@@ -239,7 +294,9 @@ public class CertificationManagerImpl implements CertificationManager {
             } else if (!IN_REVIEW_STAGE.equals(state)) {
                 result.recordFatalError("Couldn't close review stage " + stageNumberToClose + " as it is currently not open");
             } else {
-                updateHelper.recordCloseCurrentState(campaign, task, result);
+                List<ItemDelta<?,?>> deltas = updateHelper.getDeltasForStageClose(campaign, result);
+                updateHelper.modifyObjectViaModel(AccessCertificationCampaignType.class, campaignOid, deltas, task, result);
+                updateHelper.afterStageClose(campaignOid, task, result);
             }
         } catch (RuntimeException e) {
             result.recordFatalError("Couldn't close certification campaign stage " + stageNumberToClose+ ": unexpected exception: " + e.getMessage(), e);
@@ -250,7 +307,7 @@ public class CertificationManagerImpl implements CertificationManager {
     }
 
     @Override
-    public void startRemediation(String campaignOid, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, CommunicationException, ConfigurationException, SecurityViolationException, ObjectAlreadyExistsException {
+    public void startRemediation(String campaignOid, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, SecurityViolationException, ObjectAlreadyExistsException {
         Validate.notNull(campaignOid, "campaignOid");
         Validate.notNull(task, "task");
         Validate.notNull(parentResult, "parentResult");
@@ -259,12 +316,15 @@ public class CertificationManagerImpl implements CertificationManager {
         result.addParam("campaignOid", campaignOid);
 
         try {
-            AccessCertificationCampaignType campaign = helper.getCampaign(campaignOid, null, task, result);
+            AccessCertificationCampaignType campaign = generalHelper.getCampaign(campaignOid, null, task, result);
             result.addParam("campaign", ObjectTypeUtil.toShortString(campaign));
 
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("startRemediation starting for {}", ObjectTypeUtil.toShortString(campaign));
             }
+
+            securityEnforcer.authorize(ModelAuthorizationAction.START_CERTIFICATION_REMEDIATION.getUrl(), null,
+                    campaign.asPrismObject(), null, null, null, result);
 
             final int currentStageNumber = campaign.getStageNumber();
             final int lastStageNumber = CertCampaignTypeUtil.getNumberOfStages(campaign);
@@ -276,7 +336,8 @@ public class CertificationManagerImpl implements CertificationManager {
             } else if (!REVIEW_STAGE_DONE.equals(state)) {
                 result.recordFatalError("Couldn't start the remediation as the last stage was not properly closed.");
             } else {
-                updateHelper.setStageNumberAndState(campaign, lastStageNumber + 1, IN_REMEDIATION, task, result);
+                List<ItemDelta<?,?>> deltas = updateHelper.createDeltasForStageNumberAndState(lastStageNumber + 1, IN_REMEDIATION);
+                updateHelper.modifyObjectViaModel(AccessCertificationCampaignType.class, campaignOid, deltas, task, result);
 
                 if (CertCampaignTypeUtil.isRemediationAutomatic(campaign)) {
                     remediationTaskHandler.launch(campaign, task, result);
@@ -284,7 +345,7 @@ public class CertificationManagerImpl implements CertificationManager {
                     result.recordWarning("The automated remediation is not configured. The campaign state was set to IN REMEDIATION, but all remediation actions have to be done by hand.");
                 }
 
-                campaign = updateHelper.refreshCampaign(campaign, task, result);
+                campaign = updateHelper.refreshCampaign(campaign, result);
                 eventHelper.onCampaignStageStart(campaign, task, result);
             }
         } catch (RuntimeException e) {
@@ -295,22 +356,29 @@ public class CertificationManagerImpl implements CertificationManager {
         }
     }
 
+    @Deprecated
     @Override
-    public List<AccessCertificationCaseType> searchCases(String campaignOid, ObjectQuery query,
-                                                         Collection<SelectorOptions<GetOperationOptions>> options,
-                                                         Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, SecurityViolationException, ConfigurationException, CommunicationException {
+    public List<AccessCertificationCaseType> searchDecisionsToReview(ObjectQuery caseQuery, boolean notDecidedOnly,
+            Collection<SelectorOptions<GetOperationOptions>> options,
+            Task task, OperationResult parentResult)
+            throws ObjectNotFoundException, SchemaException, SecurityViolationException {
+        throw new UnsupportedOperationException("not available any more");
+    }
 
-        Validate.notEmpty(campaignOid, "campaignOid");
-        Validate.notNull(task, "task");
-        Validate.notNull(parentResult, "parentResult");
+    @Override
+    public List<AccessCertificationWorkItemType> searchOpenWorkItems(ObjectQuery baseWorkItemsQuery, boolean notDecidedOnly,
+            Collection<SelectorOptions<GetOperationOptions>> options, Task task, OperationResult parentResult)
+            throws ObjectNotFoundException, SchemaException, SecurityViolationException {
 
-        OperationResult result = parentResult.createSubresult(OPERATION_SEARCH_CASES);
+        OperationResult result = parentResult.createSubresult(OPERATION_SEARCH_OPEN_WORK_ITEMS);
 
-        // temporary implementation: simply fetches the whole campaign and selects requested items by itself
         try {
-            return queryHelper.searchCases(campaignOid, query, options, task, result);
+            securityEnforcer.authorize(ModelAuthorizationAction.READ_OWN_CERTIFICATION_DECISIONS.getUrl(), null,
+                    null, null, null, null, result);
+
+            return queryHelper.searchOpenWorkItems(baseWorkItemsQuery, SecurityUtil.getPrincipal(), notDecidedOnly, options, result);
         } catch (RuntimeException e) {
-            result.recordFatalError("Couldn't search for certification cases: unexpected exception: " + e.getMessage(), e);
+            result.recordFatalError("Couldn't search for certification work items: unexpected exception: " + e.getMessage(), e);
             throw e;
         } finally {
             result.computeStatusIfUnknown();
@@ -318,21 +386,19 @@ public class CertificationManagerImpl implements CertificationManager {
     }
 
     @Override
-    public List<AccessCertificationCaseType> searchDecisions(ObjectQuery caseQuery,
-                                                             String reviewerOid, boolean notDecidedOnly,
-                                                             Collection<SelectorOptions<GetOperationOptions>> options,
-                                                             Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, SecurityViolationException, ConfigurationException, CommunicationException {
+    public int countOpenWorkItems(ObjectQuery baseWorkItemsQuery, boolean notDecidedOnly,
+            Collection<SelectorOptions<GetOperationOptions>> options, Task task, OperationResult parentResult)
+            throws ObjectNotFoundException, SchemaException, SecurityViolationException {
 
-        Validate.notNull(reviewerOid, "reviewerOid");
-        Validate.notNull(task, "task");
-        Validate.notNull(parentResult, "parentResult");
-
-        OperationResult result = parentResult.createSubresult(OPERATION_SEARCH_DECISIONS);
+        OperationResult result = parentResult.createSubresult(OPERATION_COUNT_OPEN_WORK_ITEMS);
 
         try {
-            return queryHelper.searchDecisions(caseQuery, reviewerOid, notDecidedOnly, options, task, result);
+            securityEnforcer.authorize(ModelAuthorizationAction.READ_OWN_CERTIFICATION_DECISIONS.getUrl(), null,
+                    null, null, null, null, result);
+
+            return queryHelper.countOpenWorkItems(baseWorkItemsQuery, SecurityUtil.getPrincipal(), notDecidedOnly, options, result);
         } catch (RuntimeException e) {
-            result.recordFatalError("Couldn't search for certification decisions: unexpected exception: " + e.getMessage(), e);
+            result.recordFatalError("Couldn't search for certification work items: unexpected exception: " + e.getMessage(), e);
             throw e;
         } finally {
             result.computeStatusIfUnknown();
@@ -340,16 +406,15 @@ public class CertificationManagerImpl implements CertificationManager {
     }
 
     @Override
-    public void recordDecision(String campaignOid, long caseId, AccessCertificationDecisionType decision,
-                               Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, SecurityViolationException, ConfigurationException, CommunicationException, ObjectAlreadyExistsException {
-
-        Validate.notNull(campaignOid, "campaignOid");
-        Validate.notNull(decision, "decision");
+    public void recordDecision(@NotNull String campaignOid, long caseId, long workItemId, @Nullable AccessCertificationResponseType response,
+			@Nullable String comment, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException,
+			SecurityViolationException, ObjectAlreadyExistsException {
 
         OperationResult result = parentResult.createSubresult(OPERATION_RECORD_DECISION);
         try {
-            AccessCertificationCampaignType campaign = helper.getCampaign(campaignOid, null, task, result);
-            updateHelper.recordDecision(campaign, caseId, decision, result);
+            securityEnforcer.authorize(ModelAuthorizationAction.RECORD_CERTIFICATION_DECISION.getUrl(), null,
+                    null, null, null, null, result);
+            caseHelper.recordDecision(campaignOid, caseId, workItemId, response, comment, task, result);
         } catch (RuntimeException e) {
             result.recordFatalError("Couldn't record reviewer decision: unexpected exception: " + e.getMessage(), e);
             throw e;
@@ -358,8 +423,30 @@ public class CertificationManagerImpl implements CertificationManager {
         }
     }
 
+    public void delegateWorkItems(@NotNull String campaignOid, @NotNull List<AccessCertificationWorkItemType> workItems,
+            @NotNull DelegateWorkItemActionType delegateAction, Task task,
+            OperationResult parentResult)
+			throws SchemaException, SecurityViolationException, ExpressionEvaluationException, ObjectNotFoundException,
+			ObjectAlreadyExistsException {
+		OperationResult result = parentResult.createSubresult(OPERATION_DELEGATE_WORK_ITEMS);
+		result.addParam("campaignOid", campaignOid);
+		result.addCollectionOfSerializablesAsParam("workItems", workItems);	// TODO only IDs?
+		result.addParam("delegateAction", delegateAction);
+		try {
+			// TODO security
+			securityEnforcer.authorize(ModelAuthorizationAction.DELEGATE_ALL_WORK_ITEMS.getUrl(), null,
+					null, null, null, null, result);
+			updateHelper.delegateWorkItems(campaignOid, workItems, delegateAction, task, result);
+		} catch (RuntimeException|CommonException e) {
+			result.recordFatalError("Couldn't delegate work items: unexpected exception: " + e.getMessage(), e);
+			throw e;
+		} finally {
+			result.computeStatusIfUnknown();
+		}
+    }
+
     @Override
-    public void closeCampaign(String campaignOid, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, CommunicationException, ConfigurationException, SecurityViolationException, ObjectAlreadyExistsException {
+    public void closeCampaign(String campaignOid, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, SecurityViolationException, ObjectAlreadyExistsException {
         Validate.notNull(campaignOid, "campaignOid");
         Validate.notNull(task, "task");
         Validate.notNull(parentResult, "parentResult");
@@ -367,7 +454,9 @@ public class CertificationManagerImpl implements CertificationManager {
         OperationResult result = parentResult.createSubresult(OPERATION_CLOSE_CAMPAIGN);
 
         try {
-            AccessCertificationCampaignType campaign = helper.getCampaign(campaignOid, null, task, result);
+            AccessCertificationCampaignType campaign = generalHelper.getCampaign(campaignOid, null, task, result);
+            securityEnforcer.authorize(ModelAuthorizationAction.CLOSE_CERTIFICATION_CAMPAIGN.getUrl(), null,
+                    campaign.asPrismObject(), null, null, null, result);
             updateHelper.closeCampaign(campaign, task, result);
         } catch (RuntimeException e) {
             result.recordFatalError("Couldn't close certification campaign: unexpected exception: " + e.getMessage(), e);
@@ -377,57 +466,33 @@ public class CertificationManagerImpl implements CertificationManager {
         }
     }
 
+    // this method delegates the authorization to the model
     @Override
-    public AccessCertificationCasesStatisticsType getCampaignStatistics(String campaignOid, boolean currentStageOnly, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, SecurityViolationException, ConfigurationException, CommunicationException, ObjectAlreadyExistsException {
+    public AccessCertificationCasesStatisticsType getCampaignStatistics(String campaignOid, boolean currentStageOnly, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, SecurityViolationException, ObjectAlreadyExistsException {
         Validate.notNull(campaignOid, "campaignOid");
         Validate.notNull(task, "task");
         Validate.notNull(parentResult, "parentResult");
 
         OperationResult result = parentResult.createSubresult(OPERATION_GET_CAMPAIGN_STATISTICS);
         try {
-            AccessCertificationCasesStatisticsType stat = new AccessCertificationCasesStatisticsType(prismContext);
+			AccessCertificationCampaignType campaign;
+			try {
+				campaign = modelService.getObject(AccessCertificationCampaignType.class, campaignOid, null, task, parentResult).asObjectable();
+			} catch (CommunicationException|ConfigurationException|ExpressionEvaluationException e) {
+				throw new SystemException("Unexpected exception while getting campaign object: " + e.getMessage(), e);
+			}
 
-            AccessCertificationCampaignType campaign = helper.getCampaign(campaignOid, null, task, result);
-            int currentStageNumber = campaign.getStageNumber();
-            AccessCertificationCampaignStateType state = campaign.getState();
+			Integer stage = currentStageOnly ? campaign.getStageNumber() : null;
 
-            List<AccessCertificationCaseType> campaignCases = queryHelper.searchCases(campaign.getOid(), null, null, task, result);
+			AccessCertificationCasesStatisticsType stat = new AccessCertificationCasesStatisticsType(prismContext);
 
-            int accept=0, revoke=0, revokeRemedied=0, reduce=0, reduceRemedied=0, delegate=0, noDecision=0, noResponse=0;
-            for (AccessCertificationCaseType _case : campaignCases) {
-                if (currentStageOnly && _case.getCurrentStageNumber() != campaign.getStageNumber()) {
-                    continue;
-                }
-                AccessCertificationResponseType response = _case.getCurrentResponse();
-                if (response == null) {
-                    response = AccessCertificationResponseType.NO_RESPONSE;
-                }
-                switch (response) {
-                    case ACCEPT: accept++; break;
-                    case REVOKE: revoke++;
-                                 if (_case.getRemediedTimestamp() != null) {
-                                     revokeRemedied++;
-                                 }
-                                 break;
-                    case REDUCE: reduce++;
-                                 if (_case.getRemediedTimestamp() != null) {
-                                    reduceRemedied++;       // currently not possible
-                                 }
-                                 break;
-                    case DELEGATE: delegate++; break;
-                    case NOT_DECIDED: noDecision++; break;
-                    case NO_RESPONSE: noResponse++; break;
-                    default: throw new IllegalStateException("Unexpected response: "+response);
-                }
-            }
-            stat.setMarkedAsAccept(accept);
-            stat.setMarkedAsRevoke(revoke);
-            stat.setMarkedAsRevokeAndRemedied(revokeRemedied);
-            stat.setMarkedAsReduce(reduce);
-            stat.setMarkedAsReduceAndRemedied(reduceRemedied);
-            stat.setMarkedAsDelegate(delegate);
-            stat.setMarkedAsNotDecide(noDecision);
-            stat.setWithoutResponse(noResponse);
+			stat.setMarkedAsAccept(getCount(campaignOid, stage, AccessCertificationResponseType.ACCEPT, false, task, result));
+			stat.setMarkedAsRevoke(getCount(campaignOid, stage, AccessCertificationResponseType.REVOKE, false, task, result));
+			stat.setMarkedAsRevokeAndRemedied(getCount(campaignOid, stage, AccessCertificationResponseType.REVOKE, true, task, result));
+			stat.setMarkedAsReduce(getCount(campaignOid, stage, AccessCertificationResponseType.REDUCE, false, task, result));
+			stat.setMarkedAsReduceAndRemedied(getCount(campaignOid, stage, AccessCertificationResponseType.REDUCE, true, task, result));
+			stat.setMarkedAsNotDecide(getCount(campaignOid, stage, AccessCertificationResponseType.NOT_DECIDED, false, task, result));
+			stat.setWithoutResponse(getCount(campaignOid, stage, AccessCertificationResponseType.NO_RESPONSE, false, task, result));
             return stat;
         } catch (RuntimeException e) {
             result.recordFatalError("Couldn't get campaign statistics: unexpected exception: " + e.getMessage(), e);
@@ -437,7 +502,36 @@ public class CertificationManagerImpl implements CertificationManager {
         }
     }
 
-    @Override
+	private int getCount(String campaignOid, Integer stage, AccessCertificationResponseType response, boolean onlyRemedied, Task task,
+			OperationResult result) throws SchemaException, SecurityViolationException {
+		QName outcomeItem;
+		String responseUri = OutcomeUtils.toUri(response);
+		S_FilterEntry entry;
+		if (stage != null) {
+			outcomeItem = AccessCertificationCaseType.F_CURRENT_STAGE_OUTCOME;
+			entry = QueryBuilder.queryFor(AccessCertificationCaseType.class, prismContext)
+					.item(AccessCertificationCaseType.F_STAGE_NUMBER).eq(stage)
+					.and();
+		} else {
+			outcomeItem = AccessCertificationCaseType.F_OUTCOME;
+			entry = QueryBuilder.queryFor(AccessCertificationCaseType.class, prismContext);
+		}
+		S_AtomicFilterExit exit;
+		if (response == AccessCertificationResponseType.NO_RESPONSE) {
+			exit = entry.item(outcomeItem).isNull().or().item(outcomeItem).eq(responseUri);
+		} else {
+			exit = entry.item(outcomeItem).eq(responseUri);
+		}
+		if (onlyRemedied) {
+			exit = exit.and().not().item(AccessCertificationCaseType.F_REMEDIED_TIMESTAMP).isNull();
+		}
+		exit = exit.and().ownerId(campaignOid);
+		ObjectQuery query = exit.build();
+		return modelService.countContainers(AccessCertificationCaseType.class, query, null, task, result);
+	}
+
+
+	@Override
     public void registerCertificationEventListener(AccessCertificationEventListener listener) {
         eventHelper.registerEventListener(listener);
     }

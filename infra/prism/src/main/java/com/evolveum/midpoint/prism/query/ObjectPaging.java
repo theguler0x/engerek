@@ -16,17 +16,16 @@
 
 package com.evolveum.midpoint.prism.query;
 
+import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.util.DebugDumpable;
+import com.evolveum.midpoint.util.DebugUtil;
+
+import javax.xml.namespace.QName;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-
-import javax.xml.namespace.QName;
-
-import com.evolveum.midpoint.prism.path.ItemPath;
-import com.evolveum.midpoint.util.DebugDumpable;
-import com.evolveum.midpoint.util.DebugUtil;
 
 public class ObjectPaging implements DebugDumpable, Serializable {
 	
@@ -57,16 +56,18 @@ public class ObjectPaging implements DebugDumpable, Serializable {
 		return new ObjectPaging(offset, maxSize);
 	}
 	
-	public static ObjectPaging createPaging(Integer offset, Integer maxSize, QName orderBy, OrderDirection direction){
-		return new ObjectPaging(offset, maxSize, new ItemPath(orderBy), direction);
+	public static ObjectPaging createPaging(Integer offset, Integer maxSize, QName orderBy, OrderDirection direction) {
+		return new ObjectPaging(offset, maxSize, orderBy != null ? new ItemPath(orderBy) : null, direction);
 	}
 
-	public static ObjectPaging createPaging(Integer offset, Integer maxSize, ItemPath orderBy, OrderDirection direction){
+	public static ObjectPaging createPaging(Integer offset, Integer maxSize, ItemPath orderBy, OrderDirection direction) {
 		return new ObjectPaging(offset, maxSize, orderBy, direction);
 	}
 	
-	public static ObjectPaging createPaging(Integer offset, Integer maxSize, String orderBy, String namespace, OrderDirection direction){
-		return createPaging(offset, maxSize, new QName(namespace, orderBy), direction);
+	public static ObjectPaging createPaging(Integer offset, Integer maxSize, List<ObjectOrdering> orderings) {
+		ObjectPaging paging = new ObjectPaging(offset, maxSize);
+		paging.setOrdering(orderings);
+		return paging;
 	}
 
 	public static ObjectPaging createPaging(ItemPath orderBy, OrderDirection direction) {
@@ -128,7 +129,7 @@ public class ObjectPaging implements DebugDumpable, Serializable {
 	}
 
 	public void setOrdering(Collection<ObjectOrdering> orderings) {
-		this.ordering = new ArrayList<>(orderings);
+		this.ordering = orderings != null ? new ArrayList<>(orderings) : new ArrayList<>();
 	}
 
 	public Integer getOffset() {
@@ -255,5 +256,49 @@ public class ObjectPaging implements DebugDumpable, Serializable {
 		}
 		
 		return sb.toString();
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		return equals(o, true);
+	}
+
+	public boolean equals(Object o, boolean exact) {
+		if (this == o)
+			return true;
+		if (o == null || getClass() != o.getClass())
+			return false;
+
+		ObjectPaging that = (ObjectPaging) o;
+
+		if (offset != null ? !offset.equals(that.offset) : that.offset != null)
+			return false;
+		if (maxSize != null ? !maxSize.equals(that.maxSize) : that.maxSize != null)
+			return false;
+		if ((ordering != null && that.ordering == null) || (ordering == null && that.ordering != null)) {
+			return false;
+		}
+		if (ordering != null) {
+			if (ordering.size() != that.ordering.size()) {
+				return false;
+			}
+			for (int i = 0; i < ordering.size(); i++) {
+				ObjectOrdering oo1 = this.ordering.get(i);
+				ObjectOrdering oo2 = that.ordering.get(i);
+				if (!oo1.equals(oo2, exact)) {
+					return false;
+				}
+			}
+		}
+		return cookie != null ? cookie.equals(that.cookie) : that.cookie == null;
+	}
+
+	@Override
+	public int hashCode() {
+		int result = offset != null ? offset.hashCode() : 0;
+		result = 31 * result + (maxSize != null ? maxSize.hashCode() : 0);
+		result = 31 * result + (ordering != null ? ordering.hashCode() : 0);
+		result = 31 * result + (cookie != null ? cookie.hashCode() : 0);
+		return result;
 	}
 }

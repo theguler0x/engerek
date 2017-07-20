@@ -16,11 +16,12 @@
 
 package com.evolveum.midpoint.web;
 
-import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.polystring.PolyString;
+import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.web.component.prism.*;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 
@@ -37,13 +38,20 @@ import java.lang.reflect.Field;
  */
 @ContextConfiguration(locations = {"../../../../ctx-test.xml"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-public class ObjectWrapperTest extends BaseGuiTest {
+public class ObjectWrapperTest extends AbstractGuiIntegrationTest {
 
-    @Test
+    @Override
+	public void initSystem(Task initTask, OperationResult initResult) throws Exception {
+	}
+
+	@Test
     public void testEmptyPolyString() throws Exception {
         PrismObject<UserType> user = prismContext.parseObject(new File("./src/test/resources/wrapper/user.xml"));
 
-        ObjectWrapper<UserType> wrapper = new ObjectWrapper<UserType>(null, null, user, null, ContainerStatus.MODIFYING, null);
+        Task task = taskManager.createTaskInstance("testEmptyPolyString");
+        
+        ObjectWrapperFactory owf = new ObjectWrapperFactory(null);
+        ObjectWrapper<UserType> wrapper = owf.createObjectWrapper(null, null, user, ContainerStatus.MODIFYING, task);
         //simulate change on honorific prefix
         ContainerWrapper containerWrapper = null;
         for (ContainerWrapper container : wrapper.getContainers()) {

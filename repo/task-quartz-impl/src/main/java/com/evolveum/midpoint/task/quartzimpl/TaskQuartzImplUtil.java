@@ -20,10 +20,7 @@ import static org.quartz.CronScheduleBuilder.cronScheduleNonvalidatedExpression;
 import static org.quartz.SimpleScheduleBuilder.simpleSchedule;
 
 import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Date;
-import java.util.List;
 
 import com.evolveum.midpoint.task.quartzimpl.execution.JobExecutor;
 import com.evolveum.midpoint.util.exception.SystemException;
@@ -178,11 +175,16 @@ public class TaskQuartzImplUtil {
 	}
 
     public static Trigger createTriggerNowForTask(Task task) {
+        return TriggerBuilder.newTrigger()
+                .forJob(createJobKeyForTask(task)).startNow()
+		        .build();
+    }
 
-        TriggerBuilder<Trigger> tb = TriggerBuilder.newTrigger()
-                .forJob(createJobKeyForTask(task)).startNow();
-
-        return tb.build();
+    public static Trigger createTriggerForTask(Task task, long startAt) {
+        return TriggerBuilder.newTrigger()
+                .forJob(createJobKeyForTask(task))
+		        .startAt(new Date(startAt))
+		        .build();
     }
 
     public static long xmlGCtoMillis(XMLGregorianCalendar gc) {

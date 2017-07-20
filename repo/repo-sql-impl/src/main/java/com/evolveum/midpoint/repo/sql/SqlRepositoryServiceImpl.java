@@ -16,15 +16,20 @@
 
 package com.evolveum.midpoint.repo.sql;
 
-import com.evolveum.midpoint.common.InternalsConfig;
+import com.evolveum.midpoint.common.LoggingConfigurationManager;
+import com.evolveum.midpoint.common.ProfilingConfigurationManager;
+import com.evolveum.midpoint.common.SystemConfigurationHolder;
+import com.evolveum.midpoint.common.configuration.api.MidpointConfiguration;
 import com.evolveum.midpoint.common.crypto.CryptoUtil;
 import com.evolveum.midpoint.prism.ConsistencyCheckScope;
 import com.evolveum.midpoint.prism.Containerable;
 import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.prism.PrismObjectDefinition;
 import com.evolveum.midpoint.prism.PrismProperty;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
+import com.evolveum.midpoint.prism.match.MatchingRuleRegistry;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.prism.query.AllFilter;
@@ -32,36 +37,38 @@ import com.evolveum.midpoint.prism.query.NoneFilter;
 import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.prism.query.ObjectPaging;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
+import com.evolveum.midpoint.prism.query.QueryJaxbConvertor;
 import com.evolveum.midpoint.repo.api.RepoAddOptions;
+import com.evolveum.midpoint.repo.api.RepoModifyOptions;
 import com.evolveum.midpoint.repo.api.RepositoryService;
-import com.evolveum.midpoint.repo.sql.helpers.ObjectRetriever;
-import com.evolveum.midpoint.repo.sql.helpers.ObjectUpdater;
-import com.evolveum.midpoint.repo.sql.helpers.OrgClosureManager;
-import com.evolveum.midpoint.repo.sql.helpers.SequenceHelper;
-import com.evolveum.midpoint.schema.GetOperationOptions;
-import com.evolveum.midpoint.schema.LabeledString;
-import com.evolveum.midpoint.schema.RepositoryDiag;
-import com.evolveum.midpoint.schema.ResultHandler;
-import com.evolveum.midpoint.schema.SearchResultList;
-import com.evolveum.midpoint.schema.SearchResultMetadata;
-import com.evolveum.midpoint.schema.SelectorOptions;
+import com.evolveum.midpoint.repo.sql.helpers.*;
+import com.evolveum.midpoint.repo.sql.query2.matcher.DefaultMatcher;
+import com.evolveum.midpoint.repo.sql.query2.matcher.PolyStringMatcher;
+import com.evolveum.midpoint.repo.sql.query2.matcher.StringMatcher;
+import com.evolveum.midpoint.schema.*;
+import com.evolveum.midpoint.schema.internals.InternalMonitor;
+import com.evolveum.midpoint.schema.internals.InternalsConfig;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.result.OperationResultStatus;
 import com.evolveum.midpoint.schema.util.ObjectQueryUtil;
+import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
+import com.evolveum.midpoint.schema.util.SystemConfigurationTypeUtil;
+import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
+import com.evolveum.prism.xml.ns._public.query_3.SearchFilterType;
 import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
+import org.apache.commons.configuration.Configuration;
 import org.apache.commons.lang.Validate;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.hibernate.internal.SessionFactoryImpl;
 import org.hibernate.jdbc.Work;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 
@@ -69,17 +76,15 @@ import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Enumeration;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
+import java.util.function.Supplier;
 
+import javax.xml.namespace.QName;
 
 /**
  * @author lazyman
+ *
+ * Note: don't autowire this class - because of Spring AOP use it couldn't be found by implementation class; only by its interface.
  */
 @Repository
 public class SqlRepositoryServiceImpl extends SqlBaseService implements RepositoryService {
@@ -99,17 +104,15 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
     private static final String DETAILS_HIBERNATE_DIALECT = "hibernateDialect";
     private static final String DETAILS_HIBERNATE_HBM_2_DDL = "hibernateHbm2ddl";
 
-    @Autowired
-    private SequenceHelper sequenceHelper;
+    @Autowired private SequenceHelper sequenceHelper;
+    @Autowired private ObjectRetriever objectRetriever;
+    @Autowired private ObjectUpdater objectUpdater;
+    @Autowired private OrgClosureManager closureManager;
+    @Autowired private BaseHelper baseHelper;
+    @Autowired private MatchingRuleRegistry matchingRuleRegistry;
+    @Autowired private MidpointConfiguration midpointConfiguration;
 
-    @Autowired
-    private ObjectRetriever objectRetriever;
-
-    @Autowired
-    private ObjectUpdater objectUpdater;
-
-    @Autowired
-    private OrgClosureManager closureManager;
+    private FullTextSearchConfigurationType fullTextSearchConfiguration;
 
     public SqlRepositoryServiceImpl(SqlRepositoryFactory repositoryFactory) {
         super(repositoryFactory);
@@ -120,35 +123,93 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         return closureManager;
     }
 
+    @FunctionalInterface
+    public interface ResultSupplier<RV> {
+        RV get() throws ObjectNotFoundException, SchemaException;
+    }
+
+    @FunctionalInterface
+    public interface ResultQueryBasedSupplier<RV> {
+        RV get(ObjectQuery query) throws SchemaException;
+    }
 
     @Override
     public <T extends ObjectType> PrismObject<T> getObject(Class<T> type, String oid,
-                                                           Collection<SelectorOptions<GetOperationOptions>> options,
-                                                           OperationResult result)
+            Collection<SelectorOptions<GetOperationOptions>> options, OperationResult result)
             throws ObjectNotFoundException, SchemaException {
         Validate.notNull(type, "Object type must not be null.");
         Validate.notEmpty(oid, "Oid must not be null or empty.");
         Validate.notNull(result, "Operation result must not be null.");
 
         LOGGER.debug("Getting object '{}' with oid '{}'.", new Object[]{type.getSimpleName(), oid});
-
-        final String operation = "getting";
-        int attempt = 1;
+        InternalMonitor.recordRepositoryRead(type, oid);
 
         OperationResult subResult = result.createMinorSubresult(GET_OBJECT);
         subResult.addParam("type", type.getName());
         subResult.addParam("oid", oid);
 
-        SqlPerformanceMonitor pm = getPerformanceMonitor();
-        long opHandle = pm.registerOperationStart("getObject");
+        return executeAttempts(oid, "getObject", "getting",
+                subResult, () -> objectRetriever.getObjectAttempt(type, oid, options, subResult)
+        );
+    }
 
+    private <RV> RV executeAttempts(String oid, String operationName, String operationVerb, OperationResult subResult,
+            ResultSupplier<RV> supplier) throws ObjectNotFoundException, SchemaException {
+        SqlPerformanceMonitor pm = getPerformanceMonitor();
+        long opHandle = pm.registerOperationStart(operationName);
+        int attempt = 1;
         try {
             while (true) {
                 try {
-                    return objectRetriever.getObjectAttempt(type, oid, options, subResult);
+                    return supplier.get();
                 } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(oid, operation, attempt, ex, subResult);
-                    pm.registerOperationNewTrial(opHandle, attempt);
+                    attempt = baseHelper.logOperationAttempt(oid, operationVerb, attempt, ex, subResult);
+                    pm.registerOperationNewAttempt(opHandle, attempt);
+                }
+            }
+        } finally {
+            pm.registerOperationFinish(opHandle, attempt);
+        }
+    }
+
+    private <RV> RV executeAttemptsNoSchemaException(String oid, String operationName, String operationVerb, OperationResult subResult,
+            ResultSupplier<RV> supplier) throws ObjectNotFoundException {
+        try {
+            return executeAttempts(oid, operationName, operationVerb, subResult, supplier);
+        } catch (SchemaException e) {
+            throw new AssertionError("Should not occur", e);
+        }
+    }
+
+    private <RV> RV executeAttemptsNoSchemaException(ObjectQuery query, String operationName, String operationVerb, OperationResult subResult,
+            Supplier<RV> emptyQueryResultSupplier, ResultQueryBasedSupplier<RV> supplier) {
+        try {
+            return executeAttempts(query, operationName, operationVerb, subResult, emptyQueryResultSupplier, supplier);
+        } catch (SchemaException e) {
+            throw new AssertionError("Should not occur", e);
+        }
+    }
+
+    private <RV> RV executeAttempts(ObjectQuery query, String operationName, String operationVerb, OperationResult subResult,
+            Supplier<RV> emptyQueryResultSupplier, ResultQueryBasedSupplier<RV> supplier) throws SchemaException {
+
+        if (query != null) {
+            query = simplify(query, subResult);
+            if (query == null) {
+                return emptyQueryResultSupplier.get();
+            }
+        }
+
+        SqlPerformanceMonitor pm = getPerformanceMonitor();
+        long opHandle = pm.registerOperationStart(operationName);
+        int attempt = 1;
+        try {
+            while (true) {
+                try {
+                    return supplier.get(query);
+                } catch (RuntimeException ex) {
+                    attempt = baseHelper.logOperationAttempt(null, operationVerb, attempt, ex, subResult);
+                    pm.registerOperationNewAttempt(opHandle, attempt);
                 }
             }
         } finally {
@@ -163,18 +224,15 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
 
         LOGGER.debug("Searching shadow owner for {}", shadowOid);
 
-        final String operation = "searching shadow owner";
-        int attempt = 1;
-
         OperationResult subResult = result.createSubresult(SEARCH_SHADOW_OWNER);
         subResult.addParam("shadowOid", shadowOid);
 
-        while (true) {
-            try {
-                return objectRetriever.searchShadowOwnerAttempt(shadowOid, options, subResult);
-            } catch (RuntimeException ex) {
-                attempt = logOperationAttempt(shadowOid, operation, attempt, ex, subResult);
-            }
+        try {
+            return executeAttempts(shadowOid, "searchShadowOwner", "searching shadow owner",
+					subResult, () -> objectRetriever.searchShadowOwnerAttempt(shadowOid, options, subResult)
+			);
+        } catch (ObjectNotFoundException|SchemaException e) {
+            throw new AssertionError("Should not occur; exception should have been treated in searchShadowOwnerAttempt.", e);
         }
     }
 
@@ -187,25 +245,22 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
 
         LOGGER.debug("Selecting account shadow owner for account {}.", new Object[]{accountOid});
 
-        final String operation = "listing account shadow owner";
-        int attempt = 1;
-
         OperationResult subResult = result.createSubresult(LIST_ACCOUNT_SHADOW);
         subResult.addParam("accountOid", accountOid);
 
-        while (true) {
-            try {
-                return objectRetriever.listAccountShadowOwnerAttempt(accountOid, subResult);
-            } catch (RuntimeException ex) {
-                attempt = logOperationAttempt(accountOid, operation, attempt, ex, subResult);
-            }
+        try {
+            return executeAttempts(accountOid, "listAccountShadowOwner", "listing account shadow owner",
+                    subResult, () -> objectRetriever.listAccountShadowOwnerAttempt(accountOid, subResult)
+            );
+        } catch (ObjectNotFoundException|SchemaException e) {
+            throw new AssertionError("Should not occur; exception should have been treated in searchShadowOwnerAttempt.", e);
         }
     }
 
+    @NotNull
     @Override
     public <T extends ObjectType> SearchResultList<PrismObject<T>> searchObjects(Class<T> type, ObjectQuery query,
-                                                                                 Collection<SelectorOptions<GetOperationOptions>> options,
-                                                                                 OperationResult result) throws SchemaException {
+            Collection<SelectorOptions<GetOperationOptions>> options, OperationResult result) throws SchemaException {
         Validate.notNull(type, "Object type must not be null.");
         Validate.notNull(result, "Operation result must not be null.");
 
@@ -214,46 +269,35 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         OperationResult subResult = result.createSubresult(SEARCH_OBJECTS);
         subResult.addParam("type", type.getName());
         subResult.addParam("query", query);
-        // subResult.addParam("paging", paging);
 
-        if (query != null) {
-            ObjectFilter filter = query.getFilter();
-            filter = ObjectQueryUtil.simplify(filter);
-            if (filter instanceof NoneFilter) {
-                subResult.recordSuccess();
-                return new SearchResultList(new ArrayList<PrismObject<T>>(0));
-            } else if (filter instanceof AllFilter){
-                query = query.cloneEmpty();
-                query.setFilter(null);
-            } else {
-                query = query.cloneEmpty();
-                query.setFilter(filter);
-            }
-
-        }
-
-        SqlPerformanceMonitor pm = getPerformanceMonitor();
-        long opHandle = pm.registerOperationStart("searchObjects");
-
-        final String operation = "searching";
-        int attempt = 1;
-        try {
-            while (true) {
-                try {
-                    return objectRetriever.searchObjectsAttempt(type, query, options, subResult);
-                } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(null, operation, attempt, ex, subResult);
-                    pm.registerOperationNewTrial(opHandle, attempt);
-                }
-            }
-        } finally {
-            pm.registerOperationFinish(opHandle, attempt);
-        }
+        return executeAttempts(query, "searchObjects", "searching", subResult,
+                () -> new SearchResultList<>(new ArrayList<PrismObject<T>>(0)),
+                (q) -> objectRetriever.searchObjectsAttempt(type, q, options, subResult));
     }
 
-    @Override
+    // utility method that simplifies a query, and checks for trivial cases (minimizing client code for such situation)
+    private ObjectQuery simplify(ObjectQuery query, OperationResult subResult) {
+        ObjectFilter filter = query.getFilter();
+        filter = ObjectQueryUtil.simplify(filter);
+        if (filter instanceof NoneFilter) {
+			subResult.recordSuccess();
+			return null;
+		} else {
+			query = replaceSimplifiedFilter(query, filter);
+		}
+        return query;
+    }
+
+    @NotNull
+	private ObjectQuery replaceSimplifiedFilter(ObjectQuery query, ObjectFilter filter) {
+		query = query.cloneEmpty();
+		query.setFilter(filter instanceof AllFilter ? null : filter);
+		return query;
+	}
+
+	@Override
     public <T extends Containerable> SearchResultList<T> searchContainers(Class<T> type, ObjectQuery query,
-                                                                          Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult)
+            Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult)
             throws SchemaException {
         Validate.notNull(type, "Object type must not be null.");
         Validate.notNull(parentResult, "Operation result must not be null.");
@@ -264,46 +308,36 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         result.addParam("type", type.getName());
         result.addParam("query", query);
 
-        if (query != null) {
-            ObjectFilter filter = query.getFilter();
-            filter = ObjectQueryUtil.simplify(filter);
-            if (filter instanceof NoneFilter) {
-                result.recordSuccess();
-                return new SearchResultList(new ArrayList<T>(0));
-            } else if (filter instanceof AllFilter) {
-                query = query.cloneEmpty();
-                query.setFilter(null);
-            } else {
-                query = query.cloneEmpty();
-                query.setFilter(filter);
-            }
+        return executeAttempts(query, "searchContainers", "searching", result,
+                () -> new SearchResultList<>(new ArrayList<T>(0)),
+                (q) -> objectRetriever.searchContainersAttempt(type, q, options, result));
+    }
+
+	@Override
+    public <T extends Containerable> int countContainers(Class<T> type, ObjectQuery query,
+            Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult) {
+        Validate.notNull(type, "Object type must not be null.");
+        Validate.notNull(parentResult, "Operation result must not be null.");
+
+        LOGGER.debug("Counting containers of type '{}', query (on trace level).", type.getSimpleName());
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace("Full query\n{}", query == null ? "undefined" : query.debugDump());
         }
 
-        SqlPerformanceMonitor pm = getPerformanceMonitor();
-        long opHandle = pm.registerOperationStart("searchContainers");
+        OperationResult result = parentResult.createSubresult(COUNT_CONTAINERS);
+        result.addParam("type", type.getName());
+        result.addParam("query", query);
 
-        final String operation = "searching";
-        int attempt = 1;
-        try {
-            while (true) {
-                try {
-                    return objectRetriever.searchContainersAttempt(type, query, options, result);
-                } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(null, operation, attempt, ex, result);
-                    pm.registerOperationNewTrial(opHandle, attempt);
-                }
-            }
-        } finally {
-            pm.registerOperationFinish(opHandle, attempt);
-        }
+        return executeAttemptsNoSchemaException(query, "countContainers", "counting", result,
+                () -> 0,
+                (q) -> objectRetriever.countContainersAttempt(type, q, options, result));
     }
 
     private <T> void logSearchInputParameters(Class<T> type, ObjectQuery query, boolean iterative, Boolean strictlySequential) {
         ObjectPaging paging = query != null ? query.getPaging() : null;
         LOGGER.debug("Searching objects of type '{}', query (on trace level), offset {}, count {}, iterative {}, strictlySequential {}.",
-                new Object[]{type.getSimpleName(), (paging != null ? paging.getOffset() : "undefined"),
-                        (paging != null ? paging.getMaxSize() : "undefined"), iterative, strictlySequential}
-        );
+                type.getSimpleName(), (paging != null ? paging.getOffset() : "undefined"),
+                (paging != null ? paging.getMaxSize() : "undefined"), iterative, strictlySequential);
 
         if (!LOGGER.isTraceEnabled()) {
             return;
@@ -332,9 +366,8 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         }
 
         LOGGER.debug("Adding object type '{}', overwrite={}, allowUnencryptedValues={}",
-                new Object[]{object.getCompileTimeClass().getSimpleName(), options.isOverwrite(),
-                        options.isAllowUnencryptedValues()}
-        );
+                object.getCompileTimeClass().getSimpleName(), options.isOverwrite(),
+                options.isAllowUnencryptedValues());
 
         if (InternalsConfig.encryptionChecks && !RepoAddOptions.isAllowUnencryptedValues(options)) {
             CryptoUtil.checkEncrypted(object);
@@ -356,6 +389,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         subResult.addParam("object", object);
         subResult.addParam("options", options);
 
+        // TODO use executeAttempts
         final String operation = "adding";
         int attempt = 1;
 
@@ -364,7 +398,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
             try {
                 return objectUpdater.addObjectAttempt(object, options, subResult);
             } catch (RuntimeException ex) {
-                attempt = logOperationAttempt(oid, operation, attempt, ex, subResult);
+                attempt = baseHelper.logOperationAttempt(oid, operation, attempt, ex, subResult);
             }
         }
     }
@@ -383,73 +417,53 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         Validate.notEmpty(oid, "Oid must not be null or empty.");
         Validate.notNull(result, "Operation result must not be null.");
 
-        LOGGER.debug("Deleting object type '{}' with oid '{}'", new Object[]{type.getSimpleName(), oid});
-
-        final String operation = "deleting";
-        int attempt = 1;
+        LOGGER.debug("Deleting object type '{}' with oid '{}'", type.getSimpleName(), oid);
 
         OperationResult subResult = result.createSubresult(DELETE_OBJECT);
         subResult.addParam("type", type.getName());
         subResult.addParam("oid", oid);
 
-        SqlPerformanceMonitor pm = getPerformanceMonitor();
-        long opHandle = pm.registerOperationStart("deleteObject");
-
-        try {
-            while (true) {
-                try {
-                    objectUpdater.deleteObjectAttempt(type, oid, subResult);
-                    return;
-                } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(oid, operation, attempt, ex, subResult);
-                    pm.registerOperationNewTrial(opHandle, attempt);
-                }
-            }
-        } finally {
-            pm.registerOperationFinish(opHandle, attempt);
-        }
+        executeAttemptsNoSchemaException(oid, "deleteObject", "deleting",
+                subResult, () -> objectUpdater.deleteObjectAttempt(type, oid, subResult)
+        );
     }
 
     @Override
     public <T extends ObjectType> int countObjects(Class<T> type, ObjectQuery query, OperationResult result) {
+        return countObjects(type, query, null, result);
+    }
+
+    public <T extends ObjectType> int countObjects(Class<T> type, ObjectQuery query,
+                Collection<SelectorOptions<GetOperationOptions>> options, OperationResult result) {
         Validate.notNull(type, "Object type must not be null.");
         Validate.notNull(result, "Operation result must not be null.");
 
-        LOGGER.debug("Counting objects of type '{}', query (on trace level).", new Object[]{type.getSimpleName()});
+        LOGGER.debug("Counting objects of type '{}', query (on trace level).", type.getSimpleName());
         if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("Full query\n{}", new Object[]{(query == null ? "undefined" : query.debugDump())});
+            LOGGER.trace("Full query\n{}", query == null ? "undefined" : query.debugDump());
         }
 
         OperationResult subResult = result.createMinorSubresult(COUNT_OBJECTS);
         subResult.addParam("type", type.getName());
         subResult.addParam("query", query);
 
-        if (query != null) {
-            ObjectFilter filter = query.getFilter();
-            filter = ObjectQueryUtil.simplify(filter);
-            if (filter instanceof NoneFilter) {
-                subResult.recordSuccess();
-                return 0;
-            }
-            query = query.cloneEmpty();
-            query.setFilter(filter);
-        }
-
-        final String operation = "counting";
-        int attempt = 1;
-
-        while (true) {
-            try {
-                return objectRetriever.countObjectsAttempt(type, query, subResult);
-            } catch (RuntimeException ex) {
-                attempt = logOperationAttempt(null, operation, attempt, ex, subResult);
-            }
-        }
+        return executeAttemptsNoSchemaException(query, "countObjects", "counting", subResult,
+                () -> 0,
+                (q) -> objectRetriever.countObjectsAttempt(type, q, options, subResult));
+    }
+    
+    @Override
+    public <T extends ObjectType> void modifyObject(Class<T> type, String oid,
+                                                    Collection<? extends ItemDelta> modifications,
+                                                    OperationResult result)
+            throws ObjectNotFoundException, SchemaException, ObjectAlreadyExistsException {
+        modifyObject(type, oid, modifications, null, result);
     }
 
     @Override
     public <T extends ObjectType> void modifyObject(Class<T> type, String oid,
                                                     Collection<? extends ItemDelta> modifications,
+                                                    RepoModifyOptions options,
                                                     OperationResult result)
             throws ObjectNotFoundException, SchemaException, ObjectAlreadyExistsException {
 
@@ -463,7 +477,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         subResult.addParam("oid", oid);
         subResult.addCollectionOfSerializablesAsParam("modifications", modifications);
 
-        if (modifications.isEmpty()) {
+        if (modifications.isEmpty() && !RepoModifyOptions.isExecuteIfNoChanges(options)) {
             LOGGER.debug("Modification list is empty, nothing was modified.");
             subResult.recordStatus(OperationResultStatus.SUCCESS, "Modification list is empty, nothing was modified.");
             return;
@@ -494,6 +508,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
             }
         }
 
+        // TODO executeAttempts?
         final String operation = "modifying";
         int attempt = 1;
 
@@ -503,11 +518,11 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         try {
             while (true) {
                 try {
-                    objectUpdater.modifyObjectAttempt(type, oid, modifications, subResult);
+                    objectUpdater.modifyObjectAttempt(type, oid, modifications, options, subResult);
                     return;
                 } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(oid, operation, attempt, ex, subResult);
-                    pm.registerOperationNewTrial(opHandle, attempt);
+                    attempt = baseHelper.logOperationAttempt(oid, operation, attempt, ex, subResult);
+                    pm.registerOperationNewAttempt(opHandle, attempt);
                 }
             }
         } finally {
@@ -518,9 +533,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
 
     @Override
     public <T extends ShadowType> List<PrismObject<T>> listResourceObjectShadows(String resourceOid,
-                                                                                 Class<T> resourceObjectShadowType,
-                                                                                 OperationResult result)
-            throws ObjectNotFoundException, SchemaException {
+            Class<T> resourceObjectShadowType, OperationResult result) throws ObjectNotFoundException, SchemaException {
         Validate.notEmpty(resourceOid, "Resource oid must not be null or empty.");
         Validate.notNull(resourceObjectShadowType, "Resource object shadow type must not be null.");
         Validate.notNull(result, "Operation result must not be null.");
@@ -537,13 +550,14 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         SqlPerformanceMonitor pm = getPerformanceMonitor();
         long opHandle = pm.registerOperationStart("listResourceObjectShadow");
 
+        // TODO executeAttempts
         try {
             while (true) {
                 try {
                     return objectRetriever.listResourceObjectShadowsAttempt(resourceOid, resourceObjectShadowType, subResult);
                 } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(resourceOid, operation, attempt, ex, subResult);
-                    pm.registerOperationNewTrial(opHandle, attempt);
+                    attempt = baseHelper.logOperationAttempt(resourceOid, operation, attempt, ex, subResult);
+                    pm.registerOperationNewAttempt(opHandle, attempt);
                 }
             }
         } finally {
@@ -598,7 +612,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
     private void readDetailsFromConnection(RepositoryDiag diag, final SqlRepositoryConfiguration config) {
         final List<LabeledString> details = diag.getAdditionalDetails();
 
-        Session session = getSessionFactory().openSession();
+        Session session = baseHelper.getSessionFactory().openSession();
         try {
             session.beginTransaction();
             session.doWork(new Work() {
@@ -621,19 +635,20 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
             });
             session.getTransaction().commit();
 
-            if (!(getSessionFactory() instanceof SessionFactoryImpl)) {
+			SessionFactory sessionFactory = baseHelper.getSessionFactory();
+            if (!(sessionFactory instanceof SessionFactoryImpl)) {
                 return;
             }
-            SessionFactoryImpl factory = (SessionFactoryImpl) getSessionFactory();
+            SessionFactoryImpl sessionFactoryImpl = (SessionFactoryImpl) sessionFactory;
             // we try to override configuration which was read from sql repo configuration with
             // real configuration from session factory
-            String dialect = factory.getDialect() != null ? factory.getDialect().getClass().getName() : null;
+            String dialect = sessionFactoryImpl.getDialect() != null ? sessionFactoryImpl.getDialect().getClass().getName() : null;
             details.add(new LabeledString(DETAILS_HIBERNATE_DIALECT, dialect));
         } catch (Throwable th) {
             //nowhere to report error (no operation result available)
             session.getTransaction().rollback();
         } finally {
-            cleanupSessionAndResult(session, null);
+            baseHelper.cleanupSessionAndResult(session, null);
         }
     }
 
@@ -679,7 +694,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
 
     @Override
     public void testOrgClosureConsistency(boolean repairIfNecessary, OperationResult testResult) {
-        getClosureManager().checkAndOrRebuild(this, true, repairIfNecessary, false, false, testResult);
+        getClosureManager().checkAndOrRebuild(true, repairIfNecessary, false, false, testResult);
     }
 
     @Override
@@ -695,6 +710,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         subResult.addParam("type", type.getName());
         subResult.addParam("oid", oid);
 
+        // TODO executeAttempts
         SqlPerformanceMonitor pm = getPerformanceMonitor();
         long opHandle = pm.registerOperationStart(GET_VERSION);
 
@@ -705,8 +721,8 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
                 try {
                     return objectRetriever.getVersionAttempt(type, oid, subResult);
                 } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(null, operation, attempt, ex, subResult);
-                    pm.registerOperationNewTrial(opHandle, attempt);
+                    attempt = baseHelper.logOperationAttempt(null, operation, attempt, ex, subResult);
+                    pm.registerOperationNewAttempt(opHandle, attempt);
                 }
             }
         } finally {
@@ -716,10 +732,8 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
 
     @Override
     public <T extends ObjectType> SearchResultMetadata searchObjectsIterative(Class<T> type, ObjectQuery query,
-                                                                              ResultHandler<T> handler,
-                                                                              Collection<SelectorOptions<GetOperationOptions>> options,
-                                                                              boolean strictlySequential,
-                                                                              OperationResult result) throws SchemaException {
+            ResultHandler<T> handler, Collection<SelectorOptions<GetOperationOptions>> options, boolean strictlySequential,
+            OperationResult result) throws SchemaException {
         Validate.notNull(type, "Object type must not be null.");
         Validate.notNull(handler, "Result handler must not be null.");
         Validate.notNull(result, "Operation result must not be null.");
@@ -736,15 +750,10 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
             if (filter instanceof NoneFilter) {
                 subResult.recordSuccess();
                 return null;
-                //shouldn't be this in ObjectQueryUtil.simplify?
-            } else if (filter instanceof AllFilter){
-            	query = query.cloneEmpty();
-            	query.setFilter(null);
             } else {
-            	query = query.cloneEmpty();
-            	query.setFilter(filter);
-            }
-        }
+				query = replaceSimplifiedFilter(query, filter);
+			}
+		}
 
         if (getConfiguration().isIterativeSearchByPaging()) {
             if (strictlySequential) {
@@ -755,6 +764,11 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
             return null;
         }
 
+        /*
+         * Here we store OIDs that were already sent to the client during previous attempts.
+         */
+        Set<String> retrievedOids = new HashSet<>();
+
 //        turned off until resolved 'unfinished operation' warning
 //        SqlPerformanceMonitor pm = getPerformanceMonitor();
 //        long opHandle = pm.registerOperationStart(SEARCH_OBJECTS_ITERATIVE);
@@ -764,11 +778,11 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         try {
             while (true) {
                 try {
-                    objectRetriever.searchObjectsIterativeAttempt(type, query, handler, options, subResult);
+                    objectRetriever.searchObjectsIterativeAttempt(type, query, handler, options, subResult, retrievedOids);
                     return null;
                 } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(null, operation, attempt, ex, subResult);
-//                    pm.registerOperationNewTrial(opHandle, attempt);
+                    attempt = baseHelper.logOperationAttempt(null, operation, attempt, ex, subResult);
+//                    pm.registerOperationNewAttempt(opHandle, attempt);
                 }
             }
         } finally {
@@ -789,6 +803,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
             return false;
         }
 
+        // TODO executeAttempts
         int attempt = 1;
 
         SqlPerformanceMonitor pm = getPerformanceMonitor();
@@ -798,8 +813,8 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
                 try {
                     return objectRetriever.isAnySubordinateAttempt(upperOrgOid, lowerObjectOids);
                 } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(upperOrgOid, "isAnySubordinate", attempt, ex, null);
-                    pm.registerOperationNewTrial(opHandle, attempt);
+                    attempt = baseHelper.logOperationAttempt(upperOrgOid, "isAnySubordinate", attempt, ex, null);
+                    pm.registerOperationNewAttempt(opHandle, attempt);
                 }
             }
         } finally {
@@ -821,6 +836,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         if (LOGGER.isTraceEnabled())
             LOGGER.trace("Advancing sequence {}", oid);
 
+        // TODO executeAttempts
         int attempt = 1;
 
         SqlPerformanceMonitor pm = getPerformanceMonitor();
@@ -830,8 +846,8 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
                 try {
                     return sequenceHelper.advanceSequenceAttempt(oid, result);
                 } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(oid, "advanceSequence", attempt, ex, null);
-                    pm.registerOperationNewTrial(opHandle, attempt);
+                    attempt = baseHelper.logOperationAttempt(oid, "advanceSequence", attempt, ex, null);
+                    pm.registerOperationNewAttempt(opHandle, attempt);
                 }
             }
         } finally {
@@ -857,6 +873,7 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
             return;
         }
 
+        // TODO executeAttempts
         int attempt = 1;
 
         SqlPerformanceMonitor pm = getPerformanceMonitor();
@@ -867,8 +884,8 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
                     sequenceHelper.returnUnusedValuesToSequenceAttempt(oid, unusedValues, result);
                     return;
                 } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(oid, "returnUnusedValuesToSequence", attempt, ex, null);
-                    pm.registerOperationNewTrial(opHandle, attempt);
+                    attempt = baseHelper.logOperationAttempt(oid, "returnUnusedValuesToSequence", attempt, ex, null);
+                    pm.registerOperationNewAttempt(opHandle, attempt);
                 }
             }
         } finally {
@@ -877,28 +894,29 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
 	}
 
     @Override
-    public String executeArbitraryQuery(String query, OperationResult result) {
-        Validate.notEmpty(query, "Query must not be empty.");
+    public RepositoryQueryDiagResponse executeQueryDiagnostics(RepositoryQueryDiagRequest request, OperationResult result) {
+        Validate.notNull(request, "Request must not be null.");
         Validate.notNull(result, "Operation result must not be null.");
 
-        LOGGER.debug("Executing arbitrary query '{}'.", query);
+        LOGGER.debug("Executing arbitrary query '{}'.", request);
 
         final String operation = "querying";
         int attempt = 1;
 
-        OperationResult subResult = result.createMinorSubresult(EXECUTE_ARBITRARY_QUERY);
-        subResult.addParam("query", query);
+        OperationResult subResult = result.createMinorSubresult(EXECUTE_QUERY_DIAGNOSTICS);
+        subResult.addParam("query", request);
 
+        // TODO executeAttempts
         SqlPerformanceMonitor pm = getPerformanceMonitor();
-        long opHandle = pm.registerOperationStart("executeArbitraryQuery");
+        long opHandle = pm.registerOperationStart("executeQueryDiagnostics");
 
         try {
             while (true) {
                 try {
-                    return objectRetriever.executeArbitraryQueryAttempt(query, subResult);
+                    return objectRetriever.executeQueryDiagnosticsRequest(request, subResult);
                 } catch (RuntimeException ex) {
-                    attempt = logOperationAttempt(null, operation, attempt, ex, subResult);
-                    pm.registerOperationNewTrial(opHandle, attempt);
+                    attempt = baseHelper.logOperationAttempt(null, operation, attempt, ex, subResult);
+                    pm.registerOperationNewAttempt(opHandle, attempt);
                 }
             }
         } finally {
@@ -906,4 +924,125 @@ public class SqlRepositoryServiceImpl extends SqlBaseService implements Reposito
         }
     }
 
+	@Override
+	public <O extends ObjectType> boolean selectorMatches(ObjectSelectorType objectSelector,
+			PrismObject<O> object, Trace logger, String logMessagePrefix) throws SchemaException {
+		if (objectSelector == null) {
+			logger.trace("{} null object specification", logMessagePrefix);
+			return false;
+		}
+		
+		SearchFilterType specFilterType = objectSelector.getFilter();
+		ObjectReferenceType specOrgRef = objectSelector.getOrgRef();
+		QName specTypeQName = objectSelector.getType();     // now it does not matter if it's unqualified
+		PrismObjectDefinition<O> objectDefinition = object.getDefinition();
+		
+		// Type
+		if (specTypeQName != null && !QNameUtil.match(specTypeQName, objectDefinition.getTypeName())) {
+			logger.trace("{} type mismatch, expected {}, was {}", logMessagePrefix, specTypeQName, objectDefinition.getTypeName());
+			return false;
+		}
+		
+		// Filter
+		if (specFilterType != null) {
+			ObjectFilter specFilter = QueryJaxbConvertor.createObjectFilter(object.getCompileTimeClass(), specFilterType, object.getPrismContext());
+            ObjectTypeUtil.normalizeFilter(specFilter);		//  we assume object is already normalized
+            if (specFilter != null) {
+				ObjectQueryUtil.assertPropertyOnly(specFilter, logMessagePrefix + " filter is not property-only filter");
+			}
+			try {
+				if (!ObjectQuery.match(object, specFilter, matchingRuleRegistry)) {
+					logger.trace("{} object OID {}", logMessagePrefix, object.getOid() );
+					return false;
+				}
+			} catch (SchemaException ex) {
+				throw new SchemaException(logMessagePrefix + "could not apply for " + object + ": "
+						+ ex.getMessage(), ex);
+			}
+		}
+			
+		// Org	
+		if (specOrgRef != null) {
+			if (!isDescendant(object, specOrgRef.getOid())) {
+				LOGGER.trace("{} object OID {} (org={})",
+						logMessagePrefix, object.getOid(), specOrgRef.getOid());
+				return false;
+			}			
+		}
+		
+		return true;
+	}
+
+	@Override
+	public <O extends ObjectType> boolean isDescendant(PrismObject<O> object, String orgOid) throws SchemaException {
+		List<ObjectReferenceType> objParentOrgRefs = object.asObjectable().getParentOrgRef();
+		List<String> objParentOrgOids = new ArrayList<>(objParentOrgRefs.size());
+		for (ObjectReferenceType objParentOrgRef: objParentOrgRefs) {
+			objParentOrgOids.add(objParentOrgRef.getOid());
+		}
+		return isAnySubordinate(orgOid, objParentOrgOids);
+	}
+	
+	@Override
+	public <O extends ObjectType> boolean isAncestor(PrismObject<O> object, String oid) throws SchemaException {
+		if (object.getOid() == null) {
+			return false;
+		}
+		Collection<String> oidList = new ArrayList<>(1);
+		oidList.add(oid);
+		return isAnySubordinate(object.getOid(), oidList);
+	}
+
+	@Override
+	public QName getApproximateSupportedMatchingRule(Class<?> dataType, QName originalMatchingRule) {
+		if (String.class.equals(dataType)) {
+			return StringMatcher.getApproximateSupportedMatchingRule(originalMatchingRule);
+		} else if (PolyString.class.equals(dataType) || PolyStringType.class.equals(dataType)) {
+			return PolyStringMatcher.getApproximateSupportedMatchingRule(originalMatchingRule);
+		} else {
+			return DefaultMatcher.getApproximateSupportedMatchingRule(originalMatchingRule);
+		}
+	}
+
+	@Override
+	public void applyFullTextSearchConfiguration(FullTextSearchConfigurationType fullTextSearch) {
+		LOGGER.info("Applying full text search configuration ({} entries)",
+				fullTextSearch != null ? fullTextSearch.getIndexed().size() : 0);
+		fullTextSearchConfiguration = fullTextSearch;
+	}
+
+	@Override
+	public FullTextSearchConfigurationType getFullTextSearchConfiguration() {
+		return fullTextSearchConfiguration;
+	}
+
+	@Override
+	public void postInit(OperationResult result) throws SchemaException {
+
+		SystemConfigurationType systemConfiguration;
+		try {
+			systemConfiguration = getObject(SystemConfigurationType.class,
+					SystemObjectsType.SYSTEM_CONFIGURATION.value(), null, result).asObjectable();
+		} catch (ObjectNotFoundException e) {
+			// ok, no problem e.g. for tests or initial startup
+			LOGGER.debug("System configuration not found, exiting postInit method.");
+			return;
+		}
+
+		SystemConfigurationHolder.setCurrentConfiguration(systemConfiguration);
+
+		Configuration systemConfigFromFile = midpointConfiguration.getConfiguration(MidpointConfiguration.SYSTEM_CONFIGURATION_SECTION);
+		if (systemConfigFromFile != null && systemConfigFromFile
+				.getBoolean(LoggingConfigurationManager.SYSTEM_CONFIGURATION_SKIP_REPOSITORY_LOGGING_SETTINGS, false)) {
+			LOGGER.warn("Skipping application of repository logging configuration because {}=true", LoggingConfigurationManager.SYSTEM_CONFIGURATION_SKIP_REPOSITORY_LOGGING_SETTINGS);
+		} else {
+			LoggingConfigurationType loggingConfig = ProfilingConfigurationManager.checkSystemProfilingConfiguration(
+					systemConfiguration.asPrismObject());
+			if (loggingConfig != null) {
+				LoggingConfigurationManager.configure(loggingConfig, systemConfiguration.getVersion(), result);
+			}
+		}
+		applyFullTextSearchConfiguration(systemConfiguration.getFullTextSearch());
+        SystemConfigurationTypeUtil.applyOperationResultHandling(systemConfiguration);
+	}
 }

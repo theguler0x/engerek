@@ -17,14 +17,17 @@
 package com.evolveum.midpoint.repo.sql.data.common;
 
 import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.repo.sql.data.RepositoryContext;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.RPolyString;
 import com.evolveum.midpoint.repo.sql.util.DtoTranslationException;
 import com.evolveum.midpoint.repo.sql.util.IdGeneratorResult;
+import com.evolveum.midpoint.repo.sql.util.MidPointJoinedPersister;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.GenericObjectType;
 import org.hibernate.annotations.ForeignKey;
+import org.hibernate.annotations.Persister;
 
 import javax.persistence.Embedded;
 import javax.persistence.Entity;
@@ -38,6 +41,7 @@ import java.util.Collection;
 @Entity
 @ForeignKey(name = "fk_generic_object")
 @Table(uniqueConstraints = @UniqueConstraint(name = "uc_generic_object_name", columnNames = {"name_norm"}))
+@Persister(impl = MidPointJoinedPersister.class)
 public class RGenericObject extends RObject<GenericObjectType> {
 
     private RPolyString name;
@@ -82,9 +86,9 @@ public class RGenericObject extends RObject<GenericObjectType> {
         return result;
     }
 
-    public static void copyFromJAXB(GenericObjectType jaxb, RGenericObject repo, PrismContext prismContext,
+    public static void copyFromJAXB(GenericObjectType jaxb, RGenericObject repo, RepositoryContext repositoryContext,
                                     IdGeneratorResult generatorResult) throws DtoTranslationException {
-        RObject.copyFromJAXB(jaxb, repo, prismContext, generatorResult);
+        RObject.copyFromJAXB(jaxb, repo, repositoryContext, generatorResult);
 
         repo.setName(RPolyString.copyFromJAXB(jaxb.getName()));
         repo.setObjectType(jaxb.getObjectType());

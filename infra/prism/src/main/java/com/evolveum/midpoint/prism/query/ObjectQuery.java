@@ -91,11 +91,15 @@ public class ObjectQuery implements DebugDumpable, Serializable {
 		query.setPaging(paging);
 		return query;
 	}
-	
+
+	// although we do our best to match even incomplete relations (null, unqualified), ultimately
+	// it is the client's responsibility to ensure relations in object and filter are normalized (namely: null -> org:default)
 	public static <T extends Objectable> boolean match(PrismObject<T> object, ObjectFilter filter, MatchingRuleRegistry matchingRuleRegistry) throws SchemaException{
 		return filter.match(object.getValue(), matchingRuleRegistry);
 	}
 
+	// although we do our best to match even incomplete relations (null, unqualified), ultimately
+	// it is the client's responsibility to ensure relations in object and filter are normalized (namely: null -> org:default)
 	public static boolean match(Containerable object, ObjectFilter filter, MatchingRuleRegistry matchingRuleRegistry) throws SchemaException{
 		return filter.match(object.asPrismContainerValue(), matchingRuleRegistry);
 	}
@@ -177,4 +181,71 @@ public class ObjectQuery implements DebugDumpable, Serializable {
 		return sb.toString();
 	}
 
+	public void addFilter(ObjectFilter objectFilter) {
+		if (objectFilter == null || objectFilter instanceof AllFilter) {
+			// nothing to do
+		} else if (filter == null || filter instanceof AllFilter) {
+			setFilter(objectFilter);
+		} else {
+			setFilter(AndFilter.createAnd(objectFilter, filter));
+		}
+	}
+
+	// use when offset/maxSize is expected
+	public Integer getOffset() {
+		if (paging == null) {
+			return null;
+		}
+		if (paging.getCookie() != null) {
+			throw new UnsupportedOperationException("Paging cookie is not supported here.");
+		}
+		return paging.getOffset();
+	}
+
+	// use when offset/maxSize is expected
+	public Integer getMaxSize() {
+		if (paging == null) {
+			return null;
+		}
+		if (paging.getCookie() != null) {
+			throw new UnsupportedOperationException("Paging cookie is not supported here.");
+		}
+		return paging.getMaxSize();
+	}
+
+	@SuppressWarnings("EqualsWhichDoesntCheckParameterClass")
+	public boolean equals(Object o) {
+		return equals(o, true);
+	}
+
+	public boolean equivalent(Object o) {
+		return equals(o, false);
+	}
+
+	public boolean equals(Object o, boolean exact) {
+		if (this == o)
+			return true;
+		if (o == null || getClass() != o.getClass())
+			return false;
+
+		ObjectQuery that = (ObjectQuery) o;
+
+		if (allowPartialResults != that.allowPartialResults)
+			return false;
+		if (useNewQueryInterpreter != that.useNewQueryInterpreter)
+			return false;
+		if (filter != null ? !filter.equals(that.filter, exact) : that.filter != null)
+			return false;
+		return paging != null ? paging.equals(that.paging, exact) : that.paging == null;
+
+	}
+
+	@Override
+	public int hashCode() {
+		int result = filter != null ? filter.hashCode() : 0;
+		result = 31 * result + (paging != null ? paging.hashCode() : 0);
+		result = 31 * result + (allowPartialResults ? 1 : 0);
+		result = 31 * result + (useNewQueryInterpreter ? 1 : 0);
+		return result;
+	}
 }

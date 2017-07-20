@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2014 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ import java.util.List;
 import javax.annotation.PostConstruct;
 import javax.xml.namespace.QName;
 
+import com.evolveum.midpoint.common.refinery.RefinedResourceSchemaImpl;
+import com.evolveum.midpoint.prism.PrismPropertyDefinitionImpl;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -52,6 +54,7 @@ import com.evolveum.midpoint.task.api.TaskRunResult.TaskRunResultStatus;
 import com.evolveum.midpoint.util.DOMUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
@@ -109,15 +112,13 @@ public class ImportAccountsFromResourceTaskHandler extends AbstractSearchIterati
         super("Import from resource", OperationConstants.IMPORT_ACCOUNTS_FROM_RESOURCE);
         setLogFinishInfo(true);
         setPreserveStatistics(false);
-        setEnableIterationStatistics(true);
         setEnableSynchronizationStatistics(true);
-        setEnableActionsExecutedStatistics(true);
     }
 
     @PostConstruct
     private void initialize() {
         // this call must not be in the constructor, because prismContext is not yet initialized at that moment
-        objectclassPropertyDefinition = new PrismPropertyDefinition<>(ModelConstants.OBJECTCLASS_PROPERTY_NAME,
+        objectclassPropertyDefinition = new PrismPropertyDefinitionImpl<>(ModelConstants.OBJECTCLASS_PROPERTY_NAME,
                 DOMUtil.XSD_QNAME, prismContext);
 
         taskManager.registerHandler(HANDLER_URI, this);
@@ -171,6 +172,7 @@ public class ImportAccountsFromResourceTaskHandler extends AbstractSearchIterati
         // the run(task) method.
         // Note: the thread may be actually started on a different node
         taskManager.switchToBackground(task, result);
+		result.setBackgroundTaskOid(task.getOid());
         result.computeStatus("Import launch failed");
 
         LOGGER.trace("Import from resource {} switched to background, control thread returning with task {}", ObjectTypeUtil.toShortString(resource), task);
@@ -195,7 +197,7 @@ public class ImportAccountsFromResourceTaskHandler extends AbstractSearchIterati
 		RefinedResourceSchema refinedSchema;
 		ObjectClassComplexTypeDefinition objectClass;
         try {
-            refinedSchema = RefinedResourceSchema.getRefinedSchema(resource, LayerType.MODEL, prismContext);
+            refinedSchema = RefinedResourceSchemaImpl.getRefinedSchema(resource, LayerType.MODEL, prismContext);
         
 	        if (LOGGER.isTraceEnabled()) {
 	        	LOGGER.trace("Refined schema:\n{}", refinedSchema.debugDump());
@@ -267,9 +269,9 @@ public class ImportAccountsFromResourceTaskHandler extends AbstractSearchIterati
     }
     
     /**
-     * Imports a single shadow. Synchronously. The task is NOT switched to background by default.
+     * Imports a single shadow. Synchronously. The task is NOT switched to background by default. 
      */
-    public boolean importSingleShadow(String shadowOid, Task task, OperationResult parentResult) throws ObjectNotFoundException, CommunicationException, SchemaException, ConfigurationException, SecurityViolationException {
+    public boolean importSingleShadow(String shadowOid, Task task, OperationResult parentResult) throws ObjectNotFoundException, CommunicationException, SchemaException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
     	
     	PrismObject<ShadowType> shadow = provisioningService.getObject(ShadowType.class, shadowOid, null, task, parentResult);
     	PrismObject<ResourceType> resource = provisioningService.getObject(ResourceType.class, ShadowUtil.getResourceOid(shadow), null, task, parentResult);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,20 +15,18 @@
  */
 package com.evolveum.midpoint.model.common.expression.script;
 
-import com.evolveum.midpoint.common.monitor.InternalMonitor;
-import com.evolveum.midpoint.model.common.expression.ExpressionUtil;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.model.common.expression.functions.FunctionLibrary;
+import com.evolveum.midpoint.model.common.expression.functions.FunctionLibraryUtil;
 import com.evolveum.midpoint.model.common.expression.script.jsr223.Jsr223ScriptEvaluator;
-import com.evolveum.midpoint.prism.ItemDefinition;
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismPropertyDefinition;
-import com.evolveum.midpoint.prism.PrismPropertyValue;
-import com.evolveum.midpoint.prism.crypto.AESProtector;
+import com.evolveum.midpoint.prism.*;
+import com.evolveum.midpoint.prism.crypto.ProtectorImpl;
 import com.evolveum.midpoint.prism.crypto.Protector;
 import com.evolveum.midpoint.prism.util.PrismTestUtil;
 import com.evolveum.midpoint.schema.MidPointPrismContextFactory;
 import com.evolveum.midpoint.schema.constants.MidPointConstants;
+import com.evolveum.midpoint.schema.internals.InternalCounters;
+import com.evolveum.midpoint.schema.internals.InternalMonitor;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.ObjectResolver;
 import com.evolveum.midpoint.test.util.DirectoryFileObjectResolver;
@@ -82,9 +80,9 @@ public class TestScriptCaching {
     	System.out.println("Setting up expression factory and evaluator");
     	PrismContext prismContext = PrismTestUtil.getPrismContext();
     	ObjectResolver resolver = new DirectoryFileObjectResolver(OBJECTS_DIR);
-    	Protector protector = new AESProtector();
+    	Protector protector = new ProtectorImpl();
         Collection<FunctionLibrary> functions = new ArrayList<FunctionLibrary>();
-        functions.add(ExpressionUtil.createBasicFunctionLibrary(prismContext, protector));
+        functions.add(FunctionLibraryUtil.createBasicFunctionLibrary(prismContext, protector));
 		scriptExpressionfactory = new ScriptExpressionFactory(resolver, prismContext, protector);
 		scriptExpressionfactory.setFunctions(functions);
         evaluator = new Jsr223ScriptEvaluator("groovy", prismContext, protector);
@@ -130,15 +128,15 @@ public class TestScriptCaching {
     }
     	
     private void assertScriptMonitor(int expCompilations, int expExecutions, String desc) {
-		assertEquals("Unexpected number of script compilations after "+desc, expCompilations, InternalMonitor.getScriptCompileCount());
-		assertEquals("Unexpected number of script executions after "+desc, expExecutions, InternalMonitor.getScriptExecutionCount());
+		assertEquals("Unexpected number of script compilations after "+desc, expCompilations, InternalMonitor.getCount(InternalCounters.SCRIPT_COMPILE_COUNT));
+		assertEquals("Unexpected number of script executions after "+desc, expExecutions, InternalMonitor.getCount(InternalCounters.SCRIPT_EXECUTION_COUNT));
 	}
 
 	private long executeScript(String filname, String expectedResult, String desc) throws SchemaException, IOException, JAXBException, ExpressionEvaluationException, ObjectNotFoundException {
         // GIVEN
     	OperationResult result = new OperationResult(desc);
     	ScriptExpressionEvaluatorType scriptType = parseScriptType(filname);
-    	ItemDefinition outputDefinition = new PrismPropertyDefinition(PROPERTY_NAME, DOMUtil.XSD_STRING, PrismTestUtil.getPrismContext());
+    	ItemDefinition outputDefinition = new PrismPropertyDefinitionImpl(PROPERTY_NAME, DOMUtil.XSD_STRING, PrismTestUtil.getPrismContext());
     	
     	ScriptExpression scriptExpression = scriptExpressionfactory.createScriptExpression(scriptType, outputDefinition, desc);
 

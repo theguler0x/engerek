@@ -15,7 +15,6 @@
  */
 package com.evolveum.midpoint.model.impl.util;
 
-import com.evolveum.midpoint.model.impl.sync.TaskHandlerUtil;
 import com.evolveum.midpoint.prism.PrismProperty;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.repo.cache.RepositoryCache;
@@ -53,6 +52,7 @@ public abstract class AbstractSearchIterativeResultHandler<O extends ObjectType>
 
 	public static final int WORKER_THREAD_WAIT_FOR_REQUEST = 500;
 	public static final long PROGRESS_UPDATE_INTERVAL = 3000L;
+	private static final long REQUEST_QUEUE_OFFER_TIMEOUT = 1000L;
 
 	private final TaskManager taskManager;
 	private Task coordinatorTask;
@@ -175,7 +175,11 @@ public abstract class AbstractSearchIterativeResultHandler<O extends ObjectType>
 		if (requestQueue != null) {
 			// by not putting anything in the parent result we hope the status will be SUCCESS
 			try {
-				requestQueue.put(request);				// blocking if no free space in the queue
+				while (!requestQueue.offer(request, REQUEST_QUEUE_OFFER_TIMEOUT, TimeUnit.MILLISECONDS)) {
+					if (shouldStop(parentResult)) {
+						return false;
+					}
+				}
 			} catch (InterruptedException e) {
 				recordInterrupted(parentResult);
 				return false;
@@ -184,23 +188,25 @@ public abstract class AbstractSearchIterativeResultHandler<O extends ObjectType>
 			processRequest(request, coordinatorTask, parentResult);			// coordinator is also a worker here
 		}
 
-		// stop can be requested either internally (by handler or error in any worker thread)
-		// or externally (by the task manager)
+		return !shouldStop(parentResult);
+	}
 
+	// stop can be requested either internally (by handler or error in any worker thread)
+	// or externally (by the task manager)
+	private boolean shouldStop(OperationResult parentResult) {
 		if (stopRequestedByAnyWorker.get()) {
-			return false;
+			return true;
 		}
 
 		if (!coordinatorTask.canRun()) {
 			recordInterrupted(parentResult);
-			return false;
+			return true;
 		}
-
-		return true;
+		return false;
 	}
 
 	private void recordInterrupted(OperationResult parentResult) {
-		parentResult.createSubresult(taskOperationPrefix + ".handle").recordPartialError("Interrupted");
+		parentResult.createSubresult(taskOperationPrefix + ".handle").recordWarning("Interrupted");
 		if (LOGGER.isWarnEnabled()) {
             LOGGER.warn("{} {} interrupted",new Object[]{
                     getProcessShortNameCapitalized(), getContextDesc()});
@@ -246,7 +252,7 @@ public abstract class AbstractSearchIterativeResultHandler<O extends ObjectType>
 				opResult.addSubresult(workerSpecificResult);
 			}
 		}
-		opResult.computeStatus("Errors during processing");
+		opResult.computeStatus("Issues during processing");
 
 		if (getErrors() > 0) {
 			opResult.setStatus(OperationResultStatus.PARTIAL_ERROR);
@@ -268,6 +274,11 @@ public abstract class AbstractSearchIterativeResultHandler<O extends ObjectType>
 
 		@Override
 		public void run(Task workerTask) {
+
+			// temporary hack: how to see thread name for this task
+			workerTask.setName(workerTask.getName().getOrig() + " (" + Thread.currentThread().getName() + ")");
+			workerSpecificResult.addContext("subtaskName", workerTask.getName());
+
 			while (workerTask.canRun()) {
 				ProcessingRequest request;
 				try {
@@ -307,8 +318,7 @@ public abstract class AbstractSearchIterativeResultHandler<O extends ObjectType>
 			RepositoryCache.enter();
 
 			if (LOGGER.isTraceEnabled()) {
-				LOGGER.trace("{} starting for {} {}",new Object[] {
-						getProcessShortNameCapitalized(), object, getContextDesc()});
+				LOGGER.trace("{} starting for {} {}", getProcessShortNameCapitalized(), object, getContextDesc());
 			}
 
 			if (isRecordIterationStatistics()) {
@@ -376,18 +386,18 @@ public abstract class AbstractSearchIterativeResultHandler<O extends ObjectType>
 
 			if (logObjectProgress) {
 				if (LOGGER.isInfoEnabled()) {
-					LOGGER.info("{} object {} {} done with status {} (this one: {} ms, avg: {} ms) (total progress: {}, wall clock avg: {} ms)", new Object[]{
+					LOGGER.info("{} object {} {} done with status {} (this one: {} ms, avg: {} ms) (total progress: {}, wall clock avg: {} ms)",
 							getProcessShortNameCapitalized(), object,
 							getContextDesc(), result.getStatus(),
 							duration, total/progress, progress,
-							(System.currentTimeMillis()-this.startTime)/progress});
+							(System.currentTimeMillis()-this.startTime)/progress);
 				}
 			}
 		}
 
 		if (LOGGER.isTraceEnabled()) {
-			LOGGER.trace("{} finished for {} {}, result:\n{}", new Object[]{
-					getProcessShortNameCapitalized(), object, getContextDesc(), result.debugDump()});
+			LOGGER.trace("{} finished for {} {}, result:\n{}", getProcessShortNameCapitalized(), object, getContextDesc(),
+					result.debugDump());
 		}
 
 		if (!cont) {
@@ -431,9 +441,7 @@ public abstract class AbstractSearchIterativeResultHandler<O extends ObjectType>
 			message = result.getMessage();
 		}
 		if (logErrors && LOGGER.isErrorEnabled()) {
-			LOGGER.error("{} of object {} {} failed: {}", new Object[] {
-					getProcessShortNameCapitalized(),
-					object, getContextDesc(), message, ex });
+			LOGGER.error("{} of object {} {} failed: {}", getProcessShortNameCapitalized(), object, getContextDesc(), message, ex);
 		}
 		// We do not want to override the result set by handler. This is just a fallback case
 		if (result.isUnknown() || result.isInProgress()) {
@@ -497,7 +505,7 @@ public abstract class AbstractSearchIterativeResultHandler<O extends ObjectType>
 			// we intentionally do not put worker specific result under main operation result until the handler is done
 			// (because of concurrency issues - adding subresults vs e.g. putting main result into the task)
 			OperationResult workerSpecificResult = new OperationResult(taskOperationPrefix + ".handleAsynchronously");
-			workerSpecificResult.addContext("subtask", i);
+			workerSpecificResult.addContext("subtaskIndex", i+1);
 			workerSpecificResults.add(workerSpecificResult);
 
 			Task subtask = coordinatorTask.createSubtask(new WorkerHandler(workerSpecificResult));

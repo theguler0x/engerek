@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015 Evolveum
+ * Copyright (c) 2015-2016 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,24 +32,19 @@ import org.apache.directory.api.ldap.model.entry.Entry;
 import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.apache.directory.ldap.client.api.LdapNetworkConnection;
 import org.testng.AssertJUnit;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 
-import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
-import com.evolveum.midpoint.prism.query.EqualFilter;
-import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
-import com.evolveum.midpoint.prism.util.PrismAsserts;
 import com.evolveum.midpoint.prism.util.PrismTestUtil;
 import com.evolveum.midpoint.schema.SearchResultList;
 import com.evolveum.midpoint.schema.SearchResultMetadata;
 import com.evolveum.midpoint.schema.constants.MidPointConstants;
-import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.internals.InternalCounters;
 import com.evolveum.midpoint.schema.processor.ResourceAttribute;
 import com.evolveum.midpoint.schema.processor.ResourceAttributeDefinition;
 import com.evolveum.midpoint.schema.result.OperationResult;
@@ -59,12 +54,9 @@ import com.evolveum.midpoint.schema.util.ResourceTypeUtil;
 import com.evolveum.midpoint.schema.util.ShadowUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.test.IntegrationTestTools;
-import com.evolveum.midpoint.test.util.MidPointAsserts;
 import com.evolveum.midpoint.test.util.MidPointTestConstants;
 import com.evolveum.midpoint.test.util.TestUtil;
-import com.evolveum.midpoint.util.DOMUtil;
 import com.evolveum.midpoint.util.MiscUtil;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationType;
@@ -72,7 +64,6 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.CredentialsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.LockoutStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.PasswordType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
@@ -107,6 +98,7 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
 	
 	private static final String GROUP_PIRATES_NAME = "pirates";
 	private static final String GROUP_MELEE_ISLAND_NAME = "Mêlée Island";
+	private static final String GROUP_MELA_NOVA_NAME = "Mela Nova";
 	
 	protected static final int NUMBER_OF_ACCOUNTS = 4;
 	protected static final int LOCKOUT_EXPIRATION_SECONDS = 65;
@@ -183,6 +175,11 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
 		return new QName(MidPointConstants.NS_RI, ASSOCIATION_GROUP_NAME);
 	}
 	
+	protected String getOrgGroupsLdapSuffix() {
+		return "ou=orggroups,"+getLdapSuffix();
+	}
+	
+	
 	@Override
 	public void initSystem(Task initTask, OperationResult initResult) throws Exception {
 		super.initSystem(initTask, initResult);
@@ -190,12 +187,12 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
 		binaryAttributeDetector.addBinaryAttribute("GUID");
 		
 		// Users
-		repoAddObjectFromFile(USER_BARBOSSA_FILE, UserType.class, initResult);
-		repoAddObjectFromFile(USER_GUYBRUSH_FILE, UserType.class, initResult);
+		repoAddObjectFromFile(USER_BARBOSSA_FILE, initResult);
+		repoAddObjectFromFile(USER_GUYBRUSH_FILE, initResult);
 		
 		// Roles
-		repoAddObjectFromFile(ROLE_PIRATES_FILE, RoleType.class, initResult);
-		repoAddObjectFromFile(ROLE_META_ORG_FILE, RoleType.class, initResult);
+		repoAddObjectFromFile(ROLE_PIRATES_FILE, initResult);
+		repoAddObjectFromFile(ROLE_META_ORG_FILE, initResult);
 		
 	}
 	
@@ -209,7 +206,8 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
 		cleanupDelete(toAccountDn(USER_BARBOSSA_USERNAME));
 		cleanupDelete(toAccountDn(USER_CPTBARBOSSA_USERNAME));
 		cleanupDelete(toAccountDn(USER_GUYBRUSH_USERNAME));
-		cleanupDelete(toGroupDn(GROUP_MELEE_ISLAND_NAME));
+		cleanupDelete(toOrgGroupDn(GROUP_MELEE_ISLAND_NAME));
+		cleanupDelete(toOrgGroupDn(GROUP_MELA_NOVA_NAME));
 	}
 
 	@Test
@@ -223,7 +221,7 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         assertTrue("No native activation capability", ResourceTypeUtil.hasResourceNativeActivationCapability(resourceType));
         assertTrue("No native activation status capability", ResourceTypeUtil.hasResourceNativeActivationStatusCapability(resourceType));
         assertTrue("No native lockout capability", ResourceTypeUtil.hasResourceNativeActivationLockoutCapability(resourceType));
-        assertTrue("No native credentias capability", ResourceTypeUtil.hasCredentialsCapability(resourceType));
+        assertTrue("No native credentias capability", ResourceTypeUtil.isCredentialsCapabilityEnabled(resourceType));
 	}
 	
 	@Test
@@ -237,8 +235,8 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         
         ObjectQuery query = createUidQuery(ACCOUNT_JACK_UID);
         
-		rememberConnectorOperationCount();
-		rememberConnectorSimulatedPagingSearchCount();
+		rememberCounter(InternalCounters.CONNECTOR_OPERATION_COUNT);
+		rememberCounter(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT);
 		
         // WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -253,11 +251,12 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         PrismObject<ShadowType> shadow = shadows.get(0);
         display("Shadow", shadow);
         assertAccountShadow(shadow, toAccountDn(ACCOUNT_JACK_UID));
-        assertLockout(shadow, LockoutStatusType.NORMAL);
+        assertShadowLockout(shadow, LockoutStatusType.NORMAL);
         jackAccountOid = shadow.getOid();
+        assertNotNull("Null OID in "+shadow, jackAccountOid);
         
-        assertConnectorOperationIncrement(2);
-        assertConnectorSimulatedPagingSearchIncrement(0);
+        assertCounterIncrement(InternalCounters.CONNECTOR_OPERATION_COUNT, 2);
+        assertCounterIncrement(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT, 0);
         
         SearchResultMetadata metadata = shadows.getMetadata();
         if (metadata != null) {
@@ -277,8 +276,8 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         ObjectQuery query = ObjectQueryUtil.createResourceAndObjectClassQuery(getResourceOid(), getGroupObjectClass(), prismContext);
 		ObjectQueryUtil.filterAnd(query.getFilter(), createAttributeFilter("cn", GROUP_PIRATES_NAME));
         
-		rememberConnectorOperationCount();
-		rememberConnectorSimulatedPagingSearchCount();
+		rememberCounter(InternalCounters.CONNECTOR_OPERATION_COUNT);
+		rememberCounter(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT);
 		
         // WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -294,8 +293,8 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         display("Shadow", shadow);
         groupPiratesOid = shadow.getOid();
         
-        assertConnectorOperationIncrement(1);
-        assertConnectorSimulatedPagingSearchIncrement(0);
+        assertCounterIncrement(InternalCounters.CONNECTOR_OPERATION_COUNT, 2);
+        assertCounterIncrement(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT, 0);
         
         SearchResultMetadata metadata = shadows.getMetadata();
         if (metadata != null) {
@@ -314,8 +313,8 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         
         ObjectQuery query = createUidQuery(ACCOUNT_JACK_UID);
         
-		rememberConnectorOperationCount();
-		rememberConnectorSimulatedPagingSearchCount();
+		rememberCounter(InternalCounters.CONNECTOR_OPERATION_COUNT);
+		rememberCounter(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT);
 		
         // WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -326,14 +325,14 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
 		TestUtil.assertSuccess(result);		
         display("Shadow", shadow);
         assertAccountShadow(shadow, toAccountDn(ACCOUNT_JACK_UID));
-        assertLockout(shadow, LockoutStatusType.NORMAL);
+        assertShadowLockout(shadow, LockoutStatusType.NORMAL);
         assertPasswordAllowChange(shadow, null);
         jackAccountOid = shadow.getOid();
         
         IntegrationTestTools.assertAssociation(shadow, getAssociationGroupQName(), groupPiratesOid);
         
-        assertConnectorOperationIncrement(1);
-        assertConnectorSimulatedPagingSearchIncrement(0);
+        assertCounterIncrement(InternalCounters.CONNECTOR_OPERATION_COUNT, 1);
+        assertCounterIncrement(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT, 0);
 	}
 	
 	@Test
@@ -354,8 +353,8 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         
         ObjectQuery query = createUidQuery(ACCOUNT_JACK_UID);
         
-		rememberConnectorOperationCount();
-		rememberConnectorSimulatedPagingSearchCount();
+		rememberCounter(InternalCounters.CONNECTOR_OPERATION_COUNT);
+		rememberCounter(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT);
 		
         // WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -371,10 +370,10 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         PrismObject<ShadowType> shadow = shadows.get(0);
         display("Shadow", shadow);
         assertAccountShadow(shadow, toAccountDn(ACCOUNT_JACK_UID));
-        assertLockout(shadow, LockoutStatusType.LOCKED);
+        assertShadowLockout(shadow, LockoutStatusType.LOCKED);
         
-        assertConnectorOperationIncrement(1);
-        assertConnectorSimulatedPagingSearchIncrement(0);
+        assertCounterIncrement(InternalCounters.CONNECTOR_OPERATION_COUNT, 1);
+        assertCounterIncrement(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT, 0);
         
         SearchResultMetadata metadata = shadows.getMetadata();
         if (metadata != null) {
@@ -398,8 +397,8 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         
         SearchResultList<PrismObject<ShadowType>> searchResultList = doSearch(TEST_NAME, query, NUMBER_OF_ACCOUNTS, task, result);
         
-        assertConnectorOperationIncrement(1);
-        assertConnectorSimulatedPagingSearchIncrement(0);
+        assertCounterIncrement(InternalCounters.CONNECTOR_OPERATION_COUNT, 1);
+        assertCounterIncrement(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT, 0);
         
         SearchResultMetadata metadata = searchResultList.getMetadata();
         if (metadata != null) {
@@ -415,20 +414,20 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         // GIVEN
         Task task = taskManager.createTaskInstance(this.getClass().getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
-        
-        ObjectQuery query = ObjectQueryUtil.createResourceAndObjectClassQuery(getResourceOid(), getAccountObjectClass(), prismContext);
-        ObjectQueryUtil.filterAnd(query.getFilter(), 
-        		EqualFilter.createEqual(new ItemPath(ShadowType.F_ACTIVATION, ActivationType.F_LOCKOUT_STATUS), getShadowDefinition(), LockoutStatusType.LOCKED));
-        
+
+		ObjectQuery query = ObjectQueryUtil.createResourceAndObjectClassFilterPrefix(getResourceOid(), getAccountObjectClass(), prismContext)
+				.and().item(ShadowType.F_ACTIVATION, ActivationType.F_LOCKOUT_STATUS).eq(LockoutStatusType.LOCKED)
+				.build();
+
         SearchResultList<PrismObject<ShadowType>> searchResultList = doSearch(TEST_NAME, query, 1, task, result);
         
-        assertConnectorOperationIncrement(1);
-        assertConnectorSimulatedPagingSearchIncrement(0);
+        assertCounterIncrement(InternalCounters.CONNECTOR_OPERATION_COUNT, 1);
+        assertCounterIncrement(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT, 0);
         
         PrismObject<ShadowType> shadow = searchResultList.get(0);
         display("Shadow", shadow);
         assertAccountShadow(shadow, toAccountDn(ACCOUNT_JACK_UID));
-        assertLockout(shadow, LockoutStatusType.LOCKED);
+        assertShadowLockout(shadow, LockoutStatusType.LOCKED);
         
         SearchResultMetadata metadata = searchResultList.getMetadata();
         if (metadata != null) {
@@ -465,7 +464,7 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         PrismObject<ShadowType> shadow = getShadowModel(shadowOid);
         display("Shadow (model)", shadow);
         accountBarbossaOid = shadow.getOid();
-        Collection<ResourceAttribute<?>> identifiers = ShadowUtil.getIdentifiers(shadow);
+        Collection<ResourceAttribute<?>> identifiers = ShadowUtil.getPrimaryIdentifiers(shadow);
         String accountBarbossaIcfUid = (String) identifiers.iterator().next().getRealValue();
         assertNotNull("No identifier in "+shadow, accountBarbossaIcfUid);
         
@@ -744,15 +743,15 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         display("Entry", entry);
         assertAttribute(entry, "title", "Captain");
         
-        assertEDirGroupMember(entry, GROUP_PIRATES_NAME);
+        Entry groupEntry = assertEDirGroupMember(entry, GROUP_PIRATES_NAME);
+        display("Group entry", groupEntry);
         
         PrismObject<UserType> user = getUser(USER_BARBOSSA_OID);
         String shadowOid = getSingleLinkOid(user);
         assertEquals("Shadows have moved", accountBarbossaOid, shadowOid);
         
         PrismObject<ShadowType> shadow = getObject(ShadowType.class, shadowOid);
-        IntegrationTestTools.assertAssociation(shadow, getAssociationGroupQName(), groupPiratesOid);
-        
+        IntegrationTestTools.assertAssociation(shadow, getAssociationGroupQName(), groupPiratesOid);        
 	}
 	
 	@Test
@@ -766,7 +765,7 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         
         // WHEN
         TestUtil.displayWhen(TEST_NAME);
-        modifyUserReplace(USER_BARBOSSA_OID, UserType.F_NAME, task, result, PrismTestUtil.createPolyString(USER_CPTBARBOSSA_USERNAME));
+        renameObject(UserType.class, USER_BARBOSSA_OID, USER_CPTBARBOSSA_USERNAME, task, result);
         
         // THEN
         TestUtil.displayThen(TEST_NAME);
@@ -857,6 +856,32 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         IntegrationTestTools.assertAssociation(shadow, getAssociationGroupQName(), groupMeleeOid);
 	}
 	
+	@Test
+    public void test520RenameOrgMeleeIsland() throws Exception {
+		final String TEST_NAME = "test520RenameOrgMeleeIsland";
+        TestUtil.displayTestTile(this, TEST_NAME);
+
+        // GIVEN
+        Task task = taskManager.createTaskInstance(this.getClass().getName() + "." + TEST_NAME);
+        OperationResult result = task.getResult();
+        
+        // WHEN
+        TestUtil.displayWhen(TEST_NAME);
+        renameObject(OrgType.class, orgMeleeIslandOid, GROUP_MELA_NOVA_NAME, task, result);
+        
+        // THEN
+        TestUtil.displayThen(TEST_NAME);
+        result.computeStatus();
+        TestUtil.assertSuccess(result);
+
+        Entry entry = assertLdapGroup(GROUP_MELA_NOVA_NAME);
+        
+        PrismObject<OrgType> org = getObject(OrgType.class, orgMeleeIslandOid);
+        String groupMeleeOidAfter = getSingleLinkOid(org);
+        PrismObject<ShadowType> shadow = getShadowModel(groupMeleeOidAfter);
+        display("Shadow (model)", shadow);
+	}
+	
 	// Wait until the lockout of Jack expires, check status
 	@Test
     public void test800JackLockoutExpires() throws Exception {
@@ -878,8 +903,8 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         
         ObjectQuery query = createUidQuery(ACCOUNT_JACK_UID);
         
-		rememberConnectorOperationCount();
-		rememberConnectorSimulatedPagingSearchCount();
+		rememberCounter(InternalCounters.CONNECTOR_OPERATION_COUNT);
+		rememberCounter(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT);
 		
         // WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -895,10 +920,10 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         PrismObject<ShadowType> shadow = shadows.get(0);
         display("Shadow", shadow);
         assertAccountShadow(shadow, toAccountDn(ACCOUNT_JACK_UID));
-        assertLockout(shadow, LockoutStatusType.NORMAL);
+        assertShadowLockout(shadow, LockoutStatusType.NORMAL);
         
-        assertConnectorOperationIncrement(1);
-        assertConnectorSimulatedPagingSearchIncrement(0);
+        assertCounterIncrement(InternalCounters.CONNECTOR_OPERATION_COUNT, 1);
+        assertCounterIncrement(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT, 0);
         
         SearchResultMetadata metadata = shadows.getMetadata();
         if (metadata != null) {
@@ -915,14 +940,13 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         Task task = taskManager.createTaskInstance(this.getClass().getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
-        ObjectQuery query = ObjectQueryUtil.createResourceAndObjectClassQuery(getResourceOid(), getAccountObjectClass(), prismContext);
-        ObjectQueryUtil.filterAnd(query.getFilter(), 
-        		EqualFilter.createEqual(new ItemPath(ShadowType.F_ACTIVATION, ActivationType.F_LOCKOUT_STATUS), getShadowDefinition(), LockoutStatusType.LOCKED));
-        
+        ObjectQuery query = ObjectQueryUtil.createResourceAndObjectClassFilterPrefix(getResourceOid(), getAccountObjectClass(), prismContext)
+				.and().item(ShadowType.F_ACTIVATION, ActivationType.F_LOCKOUT_STATUS).eq(LockoutStatusType.LOCKED)
+				.build();
         SearchResultList<PrismObject<ShadowType>> searchResultList = doSearch(TEST_NAME, query, 0, task, result);
         
-        assertConnectorOperationIncrement(1);
-        assertConnectorSimulatedPagingSearchIncrement(0);        
+        assertCounterIncrement(InternalCounters.CONNECTOR_OPERATION_COUNT, 1);
+        assertCounterIncrement(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT, 0);        
     }
 	
 	@Test
@@ -951,10 +975,10 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
         PrismObject<ShadowType> shadowLocked = shadows.get(0);
         display("Locked shadow", shadowLocked);
         assertAccountShadow(shadowLocked, toAccountDn(ACCOUNT_JACK_UID));
-        assertLockout(shadowLocked, LockoutStatusType.LOCKED);
+        assertShadowLockout(shadowLocked, LockoutStatusType.LOCKED);
 		
-        rememberConnectorOperationCount();
-		rememberConnectorSimulatedPagingSearchCount();
+        rememberCounter(InternalCounters.CONNECTOR_OPERATION_COUNT);
+		rememberCounter(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT);
         
 		// WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -967,13 +991,13 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
 		result.computeStatus();
 		TestUtil.assertSuccess(result);
 
-        assertConnectorOperationIncrement(1);
-        assertConnectorSimulatedPagingSearchIncrement(0);
+        assertCounterIncrement(InternalCounters.CONNECTOR_OPERATION_COUNT, 1);
+        assertCounterIncrement(InternalCounters.CONNECTOR_SIMULATED_PAGING_SEARCH_COUNT, 0);
 		
 		PrismObject<ShadowType> shadowAfter = getObject(ShadowType.class, shadowLocked.getOid());
         display("Shadow after", shadowAfter);
         assertAccountShadow(shadowAfter, toAccountDn(ACCOUNT_JACK_UID));
-        assertLockout(shadowAfter, LockoutStatusType.NORMAL);
+        assertShadowLockout(shadowAfter, LockoutStatusType.NORMAL);
 
         assertLdapPassword(ACCOUNT_JACK_UID, ACCOUNT_JACK_PASSWORD);
         
@@ -1064,7 +1088,7 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
 		assertEquals("Wrong passwordAllowChange in "+shadow, expected, passwordAllowChange);
 	}
 	
-	private void makeBadLoginAttempt(String uid) throws LdapException {
+	private void makeBadLoginAttempt(String uid) throws LdapException, IOException {
 		try {
 			LdapNetworkConnection conn = ldapConnect(toAccountDn(uid), "thisIsAwRoNgPASSW0RD");
 			if (conn.isAuthenticated()) {
@@ -1075,24 +1099,29 @@ public abstract class AbstractEDirTest extends AbstractLdapTest {
 		}
 	}
 	
-	private void assertEDirGroupMember(String accountUid, String groupName) throws LdapException, IOException, CursorException {
+	private void assertEDirGroupMember(String accountUid, String groupName) throws LdapException, IOException, CursorException, SchemaException {
 		Entry accountEntry = getLdapAccountByUid(accountUid);
 		assertEDirGroupMember(accountEntry, groupName);
 	}
 	
-	private void assertEDirGroupMember(Entry accountEntry, String groupName) throws LdapException, IOException, CursorException {
+	private Entry assertEDirGroupMember(Entry accountEntry, String groupName) throws LdapException, IOException, CursorException, SchemaException {
 		Entry groupEntry = getLdapGroupByName(groupName);
 		assertAttributeContains(groupEntry, getLdapGroupMemberAttribute(), accountEntry.getDn().toString());
 		assertAttributeContains(groupEntry, ATTRIBUTE_EQUIVALENT_TO_ME_NAME, accountEntry.getDn().toString());
 		assertAttributeContains(accountEntry, ATTRIBUTE_GROUP_MEMBERSHIP_NAME, groupEntry.getDn().toString());
 		assertAttributeContains(accountEntry, ATTRIBUTE_SECURITY_EQUALS_NAME, groupEntry.getDn().toString());
+		return groupEntry;
 	}
 	
-	private void assertEDirNoGroupMember(Entry accountEntry, String groupName) throws LdapException, IOException, CursorException {
+	private void assertEDirNoGroupMember(Entry accountEntry, String groupName) throws LdapException, IOException, CursorException, SchemaException {
 		Entry groupEntry = getLdapGroupByName(groupName);
 		assertAttributeNotContains(groupEntry, getLdapGroupMemberAttribute(), accountEntry.getDn().toString());
 		assertAttributeNotContains(groupEntry, ATTRIBUTE_EQUIVALENT_TO_ME_NAME, accountEntry.getDn().toString());
 		assertAttributeNotContains(accountEntry, ATTRIBUTE_GROUP_MEMBERSHIP_NAME, groupEntry.getDn().toString());
 		assertAttributeNotContains(accountEntry, ATTRIBUTE_SECURITY_EQUALS_NAME, groupEntry.getDn().toString());
+	}
+	
+	protected String toOrgGroupDn(String cn) {
+		return "cn="+cn+","+getOrgGroupsLdapSuffix();
 	}
 }

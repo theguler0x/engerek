@@ -24,7 +24,9 @@ import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.schema.GetOperationOptions;
+import com.evolveum.midpoint.schema.ResultHandler;
 import com.evolveum.midpoint.schema.SearchResultList;
+import com.evolveum.midpoint.schema.SearchResultMetadata;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
@@ -34,6 +36,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.CleanupPolicyType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.NodeType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.TaskType;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * <p>Task Manager Interface.</p>
@@ -88,6 +91,8 @@ public interface TaskManager {
      */
     <T extends ObjectType> SearchResultList<PrismObject<T>> searchObjects(Class<T> type, ObjectQuery query, Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult) throws SchemaException;
 
+    <T extends ObjectType> SearchResultMetadata searchObjectsIterative(Class<T> type, ObjectQuery query, Collection<SelectorOptions<GetOperationOptions>> options, ResultHandler<T> handler, OperationResult parentResult) throws SchemaException;
+    
     /**
      * Counts the number of objects.
      *
@@ -230,7 +235,8 @@ public interface TaskManager {
 	 * @return new Java representation of the task
 	 * @throws SchemaException The provided taskType is not compliant to schema
 	 */
-	public Task createTaskInstance(PrismObject<TaskType> taskPrism, OperationResult parentResult) throws SchemaException;
+	@NotNull
+	Task createTaskInstance(PrismObject<TaskType> taskPrism, OperationResult parentResult) throws SchemaException;
 
 	/**
 	 * Creates new transient, running task instance.
@@ -260,6 +266,7 @@ public interface TaskManager {
 	 * @return new Java representation of the task
 	 * @throws SchemaException The provided taskType is not compliant to schema
 	 */
+	@NotNull
 	public Task createTaskInstance(PrismObject<TaskType> taskPrism, String operationName, OperationResult parentResult) throws SchemaException;
 	
 	/**
@@ -274,7 +281,8 @@ public interface TaskManager {
 	 * @throws SchemaException error dealing with resource schema
 	 * @throws ObjectNotFoundException wrong OID format, etc.
 	 */
-	public Task getTask(String taskOid, OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
+	@NotNull
+	Task getTask(String taskOid, OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
 
     /**
      * Returns a task with a given identifier.
@@ -675,6 +683,6 @@ public interface TaskManager {
      */
     void registerHandler(String uri, TaskHandler handler);
 
-
+	void registerTaskDeletionListener(TaskDeletionListener listener);
     //endregion
 }

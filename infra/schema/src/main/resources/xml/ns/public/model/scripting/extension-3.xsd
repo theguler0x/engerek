@@ -31,11 +31,11 @@
         </xsd:documentation>
     </xsd:annotation>
     
-    <xsd:import namespace="http://midpoint.evolveum.com/xml/ns/public/common/common-3" 
-    			schemaLocation="http://midpoint.evolveum.com/xml/ns/public/common/common-3"/>
+    <!--<xsd:import namespace="http://midpoint.evolveum.com/xml/ns/public/common/common-3" -->
+    			<!--schemaLocation="http://midpoint.evolveum.com/xml/ns/public/common/common-3"/>-->
 
     <xsd:import namespace="http://midpoint.evolveum.com/xml/ns/public/model/scripting-3"
-                schemaLocation="http://midpoint.evolveum.com/xml/ns/public/model/scripting/scripting-2"/>
+                schemaLocation="http://midpoint.evolveum.com/xml/ns/public/model/scripting/scripting-3"/>
 
     <xsd:element name="executeScript" type="s:ExecuteScriptType">
         <xsd:annotation>
@@ -47,14 +47,6 @@
             </xsd:appinfo>
         </xsd:annotation>
     </xsd:element>
-    
-    <!--<xsd:element name="scriptInput" type="apit:ItemListType">-->
-        <!--<xsd:annotation>-->
-            <!--<xsd:appinfo>-->
-                <!--<a:maxOccurs>1</a:maxOccurs>            &lt;!&ndash; TODO (maybe there could be more scripts) &ndash;&gt;-->
-            <!--</xsd:appinfo>-->
-        <!--</xsd:annotation>-->
-    <!--</xsd:element>-->
 
 </xsd:schema>
 

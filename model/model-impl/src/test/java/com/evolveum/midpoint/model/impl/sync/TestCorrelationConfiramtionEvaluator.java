@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@ import org.testng.AssertJUnit;
 import org.testng.annotations.Test;
 
 import com.evolveum.midpoint.model.impl.AbstractInternalModelIntegrationTest;
-import com.evolveum.midpoint.model.impl.sync.CorrelationConfirmationEvaluator;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
@@ -46,7 +45,6 @@ import com.evolveum.midpoint.test.util.TestUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ConditionalSearchFilterType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectSynchronizationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
@@ -76,8 +74,8 @@ public class TestCorrelationConfiramtionEvaluator extends AbstractInternalModelI
 	public void initSystem(Task initTask, OperationResult initResult) throws Exception {
 //		super.initSystem(initTask, initResult);
 		// Administrator
-		userAdministrator = repoAddObjectFromFile(USER_ADMINISTRATOR_FILE, UserType.class, initResult);
-		repoAddObjectFromFile(ROLE_SUPERUSER_FILE, RoleType.class, initResult);
+		userAdministrator = repoAddObjectFromFile(USER_ADMINISTRATOR_FILE, initResult);
+		repoAddObjectFromFile(ROLE_SUPERUSER_FILE, initResult);
 		login(userAdministrator);
 	}
 	
@@ -89,7 +87,7 @@ public class TestCorrelationConfiramtionEvaluator extends AbstractInternalModelI
 		Task task = taskManager.createTaskInstance(TEST_NAME);
 		OperationResult result = task.getResult();
 		
-		importObjectFromFile(USER_JACK_FILENAME);
+		importObjectFromFile(USER_JACK_FILE);
 			
 		PrismObject<UserType> userType = repositoryService.getObject(UserType.class, USER_JACK_OID, null, result);
 		//assert jack
@@ -101,7 +99,7 @@ public class TestCorrelationConfiramtionEvaluator extends AbstractInternalModelI
 		List<ConditionalSearchFilterType> filters = new ArrayList<>();
 		filters.add(filter);
 		
-		ResourceType resourceType = parseObjectType(new File(RESOURCE_DUMMY_FILENAME), ResourceType.class);
+		ResourceType resourceType = parseObjectType(RESOURCE_DUMMY_FILE, ResourceType.class);
 		IntegrationTestTools.display("Queries", filters);
 		
 		// WHEN
@@ -140,7 +138,7 @@ public class TestCorrelationConfiramtionEvaluator extends AbstractInternalModelI
 		filter = PrismTestUtil.parseAtomicValue(new File(CORRELATION_SECOND_FILTER), ConditionalSearchFilterType.COMPLEX_TYPE);
 		filters.add(filter);
 		
-		ResourceType resourceType = parseObjectType(new File(RESOURCE_DUMMY_FILENAME), ResourceType.class);
+		ResourceType resourceType = parseObjectType(RESOURCE_DUMMY_FILE, ResourceType.class);
 		List<PrismObject<UserType>> matchedUsers = evaluator.findFocusesByCorrelationRule(UserType.class,
 				shadow, filters, resourceType, getSystemConfiguration(), task, result);
 		
@@ -175,7 +173,7 @@ public class TestCorrelationConfiramtionEvaluator extends AbstractInternalModelI
 		query = PrismTestUtil.parseAtomicValue(new File(CORRELATION_WITH_CONDITION_EMPL_NUMBER), ConditionalSearchFilterType.COMPLEX_TYPE);
 		queries.add(query);
 		
-		ResourceType resourceType = parseObjectType(new File(RESOURCE_DUMMY_FILENAME), ResourceType.class);
+		ResourceType resourceType = parseObjectType(RESOURCE_DUMMY_FILE, ResourceType.class);
 		List<PrismObject<UserType>> matchedUsers = evaluator.findFocusesByCorrelationRule(UserType.class,
 				shadow, queries, resourceType, getSystemConfiguration(), task, result);
 		
@@ -207,7 +205,7 @@ public class TestCorrelationConfiramtionEvaluator extends AbstractInternalModelI
 //		List<QueryType> queries = new ArrayList<QueryType>();
 //		queries.add(query);
 //		
-		ResourceType resourceType = parseObjectType(new File(RESOURCE_DUMMY_FILENAME), ResourceType.class);
+		ResourceType resourceType = parseObjectType(RESOURCE_DUMMY_FILE, ResourceType.class);
 		resourceType.getSynchronization().getObjectSynchronization().get(0).getCorrelation().clear();
 		resourceType.getSynchronization().getObjectSynchronization().get(0).getCorrelation().add(query);
 		userType.asObjectable().setName(new PolyStringType("JACK"));
@@ -252,7 +250,7 @@ public class TestCorrelationConfiramtionEvaluator extends AbstractInternalModelI
 //		List<QueryType> queries = new ArrayList<QueryType>();
 //		queries.add(query);
 //		
-		ResourceType resourceType = parseObjectType(new File(RESOURCE_DUMMY_FILENAME), ResourceType.class);
+		ResourceType resourceType = parseObjectType(RESOURCE_DUMMY_FILE, ResourceType.class);
 		resourceType.getSynchronization().getObjectSynchronization().get(0).getCorrelation().clear();
 		resourceType.getSynchronization().getObjectSynchronization().get(0).getCorrelation().add(query);
 		
@@ -299,7 +297,7 @@ public class TestCorrelationConfiramtionEvaluator extends AbstractInternalModelI
 		List<ConditionalSearchFilterType> queries = new ArrayList<>();
 		queries.add(query);
 //		
-		ResourceType resourceType = parseObjectType(new File(RESOURCE_DUMMY_FILENAME), ResourceType.class);
+		ResourceType resourceType = parseObjectType(RESOURCE_DUMMY_FILE, ResourceType.class);
 //		resourceType.getSynchronization().getObjectSynchronization().get(0).getCorrelation().add(query);
 		userType.asObjectable().setName(new PolyStringType("JACK"));
 		Collection<? extends ItemDelta> modifications = PropertyDelta.createModificationReplacePropertyCollection(UserType.F_NAME, userType.getDefinition(), new PolyString("JACK", "jack"));

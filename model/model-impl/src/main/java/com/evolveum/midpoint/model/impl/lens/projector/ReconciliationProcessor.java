@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,52 +21,53 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.common.refinery.RefinedAssociationDefinition;
-import com.evolveum.midpoint.prism.PrismContainerDefinition;
-import com.evolveum.midpoint.prism.PrismContainerValue;
+import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.prism.delta.ContainerDelta;
+import com.evolveum.midpoint.prism.match.MatchingRule;
+import com.evolveum.midpoint.schema.processor.ResourceAttributeContainer;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.util.PrettyPrinter;
+import com.evolveum.midpoint.util.*;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowAssociationType;
 
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.evolveum.midpoint.common.refinery.PropertyLimitations;
 import com.evolveum.midpoint.common.refinery.RefinedAttributeDefinition;
 import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
+import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
 import com.evolveum.midpoint.model.api.context.SynchronizationPolicyDecision;
-import com.evolveum.midpoint.model.common.mapping.Mapping;
 import com.evolveum.midpoint.model.common.mapping.PrismValueDeltaSetTripleProducer;
 import com.evolveum.midpoint.model.impl.lens.ItemValueWithOrigin;
 import com.evolveum.midpoint.model.impl.lens.LensContext;
 import com.evolveum.midpoint.model.impl.lens.LensFocusContext;
 import com.evolveum.midpoint.model.impl.lens.LensProjectionContext;
-import com.evolveum.midpoint.prism.ModificationType;
-import com.evolveum.midpoint.prism.OriginType;
-import com.evolveum.midpoint.prism.PrismContainer;
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismProperty;
-import com.evolveum.midpoint.prism.PrismPropertyDefinition;
-import com.evolveum.midpoint.prism.PrismPropertyValue;
+import com.evolveum.midpoint.model.impl.lens.LensUtil;
 import com.evolveum.midpoint.prism.delta.DeltaSetTriple;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
+import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
 import com.evolveum.midpoint.prism.match.MatchingRuleRegistry;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.provisioning.api.ProvisioningService;
 import com.evolveum.midpoint.schema.GetOperationOptions;
+import com.evolveum.midpoint.schema.PointInTimeType;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.processor.ObjectClassComplexTypeDefinition;
+import com.evolveum.midpoint.schema.processor.ResourceAttribute;
 import com.evolveum.midpoint.schema.processor.ResourceAttributeDefinition;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.util.MiscUtil;
+import com.evolveum.midpoint.schema.util.ShadowUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
@@ -92,23 +93,22 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 @Component
 public class ReconciliationProcessor {
 
-	@Autowired(required = true)
+	@Autowired
 	private ProvisioningService provisioningService;
 
-	@Autowired(required = true)
+	@Autowired
 	PrismContext prismContext;
 
-	@Autowired(required = true)
+	@Autowired
 	private MatchingRuleRegistry matchingRuleRegistry;
 
-	public static final String PROCESS_RECONCILIATION = ReconciliationProcessor.class.getName()
-			+ ".processReconciliation";
+	private static final String PROCESS_RECONCILIATION = ReconciliationProcessor.class.getName() + ".processReconciliation";
 	private static final Trace LOGGER = TraceManager.getTrace(ReconciliationProcessor.class);
 
 	<F extends ObjectType> void processReconciliation(LensContext<F> context,
 													  LensProjectionContext projectionContext, Task task, OperationResult result) throws SchemaException,
 			ObjectNotFoundException, CommunicationException, ConfigurationException,
-			SecurityViolationException {
+			SecurityViolationException, ExpressionEvaluationException {
 		LensFocusContext<F> focusContext = context.getFocusContext();
 		if (focusContext == null) {
 			return;
@@ -120,18 +120,16 @@ public class ReconciliationProcessor {
 		processReconciliationFocus(context, projectionContext, task, result);
 	}
 
-	<F extends ObjectType> void processReconciliationFocus(LensContext<F> context,
-                                                           LensProjectionContext projCtx, Task task, OperationResult result) throws SchemaException,
+	private <F extends ObjectType> void processReconciliationFocus(LensContext<F> context,
+			LensProjectionContext projCtx, Task task, OperationResult result) throws SchemaException,
 			ObjectNotFoundException, CommunicationException, ConfigurationException,
-			SecurityViolationException {
+			SecurityViolationException, ExpressionEvaluationException {
 
-		OperationResult subResult = result.createSubresult(PROCESS_RECONCILIATION);
+		OperationResult subResult = result.createMinorSubresult(PROCESS_RECONCILIATION);
 
 		try {
-			// Reconcile even if it was not explicitly requested and if we have
-			// full shadow
-			// reconciliation is cheap if the shadow is already fetched
-			// therefore just do it
+			// Reconcile even if it was not explicitly requested and if we have full shadow
+			// reconciliation is cheap if the shadow is already fetched therefore just do it
 			if (!projCtx.isDoReconciliation() && !projCtx.isFullShadow()) {
 				if (LOGGER.isTraceEnabled()) {
 					LOGGER.trace("Skipping reconciliation of {}: no doReconciliation and no full shadow", projCtx.getHumanReadableName());
@@ -155,8 +153,10 @@ public class ReconciliationProcessor {
 
 			if (!projCtx.isFullShadow()) {
 				// We need to load the object
+				GetOperationOptions rootOps = GetOperationOptions.createDoNotDiscovery();
+				rootOps.setPointInTimeType(PointInTimeType.FUTURE);
 				PrismObject<ShadowType> objectOld = provisioningService.getObject(ShadowType.class,
-						projCtx.getOid(), SelectorOptions.createCollection(GetOperationOptions.createDoNotDiscovery()),
+						projCtx.getOid(), SelectorOptions.createCollection(rootOps),
 						task, result);
 				ShadowType oldShadow = objectOld.asObjectable();
 				projCtx.determineFullShadowFlag(oldShadow.getFetchResult());
@@ -169,29 +169,26 @@ public class ReconciliationProcessor {
 				LOGGER.trace("Starting reconciliation of {}", projCtx.getHumanReadableName());
 			}
 
-            RefinedObjectClassDefinition rOcDef = projCtx.getStructuralObjectClassDefinition();
+			reconcileAuxiliaryObjectClasses(projCtx);
+			
+            RefinedObjectClassDefinition rOcDef = projCtx.getCompositeObjectClassDefinition();
 
 			Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismPropertyValue<?>,PrismPropertyDefinition<?>>>> squeezedAttributes = projCtx
 					.getSqueezedAttributes();
-			if (squeezedAttributes != null && !squeezedAttributes.isEmpty()) {
-                if (LOGGER.isTraceEnabled()) {
-                    LOGGER.trace("Attribute reconciliation processing {}", projCtx.getHumanReadableName());
-                }
-                reconcileProjectionAttributes(projCtx, squeezedAttributes, rOcDef);
-            }
+			if (LOGGER.isTraceEnabled()) {
+				LOGGER.trace("Attribute reconciliation processing {}", projCtx.getHumanReadableName());
+			}
+			reconcileProjectionAttributes(projCtx, squeezedAttributes, rOcDef);
 
             Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismContainerValue<ShadowAssociationType>,PrismContainerDefinition<ShadowAssociationType>>>> squeezedAssociations = projCtx.getSqueezedAssociations();
-            if (squeezedAssociations != null && !squeezedAssociations.isEmpty()) {
-                if (LOGGER.isTraceEnabled()) {
-                    LOGGER.trace("Association reconciliation processing {}", projCtx.getHumanReadableName());
-                }
-                reconcileProjectionAssociations(projCtx, squeezedAssociations, rOcDef);
-            }
+			if (LOGGER.isTraceEnabled()) {
+				LOGGER.trace("Association reconciliation processing {}", projCtx.getHumanReadableName());
+			}
+			reconcileProjectionAssociations(projCtx, squeezedAssociations, rOcDef, task, result);
 
-		} catch (RuntimeException e) {
-			subResult.recordFatalError(e);
-			throw e;
-		} catch (SchemaException e) {
+            reconcileMissingAuxiliaryObjectClassAttributes(projCtx);
+
+		} catch (RuntimeException | SchemaException e) {
 			subResult.recordFatalError(e);
 			throw e;
 		} finally {
@@ -199,6 +196,156 @@ public class ReconciliationProcessor {
 		}
 	}
 
+	private void reconcileAuxiliaryObjectClasses(LensProjectionContext projCtx) throws SchemaException {
+
+		Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismPropertyValue<QName>, PrismPropertyDefinition<QName>>>> squeezedAuxiliaryObjectClasses = projCtx.getSqueezedAuxiliaryObjectClasses();
+		if (squeezedAuxiliaryObjectClasses == null || squeezedAuxiliaryObjectClasses.isEmpty()) {
+			return;
+        }
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace("Auxiliary object class reconciliation processing {}", projCtx.getHumanReadableName());
+        }
+		
+		PrismObject<ShadowType> shadowNew = projCtx.getObjectNew();
+		PrismPropertyDefinition<QName> propDef = shadowNew.getDefinition().findPropertyDefinition(ShadowType.F_AUXILIARY_OBJECT_CLASS);
+
+		DeltaSetTriple<ItemValueWithOrigin<PrismPropertyValue<QName>, PrismPropertyDefinition<QName>>> pvwoTriple = squeezedAuxiliaryObjectClasses.get(ShadowType.F_AUXILIARY_OBJECT_CLASS);
+		
+		Collection<ItemValueWithOrigin<PrismPropertyValue<QName>,PrismPropertyDefinition<QName>>> shouldBePValues = null;
+		if (pvwoTriple == null) {
+			shouldBePValues = new ArrayList<>();
+		} else {
+			shouldBePValues = pvwoTriple.getNonNegativeValues();
+		}
+
+		Collection<PrismPropertyValue<QName>> arePValues = null;
+		PrismProperty<QName> propertyNew = shadowNew.findProperty(ShadowType.F_AUXILIARY_OBJECT_CLASS);			
+		if (propertyNew != null) {
+			arePValues = propertyNew.getValues();
+		} else {
+			arePValues = new HashSet<>();
+		}
+			 
+		ValueMatcher<QName> valueMatcher = ValueMatcher.createDefaultMatcher(DOMUtil.XSD_QNAME, matchingRuleRegistry);
+
+		boolean auxObjectClassChanged = false;
+		
+		for (ItemValueWithOrigin<PrismPropertyValue<QName>, PrismPropertyDefinition<QName>> shouldBePvwo : shouldBePValues) {
+			QName shouldBeRealValue = shouldBePvwo.getItemValue().getValue();
+			if (!isInValues(valueMatcher, shouldBeRealValue, arePValues)) {
+				auxObjectClassChanged = true;
+				recordDelta(valueMatcher, projCtx, ItemPath.EMPTY_PATH, propDef, ModificationType.ADD, shouldBeRealValue,
+						shouldBePvwo.getSource(), "it is given");
+			}
+		}
+					
+		for (PrismPropertyValue<QName> isPValue : arePValues) {
+			if (!isInPvwoValues(valueMatcher, isPValue.getValue(), shouldBePValues)) {
+				auxObjectClassChanged = true;
+				recordDelta(valueMatcher, projCtx, ItemPath.EMPTY_PATH, propDef, ModificationType.DELETE,
+						isPValue.getValue(), null, "it is not given");
+			}
+		}
+		
+		if (auxObjectClassChanged) {
+			projCtx.recompute();
+			projCtx.refreshAuxiliaryObjectClassDefinitions();
+		}
+	}
+	
+	/**
+	 * If auxiliary object classes changed, there may still be some attributes that were defined by the aux objectclasses
+	 * that were deleted. If these attributes are still around then delete them. Otherwise the delete of the aux object class
+	 * may fail.
+	 */
+	private void reconcileMissingAuxiliaryObjectClassAttributes(LensProjectionContext projCtx) throws SchemaException {
+		ObjectDelta<ShadowType> delta = projCtx.getDelta();
+		if (delta == null) {
+			return;
+		}
+		PropertyDelta<QName> auxOcDelta = delta.findPropertyDelta(ShadowType.F_AUXILIARY_OBJECT_CLASS);
+		if (auxOcDelta == null || auxOcDelta.isEmpty()) {
+			return;
+		}
+		Collection<QName> deletedAuxObjectClassNames = null;
+		PrismObject<ShadowType> objectOld = projCtx.getObjectOld();
+		if (auxOcDelta.isReplace()) {
+			if (objectOld == null) {
+				return;
+			}
+			PrismProperty<QName> auxOcPropOld = objectOld.findProperty(ShadowType.F_AUXILIARY_OBJECT_CLASS);
+			if (auxOcPropOld == null) {
+				return;
+			}
+			Collection<QName> auxOcsOld = auxOcPropOld.getRealValues();
+			Set<QName> auxOcsToReplace = PrismPropertyValue.getRealValuesOfCollection(auxOcDelta.getValuesToReplace());
+			deletedAuxObjectClassNames = new ArrayList<>(auxOcsOld.size());
+			for (QName auxOcOld: auxOcsOld) {
+				if (!QNameUtil.contains(auxOcsToReplace, auxOcOld)) {
+					deletedAuxObjectClassNames.add(auxOcOld);
+				}
+			}
+		} else {
+			Collection<PrismPropertyValue<QName>> valuesToDelete = auxOcDelta.getValuesToDelete();
+			if (valuesToDelete == null || valuesToDelete.isEmpty()) {
+				return;
+			}
+			deletedAuxObjectClassNames = PrismPropertyValue.getRealValuesOfCollection(valuesToDelete);
+		}
+		LOGGER.trace("Deleted auxiliary object classes: {}", deletedAuxObjectClassNames);
+		if (deletedAuxObjectClassNames == null || deletedAuxObjectClassNames.isEmpty()) {
+			return;
+		}
+		
+		List<QName> attributesToDelete = new ArrayList<>();
+		String projHumanReadableName = projCtx.getHumanReadableName();
+		RefinedResourceSchema refinedResourceSchema = projCtx.getRefinedResourceSchema();
+		RefinedObjectClassDefinition structuralObjectClassDefinition = projCtx.getStructuralObjectClassDefinition();
+		Collection<RefinedObjectClassDefinition> auxiliaryObjectClassDefinitions = projCtx.getAuxiliaryObjectClassDefinitions();
+		for (QName deleteAuxOcName: deletedAuxObjectClassNames) {
+			ObjectClassComplexTypeDefinition auxOcDef = refinedResourceSchema.findObjectClassDefinition(deleteAuxOcName);
+			for (ResourceAttributeDefinition auxAttrDef: auxOcDef.getAttributeDefinitions()) {
+				QName auxAttrName = auxAttrDef.getName();
+				if (attributesToDelete.contains(auxAttrName)) {
+					continue;
+				}
+				RefinedAttributeDefinition<Object> strucuralAttrDef = structuralObjectClassDefinition.findAttributeDefinition(auxAttrName);
+				if (strucuralAttrDef == null) {
+					boolean found = false;
+					for (RefinedObjectClassDefinition auxiliaryObjectClassDefinition: auxiliaryObjectClassDefinitions) {
+						if (QNameUtil.contains(deletedAuxObjectClassNames, auxiliaryObjectClassDefinition.getTypeName())) {
+							continue;
+						}
+						RefinedAttributeDefinition<Object> existingAuxAttrDef = auxiliaryObjectClassDefinition.findAttributeDefinition(auxAttrName);
+						if (existingAuxAttrDef != null) {
+							found = true;
+							break;
+						}
+					}
+					if (!found) {
+						LOGGER.trace("Removing attribute {} because it is in the deleted object class {} and it is not defined by any current object class for {}",
+								auxAttrName, deleteAuxOcName, projHumanReadableName);
+						attributesToDelete.add(auxAttrName);
+					}
+				}
+			}
+		}
+		LOGGER.trace("Attributes to delete: {}", attributesToDelete);
+		if (attributesToDelete.isEmpty()) {
+			return;
+		}
+		
+		for (QName attrNameToDelete: attributesToDelete) {
+			ResourceAttribute<Object> attrToDelete = ShadowUtil.getAttribute(objectOld, attrNameToDelete);
+			if (attrToDelete == null || attrToDelete.isEmpty()) {
+				continue;
+			}
+			PropertyDelta<Object> attrDelta = attrToDelete.createDelta();
+			attrDelta.addValuesToDelete(PrismValue.cloneCollection(attrToDelete.getValues()));
+			projCtx.swallowToSecondaryDelta(attrDelta);
+		}
+	}
+	
 	private void reconcileProjectionAttributes(
             LensProjectionContext projCtx,
             Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismPropertyValue<?>,PrismPropertyDefinition<?>>>> squeezedAttributes,
@@ -207,67 +354,84 @@ public class ReconciliationProcessor {
 		PrismObject<ShadowType> shadowNew = projCtx.getObjectNew();
 
 		PrismContainer attributesContainer = shadowNew.findContainer(ShadowType.F_ATTRIBUTES);
-		Collection<QName> attributeNames = MiscUtil.union(squeezedAttributes.keySet(), attributesContainer
-				.getValue().getPropertyNames());
+		Collection<QName> attributeNames = squeezedAttributes != null ?
+				MiscUtil.union(squeezedAttributes.keySet(), attributesContainer.getValue().getPropertyNames()) :
+				attributesContainer.getValue().getPropertyNames();
 
 		for (QName attrName : attributeNames) {
+			reconcileProjectionAttribute(attrName, projCtx, squeezedAttributes, rOcDef, shadowNew, attributesContainer);
+		}
+	}
+
+	private <T> void reconcileProjectionAttribute(QName attrName,
+            LensProjectionContext projCtx,
+            Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismPropertyValue<?>,PrismPropertyDefinition<?>>>> squeezedAttributes,
+            RefinedObjectClassDefinition rOcDef,
+            PrismObject<ShadowType> shadowNew, PrismContainer attributesContainer) throws SchemaException {
+
 //			LOGGER.trace("Attribute reconciliation processing attribute {}",attrName);
-			RefinedAttributeDefinition attributeDefinition = projCtx.findAttributeDefinition(attrName);
-			if (attributeDefinition == null) {
-				throw new SchemaException("No definition for attribute " + attrName + " in "
-						+ projCtx.getResourceShadowDiscriminator());
-			}
+		RefinedAttributeDefinition<T> attributeDefinition = projCtx.findAttributeDefinition(attrName);
+		if (attributeDefinition == null) {
+			String msg = "No definition for attribute " + attrName + " in "
+					+ projCtx.getResourceShadowDiscriminator();
+			throw new SchemaException(msg);
+		}
 
-			DeltaSetTriple<ItemValueWithOrigin<PrismPropertyValue<?>,PrismPropertyDefinition<?>>> pvwoTriple = 
-					squeezedAttributes.get(attrName);
+		DeltaSetTriple<ItemValueWithOrigin<PrismPropertyValue<T>,PrismPropertyDefinition<T>>> pvwoTriple =
+				squeezedAttributes != null ? (DeltaSetTriple) squeezedAttributes.get(attrName) : null;
 
-			if (attributeDefinition.isIgnored(LayerType.MODEL)) {
-				LOGGER.trace("Skipping reconciliation of attribute {} because it is ignored", attrName);
-				continue;
-			}
+		if (attributeDefinition.isIgnored(LayerType.MODEL)) {
+			LOGGER.trace("Skipping reconciliation of attribute {} because it is ignored", attrName);
+			return;
+		}
 
-			PropertyLimitations limitations = attributeDefinition.getLimitations(LayerType.MODEL);
-			if (limitations != null) {
-				PropertyAccessType access = limitations.getAccess();
-				if (access != null) {
-					if (projCtx.isAdd() && (access.isAdd() == null || !access.isAdd())) {
-						LOGGER.trace("Skipping reconciliation of attribute {} because it is non-createable",
-								attrName);
-						continue;
-					}
-					if (projCtx.isModify() && (access.isModify() == null || !access.isModify())) {
-						LOGGER.trace("Skipping reconciliation of attribute {} because it is non-updateable",
-								attrName);
-						continue;
-					}
+		PropertyLimitations limitations = attributeDefinition.getLimitations(LayerType.MODEL);
+		if (limitations != null) {
+			PropertyAccessType access = limitations.getAccess();
+			if (access != null) {
+				if (projCtx.isAdd() && (access.isAdd() == null || !access.isAdd())) {
+					LOGGER.trace("Skipping reconciliation of attribute {} because it is non-createable",
+							attrName);
+					return;
+				}
+				if (projCtx.isModify() && (access.isModify() == null || !access.isModify())) {
+					LOGGER.trace("Skipping reconciliation of attribute {} because it is non-updateable",
+							attrName);
+					return;
 				}
 			}
+		}
 
-			Collection<ItemValueWithOrigin<PrismPropertyValue<?>,PrismPropertyDefinition<?>>> shouldBePValues = null;
-			if (pvwoTriple == null) {
-				shouldBePValues = new ArrayList<ItemValueWithOrigin<PrismPropertyValue<?>,PrismPropertyDefinition<?>>>();
-			} else {
-				shouldBePValues = pvwoTriple.getNonNegativeValues();
+		Collection<ItemValueWithOrigin<PrismPropertyValue<T>,PrismPropertyDefinition<T>>> shouldBePValues;
+		if (pvwoTriple == null) {
+			shouldBePValues = new HashSet<>();
+		} else {
+			shouldBePValues = new HashSet<>(pvwoTriple.getNonNegativeValues());
+		}
+
+		// We consider values explicitly requested by user to be among "should be values".
+		addPropValuesFromDelta(shouldBePValues, projCtx.getPrimaryDelta(), attrName);
+		// But we DO NOT take values from sync delta (because they just reflect what's on the resource),
+		// nor from secondary delta (because these got there from mappings).
+
+		boolean hasStrongShouldBePValue = false;
+		for (ItemValueWithOrigin<? extends PrismPropertyValue<T>,PrismPropertyDefinition<T>> shouldBePValue : shouldBePValues) {
+			if (shouldBePValue.getMapping() != null
+					&& shouldBePValue.getMapping().getStrength() == MappingStrengthType.STRONG) {
+				hasStrongShouldBePValue = true;
+				break;
 			}
+		}
 
-			boolean hasStrongShouldBePValue = false;
-			for (ItemValueWithOrigin<? extends PrismPropertyValue<?>,PrismPropertyDefinition<?>> shouldBePValue : shouldBePValues) {
-				if (shouldBePValue.getMapping() != null
-						&& shouldBePValue.getMapping().getStrength() == MappingStrengthType.STRONG) {
-					hasStrongShouldBePValue = true;
-					break;
-				}
-			}
+		PrismProperty<T> attribute = attributesContainer.findProperty(attrName);
+		Collection<PrismPropertyValue<T>> arePValues;
+		if (attribute != null) {
+			arePValues = attribute.getValues();
+		} else {
+			arePValues = new HashSet<>();
+		}
 
-			PrismProperty<?> attribute = attributesContainer.findProperty(attrName);
-			Collection<PrismPropertyValue<Object>> arePValues = null;
-			if (attribute != null) {
-				arePValues = attribute.getValues(Object.class);
-			} else {
-				arePValues = new HashSet<PrismPropertyValue<Object>>();
-			}
-
-			// Too loud :-)
+		// Too loud :-)
 //			if (LOGGER.isTraceEnabled()) {
 //				StringBuilder sb = new StringBuilder();
 //				sb.append("Reconciliation\nATTR: ").append(PrettyPrinter.prettyPrint(attrName));
@@ -293,79 +457,124 @@ public class ReconciliationProcessor {
 //				}
 //				LOGGER.trace("{}", sb.toString());	
 //			}
-			 
-			ValueMatcher<?> valueMatcher = ValueMatcher.createMatcher(attributeDefinition,
-					matchingRuleRegistry);
+		 
+		ValueMatcher<T> valueMatcher = ValueMatcher.createMatcher(attributeDefinition, matchingRuleRegistry);
 
-			boolean hasValue = false;
-			for (ItemValueWithOrigin<? extends PrismPropertyValue<?>,PrismPropertyDefinition<?>> shouldBePvwo : shouldBePValues) {
-				PrismValueDeltaSetTripleProducer<?,?> shouldBeMapping = shouldBePvwo.getMapping();
-				if (shouldBeMapping == null) {
-					continue;
-				}
-				Object shouldBeRealValue = shouldBePvwo.getItemValue().getValue();
-				if (shouldBeMapping.getStrength() != MappingStrengthType.STRONG
-						&& (!arePValues.isEmpty() || hasStrongShouldBePValue)) {
-					// weak or normal value and the attribute already has a
-					// value. Skip it.
-					// we cannot override it as it might have been legally
-					// changed directly on the projection resource object
-					LOGGER.trace("Skipping reconciliation of value {} of the attribute {}: the mapping is not strong" , shouldBeRealValue, attributeDefinition.getName().getLocalPart());
-					continue;
-				}
-				if (!isInValues(valueMatcher, shouldBeRealValue, arePValues)) {
-					if (attributeDefinition.isSingleValue()) {
-						if (hasValue) {
-							throw new SchemaException(
-									"Attempt to set more than one value for single-valued attribute "
-											+ attrName + " in " + projCtx.getResourceShadowDiscriminator());
-						}
-						LOGGER.trace("Reconciliation: REPLACING value {} of the attribute {}" , shouldBeRealValue, attributeDefinition.getName().getLocalPart());
-						recordDelta(valueMatcher, projCtx, attributeDefinition, ModificationType.REPLACE, shouldBeRealValue,
-								shouldBePvwo.getConstruction().getSource());
-					} else {
-						LOGGER.trace("Reconciliation: ADDING value {} of the attribute {}" , shouldBeRealValue, attributeDefinition.getName().getLocalPart());
-						recordDelta(valueMatcher, projCtx, attributeDefinition, ModificationType.ADD, shouldBeRealValue,
-								shouldBePvwo.getConstruction().getSource());
-					}
-					hasValue = true;
-				}
-
+		T realValueToReplace = null;
+		boolean hasRealValueToReplace = false;
+		for (ItemValueWithOrigin<? extends PrismPropertyValue<T>,PrismPropertyDefinition<T>> shouldBePvwo : shouldBePValues) {
+			PrismValueDeltaSetTripleProducer<?,?> shouldBeMapping = shouldBePvwo.getMapping();
+			if (shouldBeMapping == null) {
+				continue;
 			}
-			
-			decideIfTolerate(projCtx, attributeDefinition, arePValues, shouldBePValues, valueMatcher);
-			
-//				if (!attributeDefinition.isTolerant()) {
-//				for (PrismPropertyValue<Object> isPValue : arePValues) {
-//					if (!isInPvwoValues(valueMatcher, isPValue.getValue(), shouldBePValues)) {
-//						recordDelta(valueMatcher, accCtx, attributeDefinition, ModificationType.DELETE,
-//								isPValue.getValue(), null);
-//					}
-//				}
-//			}
+			T shouldBeRealValue = shouldBePvwo.getItemValue().getValue();
+			if (shouldBeMapping.getStrength() != MappingStrengthType.STRONG
+					&& (!arePValues.isEmpty() || hasStrongShouldBePValue)) {
+				// weak or normal value and the attribute already has a
+				// value. Skip it.
+				// we cannot override it as it might have been legally
+				// changed directly on the projection resource object
+				LOGGER.trace("Skipping reconciliation of value {} of the attribute {}: the mapping is not strong", shouldBeRealValue, attributeDefinition.getName().getLocalPart());
+				continue;
+			}
+			if (!isInValues(valueMatcher, shouldBeRealValue, arePValues)) {
+				if (attributeDefinition.isSingleValue()) {
+					// It is quite possible that there are more shouldBePValues with equivalent real values but different 'context'.
+					// We don't want to throw an exception if real values are in fact equivalent.
+					// TODO generalize this a bit (e.g. also for multivalued items)
+					if (hasRealValueToReplace) {
+						if (matchValue(shouldBeRealValue, realValueToReplace, valueMatcher)) {
+							LOGGER.trace("Value to replace for {} is already set, skipping it: {}", attrName, realValueToReplace);
+							continue;
+						} else {
+							String message = "Attempt to set more than one value for single-valued attribute "
+									+ attrName + " in " + projCtx.getResourceShadowDiscriminator();
+							LOGGER.debug("{}: value to be added: {}, existing value to replace: {}", message, shouldBeMapping, realValueToReplace);
+							throw new SchemaException(message);
+						}
+					}
+					hasRealValueToReplace = true;
+					realValueToReplace = shouldBeRealValue;
+					recordDelta(valueMatcher, projCtx, SchemaConstants.PATH_ATTRIBUTES, attributeDefinition, ModificationType.REPLACE, shouldBeRealValue,
+							shouldBePvwo.getSource(), "it is given by a mapping");
+				} else {
+					recordDelta(valueMatcher, projCtx, SchemaConstants.PATH_ATTRIBUTES, attributeDefinition, ModificationType.ADD, shouldBeRealValue,
+							shouldBePvwo.getSource(), "it is given by a mapping");
+				}
+			}
+		}
+		
+		decideIfTolerate(projCtx, attributeDefinition, arePValues, shouldBePValues, valueMatcher);
+		
+	}
+
+	private <T> void addPropValuesFromDelta(
+			Collection<ItemValueWithOrigin<PrismPropertyValue<T>, PrismPropertyDefinition<T>>> shouldBePValues,
+			ObjectDelta<ShadowType> delta, QName attrName) {
+		if (delta == null) {
+			return;
+		}
+		List<PrismValue> values = delta.getNewValuesFor(new ItemPath(ShadowType.F_ATTRIBUTES, attrName));
+		for (PrismValue value : values) {
+			if (value instanceof PrismPropertyValue) {
+				shouldBePValues.add(new ItemValueWithOrigin<>((PrismPropertyValue) value, null, null));
+			} else if (value != null) {
+				throw new IllegalStateException("Unexpected type of prism value. Expected PPV, got " + value);
+			}
 		}
 	}
 
-    private void reconcileProjectionAssociations(
-            LensProjectionContext projCtx,
-            Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismContainerValue<ShadowAssociationType>,PrismContainerDefinition<ShadowAssociationType>>>> squeezedAssociations,
-            RefinedObjectClassDefinition accountDefinition) throws SchemaException {
+	private void addContainerValuesFromDelta(
+			Collection<ItemValueWithOrigin<PrismContainerValue<ShadowAssociationType>, PrismContainerDefinition<ShadowAssociationType>>> shouldBeCValues,
+			ObjectDelta<ShadowType> delta, QName assocName) {
+		if (delta == null) {
+			return;
+		}
+		List<PrismValue> values = delta.getNewValuesFor(new ItemPath(ShadowType.F_ASSOCIATION));
+		for (PrismValue value : values) {
+			if (value instanceof PrismContainerValue) {
+				Containerable c = ((PrismContainerValue) value).asContainerable();
+				if (c instanceof ShadowAssociationType) {
+					ShadowAssociationType assocValue = (ShadowAssociationType) c;
+					if (QNameUtil.match(assocValue.getName(), assocName)) {
+						shouldBeCValues
+								.add(new ItemValueWithOrigin<>((PrismContainerValue<ShadowAssociationType>) value, null, null));
+					}
+				} else {
+					throw new IllegalStateException("Unexpected type of prism value. Expected PCV<ShadowAssociationType>, got " + value);
+				}
+			} else if (value != null) {
+				throw new IllegalStateException("Unexpected type of prism value. Expected PCV<ShadowAssociationType>, got " + value);
+			}
+		}
+	}
+
+	private void reconcileProjectionAssociations(
+			LensProjectionContext projCtx,
+			Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismContainerValue<ShadowAssociationType>, PrismContainerDefinition<ShadowAssociationType>>>> squeezedAssociations,
+			RefinedObjectClassDefinition accountDefinition, Task task, OperationResult result)
+			throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException,
+			SecurityViolationException, ExpressionEvaluationException {
 
         PrismObject<ShadowType> shadowNew = projCtx.getObjectNew();
 
         PrismContainer associationsContainer = shadowNew.findContainer(ShadowType.F_ASSOCIATION);
 
-        Collection<QName> associationNames = MiscUtil.union(squeezedAssociations.keySet(), accountDefinition.getNamesOfAssociations());
+        Collection<QName> associationNames =
+				squeezedAssociations != null ?
+						MiscUtil.union(squeezedAssociations.keySet(), accountDefinition.getNamesOfAssociations()) :
+						accountDefinition.getNamesOfAssociations();
 
         for (QName assocName : associationNames) {
             LOGGER.trace("Association reconciliation processing association {}", assocName);
-            RefinedAssociationDefinition associationDefinition = accountDefinition.findAssociation(assocName);
+            RefinedAssociationDefinition associationDefinition = accountDefinition.findAssociationDefinition(assocName);
             if (associationDefinition == null) {
                 throw new SchemaException("No definition for association " + assocName + " in "
                         + projCtx.getResourceShadowDiscriminator());
             }
 
-            DeltaSetTriple<ItemValueWithOrigin<PrismContainerValue<ShadowAssociationType>,PrismContainerDefinition<ShadowAssociationType>>> cvwoTriple = squeezedAssociations.get(assocName);
+            DeltaSetTriple<ItemValueWithOrigin<PrismContainerValue<ShadowAssociationType>,PrismContainerDefinition<ShadowAssociationType>>> cvwoTriple =
+					squeezedAssociations != null ? squeezedAssociations.get(assocName) : null;
 
             // note: actually isIgnored is not implemented yet
             if (associationDefinition.isIgnored()) {
@@ -393,12 +602,19 @@ public class ReconciliationProcessor {
 
             Collection<ItemValueWithOrigin<PrismContainerValue<ShadowAssociationType>,PrismContainerDefinition<ShadowAssociationType>>> shouldBeCValues;
             if (cvwoTriple == null) {
-                shouldBeCValues = new ArrayList<>();
+                shouldBeCValues = new HashSet<>();
             } else {
-                shouldBeCValues = cvwoTriple.getNonNegativeValues();
+                shouldBeCValues = new HashSet<>(cvwoTriple.getNonNegativeValues());
             }
+            // TODO what about equality checks? There will be probably duplicates there.
 
-            // values in shouldBeCValues are parent-less
+			// We consider values explicitly requested by user to be among "should be values".
+			addContainerValuesFromDelta(shouldBeCValues, projCtx.getPrimaryDelta(), assocName);
+			// But we DO NOT take values from sync delta (because they just reflect what's on the resource),
+			// nor from secondary delta (because these got there from mappings).
+
+
+			// values in shouldBeCValues are parent-less
             // to be able to make Containerable out of them, we provide them a (fake) parent
             // (and we clone them not to mess anything)
 
@@ -439,10 +655,10 @@ public class ReconciliationProcessor {
 //					sb.append("\n    ");
 //					sb.append(shouldBeCValue.getItemValue());
 //					PrismValueDeltaSetTripleProducer<?,?> shouldBeMapping = shouldBeCValue.getMapping();
-//					if (shouldBeMapping.getStrength() == MappingStrengthType.STRONG) {
+//					if (shouldBeMapping != null && shouldBeMapping.getStrength() == MappingStrengthType.STRONG) {
 //						sb.append(" STRONG");
 //					}
-//					if (shouldBeMapping.getStrength() == MappingStrengthType.WEAK) {
+//					if (shouldBeMapping != null && shouldBeMapping.getStrength() == MappingStrengthType.WEAK) {
 //						sb.append(" WEAK");
 //					}
 //					if (!shouldBeCValue.isValid()) {
@@ -528,76 +744,170 @@ public class ReconciliationProcessor {
                 ShadowAssociationType shouldBeRealValue = shouldBeCvwo.getItemValue().getValue();
                 if (shouldBeCvwo.isValid() && !isInAssociationValues(associationValueMatcher, shouldBeRealValue, areCValues)) {
                     recordAssociationDelta(associationValueMatcher, projCtx, associationDefinition, ModificationType.ADD, shouldBeRealValue,
-                            shouldBeCvwo.getConstruction().getSource());
+                            shouldBeCvwo.getSource(), "it is given by a mapping");
                 }
             }
 
-            decideIfTolerateAssociation(projCtx, associationDefinition, areCValues, shouldBeCValues, associationValueMatcher);
+			if (LOGGER.isTraceEnabled()) {
+				LOGGER.trace("Before decideIfTolerateAssociation:");
+				LOGGER.trace("areCValues:\n{}", DebugUtil.debugDump(areCValues));
+				LOGGER.trace("shouldBeCValues:\n{}", DebugUtil.debugDump(shouldBeCValues));
+			}
+
+			decideIfTolerateAssociation(projCtx, associationDefinition, areCValues, shouldBeCValues, associationValueMatcher,
+					task, result);
         }
     }
 
-	private void decideIfTolerate(LensProjectionContext projCtx,
-			RefinedAttributeDefinition attributeDefinition,
-			Collection<PrismPropertyValue<Object>> arePValues,
-			Collection<ItemValueWithOrigin<PrismPropertyValue<?>,PrismPropertyDefinition<?>>> shouldBePValues,
-			ValueMatcher valueMatcher) throws SchemaException {
+	private <T> void decideIfTolerate(LensProjectionContext projCtx,
+			RefinedAttributeDefinition<T> attributeDefinition,
+			Collection<PrismPropertyValue<T>> arePValues,
+			Collection<ItemValueWithOrigin<PrismPropertyValue<T>,PrismPropertyDefinition<T>>> shouldBePValues,
+			ValueMatcher<T> valueMatcher) throws SchemaException {
 		
-		for (PrismPropertyValue<Object> isPValue : arePValues){
+		for (PrismPropertyValue<T> isPValue : arePValues){
 			if (matchPattern(attributeDefinition.getTolerantValuePattern(), isPValue, valueMatcher)){
 				LOGGER.trace("Reconciliation: KEEPING value {} of the attribute {}: match with tolerant value pattern." , isPValue, attributeDefinition.getName().getLocalPart());
 				continue;
 			}
 		
 			if (matchPattern(attributeDefinition.getIntolerantValuePattern(), isPValue, valueMatcher)){
-				LOGGER.trace("Reconciliation: DELETING value {} of the attribute {}: match with intolerant value pattern." , isPValue, attributeDefinition.getName().getLocalPart());
-				recordDelta(valueMatcher, projCtx, attributeDefinition, ModificationType.DELETE,
-						isPValue.getValue(), null);
+				recordDeleteDelta(isPValue, attributeDefinition, valueMatcher, projCtx, "it has matched with intolerant pattern");
 				continue;
 			}		
 				
 			
 			if (!attributeDefinition.isTolerant()) {
 				if (!isInPvwoValues(valueMatcher, isPValue.getValue(), shouldBePValues)) {
-						LOGGER.trace("Reconciliation: DELETING value {} of the attribute {}" , isPValue, attributeDefinition.getName().getLocalPart());
-						recordDelta(valueMatcher, projCtx, attributeDefinition, ModificationType.DELETE,
-								isPValue.getValue(), null);
+					recordDeleteDelta(isPValue, attributeDefinition, valueMatcher, projCtx, "it is not given by any mapping and the attribute is not tolerant");
 				}
 			}
 		}
 		
 	}
 
-    private void decideIfTolerateAssociation(LensProjectionContext accCtx,
-                                  RefinedAssociationDefinition associationDefinition,
-                                  Collection<PrismContainerValue<ShadowAssociationType>> areCValues,
-                                  Collection<ItemValueWithOrigin<PrismContainerValue<ShadowAssociationType>,PrismContainerDefinition<ShadowAssociationType>>> shouldBeCValues,
-                                  ValueMatcher valueMatcher) throws SchemaException {
+	private void decideIfTolerateAssociation(LensProjectionContext accCtx,
+			RefinedAssociationDefinition assocDef,
+			Collection<PrismContainerValue<ShadowAssociationType>> areCValues,
+			Collection<ItemValueWithOrigin<PrismContainerValue<ShadowAssociationType>, PrismContainerDefinition<ShadowAssociationType>>> shouldBeCValues,
+			ValueMatcher valueMatcher, Task task, OperationResult result)
+			throws SchemaException, SecurityViolationException, CommunicationException, ConfigurationException,
+			ObjectNotFoundException, ExpressionEvaluationException {
 
-        for (PrismContainerValue<ShadowAssociationType> isCValue : areCValues){
-            if (!associationDefinition.isTolerant()) {
-                if (!isInCvwoAssociationValues(valueMatcher, isCValue.getValue(), shouldBeCValues)) {
-                    recordAssociationDelta(valueMatcher, accCtx, associationDefinition, ModificationType.DELETE,
-                            isCValue.getValue(), null);
-                }
-            }
-        }
+		boolean evaluatePatterns = !assocDef.getTolerantValuePattern().isEmpty() || !assocDef.getIntolerantValuePattern().isEmpty();
+		MatchingRule<Object> matchingRule = evaluatePatterns ? getMatchingRuleForTargetNamingIdentifier(assocDef) : null;
+
+		// for each existing value we decide whether to keep it or delete it
+		for (PrismContainerValue<ShadowAssociationType> isCValue : areCValues) {
+			ResourceAttribute<String> targetNamingIdentifier = null;
+			if (evaluatePatterns) {
+				targetNamingIdentifier = getTargetNamingIdentifier(isCValue, task, result);
+				if (targetNamingIdentifier == null) {
+					LOGGER.warn("Couldn't check tolerant/intolerant patterns for {}, as there's no naming identifier for it", isCValue);
+					evaluatePatterns = false;
+				}
+			}
+
+			String assocNameLocal = assocDef.getName().getLocalPart();
+			if (evaluatePatterns && matchesAssociationPattern(assocDef.getTolerantValuePattern(), targetNamingIdentifier, matchingRule)) {
+				LOGGER.trace("Reconciliation: KEEPING value {} of association {}: identifier {} matches with tolerant value pattern.",
+						isCValue, assocNameLocal, targetNamingIdentifier);
+				continue;
+			}
+
+			if (isInCvwoAssociationValues(valueMatcher, isCValue.getValue(), shouldBeCValues)) {
+				LOGGER.trace("Reconciliation: KEEPING value {} of association {}: it is in 'shouldBeCValues'", isCValue, assocNameLocal);
+				continue;
+			}
+
+			if (evaluatePatterns && matchesAssociationPattern(assocDef.getIntolerantValuePattern(), targetNamingIdentifier, matchingRule)) {
+				recordAssociationDelta(valueMatcher, accCtx, assocDef, ModificationType.DELETE,
+						isCValue.getValue(), null, "identifier " + targetNamingIdentifier + " matches with intolerant pattern");
+				continue;
+			}
+
+			if (!assocDef.isTolerant()) {
+				recordAssociationDelta(valueMatcher, accCtx, assocDef, ModificationType.DELETE,
+						isCValue.getValue(), null, "it is not given by any mapping and the association is not tolerant");
+			} else {
+				LOGGER.trace("Reconciliation: KEEPING value {} of association {}: the association is tolerant and the value"
+						+ " was not caught by any intolerantValuePattern", isCValue, assocNameLocal);
+			}
+		}
     }
 
-	private <T> void recordDelta(ValueMatcher valueMatcher, LensProjectionContext accCtx,
-			ResourceAttributeDefinition attrDef, ModificationType changeType, T value, ObjectType originObject)
+	@NotNull
+	private MatchingRule<Object> getMatchingRuleForTargetNamingIdentifier(RefinedAssociationDefinition associationDefinition) throws SchemaException {
+		RefinedAttributeDefinition<Object> targetNamingAttributeDef = associationDefinition.getAssociationTarget().getNamingAttribute();
+		if (targetNamingAttributeDef != null) {
+			QName matchingRuleName = targetNamingAttributeDef.getMatchingRuleQName();
+			return matchingRuleRegistry.getMatchingRule(matchingRuleName, null);
+		} else {
+			throw new IllegalStateException(
+					"Couldn't evaluate tolerant/intolerant value patterns, because naming attribute is not known for "
+							+ associationDefinition.getAssociationTarget());
+		}
+	}
+
+	private ResourceAttribute<String> getTargetNamingIdentifier(
+			PrismContainerValue<ShadowAssociationType> associationValue, Task task, OperationResult result)
+			throws SchemaException, SecurityViolationException, ObjectNotFoundException, CommunicationException,
+			ConfigurationException, ExpressionEvaluationException {
+		return getIdentifiersForAssociationTarget(associationValue, task, result).getNamingAttribute();
+	}
+
+	@NotNull
+	private ResourceAttributeContainer getIdentifiersForAssociationTarget(PrismContainerValue<ShadowAssociationType> isCValue,
+			Task task, OperationResult result) throws CommunicationException,
+			SchemaException, ConfigurationException,
+			SecurityViolationException, ObjectNotFoundException, ExpressionEvaluationException {
+		ResourceAttributeContainer identifiersContainer =
+				ShadowUtil.getAttributesContainer(isCValue, ShadowAssociationType.F_IDENTIFIERS);
+		if (identifiersContainer != null) {
+			return identifiersContainer;
+		}
+		String oid = isCValue.asContainerable().getShadowRef() != null ? isCValue.asContainerable().getShadowRef().getOid() : null;
+		if (oid == null) {
+			// TODO maybe warn/error log would suffice?
+			throw new IllegalStateException("Couldn't evaluate tolerant/intolerant values for association " + isCValue
+					+ ", because there are no identifiers and no shadow reference present");
+		}
+		PrismObject<ShadowType> target;
+		try {
+			GetOperationOptions rootOpt = GetOperationOptions.createPointInTimeType(PointInTimeType.FUTURE);
+			rootOpt.setNoFetch(true);
+			target = provisioningService.getObject(ShadowType.class, oid, SelectorOptions.createCollection(rootOpt), task, result);
+		} catch (ObjectNotFoundException e) {
+			// TODO maybe warn/error log would suffice (also for other exceptions?)
+			throw new ObjectNotFoundException("Couldn't evaluate tolerant/intolerant values for association " + isCValue
+					+ ", because the association target object does not exist: " + e.getMessage(), e);
+		}
+		identifiersContainer = ShadowUtil.getAttributesContainer(target);
+		if (identifiersContainer == null) {
+			// TODO maybe warn/error log would suffice?
+			throw new IllegalStateException("Couldn't evaluate tolerant/intolerant values for association " + isCValue
+					+ ", because there are no identifiers present, even in the repository object for association target");
+		}
+		return identifiersContainer;
+	}
+
+	private <T> void recordDelta(ValueMatcher<T> valueMatcher, LensProjectionContext projCtx, ItemPath parentPath,
+			PrismPropertyDefinition<T> attrDef, ModificationType changeType, T value, ObjectType originObject, String reason)
 			throws SchemaException {
 
 		ItemDelta existingDelta = null;
-		if (accCtx.getSecondaryDelta() != null) {
-			existingDelta = accCtx.getSecondaryDelta().findItemDelta(
-					new ItemPath(SchemaConstants.PATH_ATTRIBUTES, attrDef.getName()));
+		if (projCtx.getSecondaryDelta() != null) {
+			existingDelta = projCtx.getSecondaryDelta().findItemDelta(
+					new ItemPath(parentPath, attrDef.getName()));
 		}
-		LOGGER.trace("Reconciliation will {} value of attribute {}: {}", new Object[] { changeType, attrDef,
-				value });
+		if (LOGGER.isTraceEnabled()) {
+			LOGGER.trace("Reconciliation will {} value of attribute {}: {} because {}", changeType,
+					PrettyPrinter.prettyPrint(attrDef.getName()), value, reason);
+		}
 
-		PropertyDelta<T> attrDelta = new PropertyDelta<T>(SchemaConstants.PATH_ATTRIBUTES, attrDef.getName(),
+		PropertyDelta<T> attrDelta = new PropertyDelta<>(parentPath, attrDef.getName(),
 				attrDef, prismContext);
-		PrismPropertyValue<T> pValue = new PrismPropertyValue<T>(value, OriginType.RECONCILIATION,
+		PrismPropertyValue<T> pValue = new PrismPropertyValue<>(value, OriginType.RECONCILIATION,
 				originObject);
 		if (changeType == ModificationType.ADD) {
 			attrDelta.addValueToAdd(pValue);
@@ -611,19 +921,28 @@ public class ReconciliationProcessor {
 		} else {
 			throw new IllegalArgumentException("Unknown change type " + changeType);
 		}
+		
+		LensUtil.setDeltaOldValue(projCtx, attrDelta);
 
-		accCtx.swallowToSecondaryDelta(attrDelta);
+		projCtx.swallowToSecondaryDelta(attrDelta);
 	}
 
-    private void recordAssociationDelta(ValueMatcher valueMatcher, LensProjectionContext accCtx,
-                                 RefinedAssociationDefinition assocDef, ModificationType changeType, ShadowAssociationType value, ObjectType originObject)
-            throws SchemaException {
+	private <T> void recordDeleteDelta(PrismPropertyValue<T> isPValue, RefinedAttributeDefinition<T> attributeDefinition,
+			ValueMatcher<T> valueMatcher, LensProjectionContext projCtx, String reason)
+			throws SchemaException {
+		recordDelta(valueMatcher, projCtx, SchemaConstants.PATH_ATTRIBUTES, attributeDefinition, ModificationType.DELETE,
+				isPValue.getValue(), null, reason);
+	}
+
+	private void recordAssociationDelta(ValueMatcher valueMatcher, LensProjectionContext accCtx,
+			RefinedAssociationDefinition assocDef, ModificationType changeType, ShadowAssociationType value,
+			ObjectType originObject, String reason) throws SchemaException {
 
         ItemDelta existingDelta = null;
         if (accCtx.getSecondaryDelta() != null) {
             existingDelta = accCtx.getSecondaryDelta().findItemDelta(SchemaConstants.PATH_ASSOCIATION);
         }
-        LOGGER.trace("Reconciliation will {} value of association {}: {}", new Object[] { changeType, assocDef, value });
+        LOGGER.trace("Reconciliation will {} value of association {}: {} because {}", changeType, assocDef, value, reason);
 
         // todo initialize only once
         PrismContainerDefinition<ShadowAssociationType> associationDefinition = prismContext.getSchemaRegistry().findObjectDefinitionByCompileTimeClass(ShadowType.class)
@@ -634,24 +953,27 @@ public class ReconciliationProcessor {
         PrismContainerValue cValue = value.asPrismContainerValue().clone();
         cValue.setOriginType(OriginType.RECONCILIATION);
         cValue.setOriginObject(originObject);
-
+        
         if (changeType == ModificationType.ADD) {
             assocDelta.addValueToAdd(cValue);
         } else if (changeType == ModificationType.DELETE) {
             if (!isToBeDeleted(existingDelta, valueMatcher, value)){
-                assocDelta.addValueToDelete(cValue);
+                LOGGER.trace("Adding association value to delete {} ", cValue);
+            	assocDelta.addValueToDelete(cValue);
             }
         } else if (changeType == ModificationType.REPLACE) {
             assocDelta.setValueToReplace(cValue);
         } else {
             throw new IllegalArgumentException("Unknown change type " + changeType);
         }
+        LensUtil.setDeltaOldValue(accCtx, assocDelta);
 
         accCtx.swallowToSecondaryDelta(assocDelta);
     }
 
 
     private <T> boolean isToBeDeleted(ItemDelta existingDelta, ValueMatcher valueMatcher, T value) {
+    	LOGGER.trace("Checking existence for DELETE of value {} in existing delta: {}", value, existingDelta);
 		if (existingDelta == null) {
 			return false;
 		}
@@ -660,25 +982,35 @@ public class ReconciliationProcessor {
 			return false;
 		}
 		
+		
 		for (Object isInDeltaValue : existingDelta.getValuesToDelete()) {
 			if (isInDeltaValue instanceof PrismPropertyValue){
 				PrismPropertyValue isInRealValue = (PrismPropertyValue) isInDeltaValue;
 				if (matchValue(isInRealValue.getValue(), value, valueMatcher)) {
+					LOGGER.trace("Skipping adding value {} to delta for DELETE because it's already there");
 					return true;
 				}
-			}
+			} else if (isInDeltaValue instanceof PrismContainerValue) {
+				PrismContainerValue isInRealValue = (PrismContainerValue) isInDeltaValue;
+				if (matchValue(isInRealValue.asContainerable(), value, valueMatcher)){
+					LOGGER.trace("Skipping adding value {} to delta for DELETE because it's already there");
+					return true;
+				}
+			} //TODO: reference delta???
+
+			
 		}
 		
 		return false;
 		
 	}
 
-	private boolean isInValues(ValueMatcher valueMatcher, Object shouldBeValue,
-			Collection<PrismPropertyValue<Object>> arePValues) {
+	private <T> boolean isInValues(ValueMatcher<T> valueMatcher, T shouldBeValue,
+			Collection<PrismPropertyValue<T>> arePValues) {
 		if (arePValues == null || arePValues.isEmpty()) {
 			return false;
 		}
-		for (PrismPropertyValue<Object> isPValue : arePValues) {
+		for (PrismPropertyValue<T> isPValue : arePValues) {
 			if (matchValue(isPValue.getValue(), shouldBeValue, valueMatcher)) {
 				return true;
 			}
@@ -700,31 +1032,19 @@ public class ReconciliationProcessor {
         return false;
     }
 
-    private boolean isInPvwoValues(Object value,
-			Collection<ItemValueWithOrigin<? extends PrismPropertyValue<?>,PrismPropertyDefinition<?>>> shouldBePvwos) {
-		for (ItemValueWithOrigin<? extends PrismPropertyValue<?>,PrismPropertyDefinition<?>> shouldBePvwo : shouldBePvwos) {
-			PrismPropertyValue<?> shouldBePPValue = shouldBePvwo.getPropertyValue();
-			Object shouldBeValue = shouldBePPValue.getValue();
-			if (shouldBeValue.equals(value)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private boolean isInPvwoValues(ValueMatcher valueMatcher, Object value,
-			Collection<ItemValueWithOrigin<PrismPropertyValue<?>,PrismPropertyDefinition<?>>> shouldBePvwos) {
+	private <T> boolean isInPvwoValues(ValueMatcher<T> valueMatcher, T value,
+			Collection<ItemValueWithOrigin<PrismPropertyValue<T>,PrismPropertyDefinition<T>>> shouldBePvwos) {
 
 		if (shouldBePvwos == null || shouldBePvwos.isEmpty()) {
 			return false;
 		}
 
-		for (ItemValueWithOrigin<? extends PrismPropertyValue<?>,PrismPropertyDefinition<?>> shouldBePvwo : shouldBePvwos) {
+		for (ItemValueWithOrigin<? extends PrismPropertyValue<T>,PrismPropertyDefinition<T>> shouldBePvwo : shouldBePvwos) {
 			if (!shouldBePvwo.isValid()) {
         		continue;
         	}
-			PrismPropertyValue<?> shouldBePPValue = shouldBePvwo.getPropertyValue();
-			Object shouldBeValue = shouldBePPValue.getValue();
+			PrismPropertyValue<T> shouldBePPValue = shouldBePvwo.getItemValue();
+			T shouldBeValue = shouldBePPValue.getValue();
 			if (matchValue(value, shouldBeValue, valueMatcher)) {
 				return true;
 			}
@@ -753,7 +1073,7 @@ public class ReconciliationProcessor {
     }
     
     
-    private <T> boolean matchValue(T realA, T realB, ValueMatcher valueMatcher) {
+    private <T> boolean matchValue(T realA, T realB, ValueMatcher<T> valueMatcher) {
 		try {
 			return valueMatcher.match(realA, realB);
 		} catch (SchemaException e) {
@@ -762,14 +1082,14 @@ public class ReconciliationProcessor {
 		}
 	}
     
-    private boolean matchPattern(List<String> patterns,
-			PrismPropertyValue<Object> isPValue, ValueMatcher valueMatcher) {
+    private <T> boolean matchPattern(List<String> patterns,
+			PrismPropertyValue<T> isPValue, ValueMatcher<T> valueMatcher) {
 		if (patterns == null || patterns.isEmpty()) {
 			return false;
 		}
-		for (String toleratePattern : patterns) {
+		for (String pattern : patterns) {
 			try {
-				if (valueMatcher.matches(isPValue.getValue(), toleratePattern)) {
+				if (valueMatcher.matches(isPValue.getValue(), pattern)) {
 					return true;
 				}
 			} catch (SchemaException e) {
@@ -781,4 +1101,20 @@ public class ReconciliationProcessor {
 		return false;
 	}
 
+    private boolean matchesAssociationPattern(@NotNull List<String> patterns, @NotNull ResourceAttribute<?> identifier,
+			@NotNull MatchingRule<Object> matchingRule) {
+		for (String pattern : patterns) {
+			for (PrismPropertyValue<?> identifierValue : identifier.getValues()) {
+				try {
+					if (identifierValue != null && matchingRule.matchRegex(identifierValue.getRealValue(), pattern)) {
+						return true;
+					}
+				} catch (SchemaException e) {
+					LOGGER.warn("Value '{}' is invalid: {}", identifierValue, e.getMessage(), e);
+					return false;
+				}
+			}
+		}
+		return false;
+	}
 }

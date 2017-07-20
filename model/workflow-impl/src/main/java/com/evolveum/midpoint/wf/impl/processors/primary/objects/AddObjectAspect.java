@@ -17,34 +17,30 @@
 package com.evolveum.midpoint.wf.impl.processors.primary.objects;
 
 import com.evolveum.midpoint.model.api.context.ModelContext;
+import com.evolveum.midpoint.model.impl.lens.LensFocusContext;
 import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismObjectDefinition;
 import com.evolveum.midpoint.prism.delta.ChangeType;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.util.OidUtil;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.wf.impl.processes.itemApproval.ApprovalRequest;
 import com.evolveum.midpoint.wf.impl.processes.itemApproval.ApprovalRequestImpl;
-import com.evolveum.midpoint.wf.impl.processes.itemApproval.ProcessVariableNames;
-import com.evolveum.midpoint.wf.impl.processors.primary.ObjectTreeDeltas;
-import com.evolveum.midpoint.wf.impl.processors.primary.PcpChildJobCreationInstruction;
+import com.evolveum.midpoint.schema.ObjectTreeDeltas;
+import com.evolveum.midpoint.wf.impl.processors.primary.ModelInvocationContext;
+import com.evolveum.midpoint.wf.impl.processors.primary.PcpChildWfTaskCreationInstruction;
 import com.evolveum.midpoint.wf.impl.processors.primary.aspect.BasePrimaryChangeAspect;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.PcpAspectConfigurationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.WfConfigurationType;
-import com.evolveum.midpoint.xml.ns.model.workflow.common_forms_3.AddObjectApprovalFormType;
-import com.evolveum.midpoint.xml.ns.model.workflow.common_forms_3.QuestionFormType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import org.apache.commons.lang.Validate;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Change aspect that manages addition of an object.
@@ -55,53 +51,59 @@ public abstract class AddObjectAspect<T extends ObjectType> extends BasePrimaryC
 
     private static final Trace LOGGER = TraceManager.getTrace(AddObjectAspect.class);
 
-    //region ------------------------------------------------------------ Things that execute on request arrival
+	//region ------------------------------------------------------------ Things that execute on request arrival
 
     protected abstract Class<T> getObjectClass();
     protected abstract String getObjectLabel(T object);
 
-    @Override
-    public List<PcpChildJobCreationInstruction> prepareJobCreationInstructions(ModelContext<?> modelContext,
-                                                                               WfConfigurationType wfConfigurationType,
-                                                                               ObjectTreeDeltas objectTreeDeltas,
-                                                                               Task taskFromModel, OperationResult result) throws SchemaException {
-        PcpAspectConfigurationType config = primaryChangeAspectHelper.getPcpAspectConfigurationType(wfConfigurationType, this);
+    @NotNull
+	@Override
+    public List<PcpChildWfTaskCreationInstruction> prepareTasks(@NotNull ObjectTreeDeltas objectTreeDeltas,
+			ModelInvocationContext ctx, @NotNull OperationResult result) throws SchemaException {
+        PcpAspectConfigurationType config = primaryChangeAspectHelper.getPcpAspectConfigurationType(ctx.wfConfiguration, this);
         if (config == null) {
-            return null;            // this should not occur (because this aspect is not enabled by default), but check it just to be sure
+            return Collections.emptyList();            // this should not occur (because this aspect is not enabled by default), but check it just to be sure
         }
-        if (!primaryChangeAspectHelper.isRelatedToType(modelContext, getObjectClass()) || objectTreeDeltas.getFocusChange() == null) {
-            return null;
+        if (!primaryChangeAspectHelper.isRelatedToType(ctx.modelContext, getObjectClass()) || objectTreeDeltas.getFocusChange() == null) {
+            return Collections.emptyList();
         }
-        List<ApprovalRequest<T>> approvalRequestList = getApprovalRequests(modelContext, config, objectTreeDeltas.getFocusChange(), result);
+        List<ApprovalRequest<T>> approvalRequestList = getApprovalRequests(ctx.modelContext, config,
+				objectTreeDeltas.getFocusChange(), ctx.taskFromModel, result);
         if (approvalRequestList == null || approvalRequestList.isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
-        return prepareJobCreateInstructions(modelContext, taskFromModel, result, approvalRequestList);
+        return prepareJobCreateInstructions(ctx.modelContext, ctx.taskFromModel, result, approvalRequestList);
     }
 
     private List<ApprovalRequest<T>> getApprovalRequests(ModelContext<?> modelContext, PcpAspectConfigurationType config,
-                                                         ObjectDelta<? extends ObjectType> change, OperationResult result) {
+			ObjectDelta<? extends ObjectType> change, Task taskFromModel, OperationResult result) {
         if (change.getChangeType() != ChangeType.ADD) {
             return null;
         }
         T objectType = (T) change.getObjectToAdd().asObjectable().clone();
+        if (objectType.getOid() == null) {
+            String newOid = OidUtil.generateOid();
+            objectType.setOid(newOid);
+            ((LensFocusContext<?>) modelContext.getFocusContext()).setOid(newOid);
+        }
         change.setObjectToAdd(null);            // make the change empty
-        return Arrays.asList(createApprovalRequest(config, objectType));
+        return Arrays.asList(createApprovalRequest(config, objectType, modelContext, taskFromModel, result));
     }
 
     // creates an approval request for a given role create request
-    private ApprovalRequest<T> createApprovalRequest(PcpAspectConfigurationType config, T objectType) {
-
-        return new ApprovalRequestImpl(objectType, config, prismContext);
+    private ApprovalRequest<T> createApprovalRequest(PcpAspectConfigurationType config, T objectType,
+			ModelContext<?> modelContext, Task taskFromModel, OperationResult result) {
+        ApprovalRequest<T> request = new ApprovalRequestImpl<>(objectType, config, prismContext);
+        approvalSchemaHelper.prepareSchema(request.getApprovalSchemaType(), createRelationResolver(objectType, result),
+                createReferenceResolver(modelContext, taskFromModel, result));
+        return request;
     }
 
-    private List<PcpChildJobCreationInstruction> prepareJobCreateInstructions(ModelContext<?> modelContext, Task taskFromModel, OperationResult result,
+    private List<PcpChildWfTaskCreationInstruction> prepareJobCreateInstructions(ModelContext<?> modelContext, Task taskFromModel, OperationResult result,
                                                                               List<ApprovalRequest<T>> approvalRequestList) throws SchemaException {
-        List<PcpChildJobCreationInstruction> instructions = new ArrayList<>();
+        List<PcpChildWfTaskCreationInstruction> instructions = new ArrayList<>();
 
         for (ApprovalRequest<T> approvalRequest : approvalRequestList) {     // there should be just one
-
-            assert approvalRequest.getPrismContext() != null;
 
             LOGGER.trace("Approval request = {}", approvalRequest);
 
@@ -109,73 +111,46 @@ public abstract class AddObjectAspect<T extends ObjectType> extends BasePrimaryC
             Validate.notNull(objectToAdd);
             String objectLabel = getObjectLabel(objectToAdd);
 
-            PrismObject<UserType> requester = primaryChangeAspectHelper.getRequester(taskFromModel, result);
+            PrismObject<UserType> requester = baseModelInvocationProcessingHelper.getRequester(taskFromModel, result);
+
+            String approvalTaskName = "Approve creating " + objectLabel;
 
             // create a JobCreateInstruction for a given change processor (primaryChangeProcessor in this case)
-            PcpChildJobCreationInstruction instruction =
-                    PcpChildJobCreationInstruction.createInstruction(getChangeProcessor());
+            PcpChildWfTaskCreationInstruction instruction =
+                    PcpChildWfTaskCreationInstruction.createItemApprovalInstruction(
+                            getChangeProcessor(), approvalTaskName,
+							approvalRequest.getApprovalSchemaType(), null);
 
             // set some common task/process attributes
-            instruction.prepareCommonAttributes(this, modelContext, null, requester);       // objectOid is null (because object does not exist yet)
+            instruction.prepareCommonAttributes(this, modelContext, requester);
 
             // prepare and set the delta that has to be approved
             ObjectDelta<? extends ObjectType> delta = assignmentToDelta(modelContext);
-            instruction.setDeltaProcessAndTaskVariables(delta);
+            instruction.setDeltasToProcess(delta);
+
+            instruction.setObjectRef(modelContext, result);
+            instruction.setTargetRef(null, result);
 
             // set the names of midPoint task and activiti process instance
-            String andExecuting = instruction.isExecuteApprovedChangeImmediately() ? "and executing " : "";
-            instruction.setTaskName("Workflow for approving " + andExecuting + "creation of " + objectLabel);
+            String andExecuting = instruction.isExecuteApprovedChangeImmediately() ? "and execution " : "";
+            instruction.setTaskName("Approval " + andExecuting + "of creation of " + objectLabel);
             instruction.setProcessInstanceName("Creating " + objectLabel);
 
             // setup general item approval process
-            String approvalTaskName = "Approve creating " + objectLabel;
-            itemApprovalProcessInterface.prepareStartInstruction(instruction, approvalRequest, approvalTaskName);
+            itemApprovalProcessInterface.prepareStartInstruction(instruction);
 
             instructions.add(instruction);
         }
         return instructions;
     }
 
-    private ObjectDelta<? extends ObjectType> assignmentToDelta(ModelContext<?> modelContext) {
+    private ObjectDelta<? extends ObjectType> assignmentToDelta(ModelContext<? extends ObjectType> modelContext) {
         return modelContext.getFocusContext().getPrimaryDelta();
     }
 
     //endregion
 
     //region ------------------------------------------------------------ Things that execute when item is being approved
-
-    @Override
-    public PrismObject<? extends QuestionFormType> prepareQuestionForm(org.activiti.engine.task.Task task, Map<String, Object> variables, OperationResult result) throws SchemaException, ObjectNotFoundException {
-
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("getRequestSpecific starting: execution id {}, pid {}, variables = {}", task.getExecutionId(), task.getProcessInstanceId(), variables);
-        }
-
-        PrismObjectDefinition<AddObjectApprovalFormType> formDefinition = prismContext.getSchemaRegistry().findObjectDefinitionByType(AddObjectApprovalFormType.COMPLEX_TYPE);
-        PrismObject<AddObjectApprovalFormType> formPrism = formDefinition.instantiate();
-        AddObjectApprovalFormType form = formPrism.asObjectable();
-
-        ApprovalRequest<T> request = (ApprovalRequest) variables.get(ProcessVariableNames.APPROVAL_REQUEST);
-        request.setPrismContext(prismContext);
-        Validate.notNull(request, "Approval request is not present among process variables");
-        form.setObjectToAdd(getObjectLabel(request.getItemToApprove()));
-
-        form.setRequesterComment(null);     // TODO
-
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("Resulting prism object instance = {}", formPrism.debugDump());
-        }
-        return formPrism;
-    }
-
-    @Override
-    public PrismObject<? extends ObjectType> prepareRelatedObject(org.activiti.engine.task.Task task, Map<String, Object> variables, OperationResult result) throws SchemaException, ObjectNotFoundException {
-
-        ApprovalRequest<T> request = (ApprovalRequest) variables.get(ProcessVariableNames.APPROVAL_REQUEST);
-        request.setPrismContext(prismContext);
-        Validate.notNull(request, "Approval request is not present among process variables");
-        return request.getItemToApprove().asPrismObject();
-    }
 
     //endregion
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,10 @@
 
 package com.evolveum.midpoint.web.component.menu;
 
+import com.evolveum.midpoint.gui.api.component.BasePanel;
+import com.evolveum.midpoint.gui.api.model.LoadableModel;
+import com.evolveum.midpoint.gui.api.page.PageBase;
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.crypto.EncryptionException;
 import com.evolveum.midpoint.prism.crypto.Protector;
@@ -29,27 +33,18 @@ import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.component.AjaxButton;
-import com.evolveum.midpoint.web.component.util.BasePageAwarePanel;
-import com.evolveum.midpoint.web.component.util.BaseSimplePanel;
-import com.evolveum.midpoint.web.component.util.LoadableModel;
 import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
-import com.evolveum.midpoint.web.page.PageBase;
 import com.evolveum.midpoint.web.page.admin.home.PageMyPasswordQuestions;
-import com.evolveum.midpoint.web.page.admin.home.component.MyPasswordQuestionsPanel;
 import com.evolveum.midpoint.web.page.admin.home.dto.PasswordQuestionsDto;
 import com.evolveum.midpoint.web.page.admin.home.dto.SecurityQuestionAnswerDTO;
 import com.evolveum.midpoint.web.security.SecurityUtils;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 
-import org.apache.wicket.AttributeModifier;
-import org.apache.wicket.Page;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.markup.html.WebMarkupContainer;
-import org.apache.wicket.markup.html.WebPage;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.image.ContextImage;
-import org.apache.wicket.markup.html.image.Image;
+import org.apache.wicket.markup.html.image.NonCachingImage;
 import org.apache.wicket.markup.html.link.ExternalLink;
 import org.apache.wicket.model.AbstractReadOnlyModel;
 import org.apache.wicket.model.IModel;
@@ -59,15 +54,12 @@ import org.apache.wicket.request.resource.AbstractResource;
 import org.apache.wicket.request.resource.ByteArrayResource;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 /**
  * @author lazyman
  */
-public class UserMenuPanel extends BaseSimplePanel {
+public class UserMenuPanel extends BasePanel {
 
     private static final Trace LOGGER = TraceManager.getTrace(UserMenuPanel.class);
     private static final String ID_USERNAME_LINK = "usernameLink";
@@ -98,6 +90,7 @@ public class UserMenuPanel extends BaseSimplePanel {
 
     public UserMenuPanel(String id) {
         super(id);
+        initLayout();
         if (!isPasswordModelLoaded) {
             passwordQuestionsDtoIModel = new LoadableModel<PasswordQuestionsDto>(false) {
 
@@ -121,15 +114,11 @@ public class UserMenuPanel extends BaseSimplePanel {
         };
     }
 
-    @Override
-    protected void initLayout() {
-        if (userModel != null && userModel.getObject() == null){
-            loadModel(null);
-        }
+    private void initLayout() {
         WebMarkupContainer iconBox = new WebMarkupContainer(ID_ICON_BOX);
         add(iconBox);
 
-        Image img = new Image(ID_PHOTO, new AbstractReadOnlyModel<AbstractResource>() {
+        NonCachingImage img = new NonCachingImage(ID_PHOTO, new AbstractReadOnlyModel<AbstractResource>() {
 
             @Override
             public AbstractResource getObject() {
@@ -178,7 +167,7 @@ public class UserMenuPanel extends BaseSimplePanel {
         WebMarkupContainer panelIconBox = new WebMarkupContainer(ID_PANEL_ICON_BOX);
         add(panelIconBox);
 
-        Image panelImg = new Image(ID_PANEL_PHOTO, new AbstractReadOnlyModel<AbstractResource>() {
+        NonCachingImage panelImg = new NonCachingImage(ID_PANEL_PHOTO, new AbstractReadOnlyModel<AbstractResource>() {
 
             @Override
             public AbstractResource getObject() {
@@ -279,7 +268,7 @@ public class UserMenuPanel extends BaseSimplePanel {
         if (principal instanceof MidPointPrincipal) {
             MidPointPrincipal princ = (MidPointPrincipal) principal;
 
-            return WebMiscUtil.getOrigStringFromPoly(princ.getName());
+            return WebComponentUtil.getOrigStringFromPoly(princ.getName());
         }
 
         return principal.toString();
@@ -342,18 +331,18 @@ public class UserMenuPanel extends BaseSimplePanel {
                 SecurityQuestionAnswerType securityQuestionAnswerType = (SecurityQuestionAnswerType) iterator
                         .next();
                 Protector protector = ((PageBase) getPage()).getPrismContext().getDefaultProtector();
-                String decoded = "";
-                if (securityQuestionAnswerType.getQuestionAnswer().getEncryptedDataType() != null) {
+                if (securityQuestionAnswerType.getQuestionAnswer() != null && securityQuestionAnswerType.getQuestionAnswer().getEncryptedDataType() != null) {
                     try {
-                        decoded = protector.decryptString(securityQuestionAnswerType.getQuestionAnswer());
+                    	String decoded = protector.decryptString(securityQuestionAnswerType.getQuestionAnswer());
+                        secQuestAnswListDTO.add(new SecurityQuestionAnswerDTO(securityQuestionAnswerType
+                                .getQuestionIdentifier(), decoded));
                     } catch (EncryptionException e) {
-                        // TODO Auto-generated catch block
-                        e.printStackTrace();
+                        // TODO do we need to thrown exception here?
+                    	LOGGER.error("Could not get security questions. Error: "  + e.getMessage(), e);
+                        continue;
                     }
                 }
-
-                secQuestAnswListDTO.add(new SecurityQuestionAnswerDTO(securityQuestionAnswerType
-                        .getQuestionIdentifier(), decoded));
+                
             }
 
             return secQuestAnswListDTO;
@@ -377,7 +366,7 @@ public class UserMenuPanel extends BaseSimplePanel {
             }
         } catch (Exception ex) {
             result.recordFatalError("Couldn't load system security policy" + ex.getMessage(), ex);
-            LoggingUtils.logException(LOGGER, "Couldn't load system security policy", ex);
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't load system security policy", ex);
         }finally {
             result.computeStatus();
         }

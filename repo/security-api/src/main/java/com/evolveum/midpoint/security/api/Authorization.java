@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,20 @@
 package com.evolveum.midpoint.security.api;
 
 import java.util.List;
+import java.util.Objects;
 
 import com.evolveum.prism.xml.ns._public.types_3.ItemPathType;
 
+import org.jetbrains.annotations.NotNull;
 import org.springframework.security.core.GrantedAuthority;
-import org.w3c.dom.Element;
 
 import com.evolveum.midpoint.util.DebugDumpable;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationDecisionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationEnforcementStrategyType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationPhaseType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectSpecificationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OwnedObjectSpecificationType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.OwnedObjectSelectorType;
 
 /**
  * @author semancik
@@ -80,16 +81,25 @@ public class Authorization implements GrantedAuthority, DebugDumpable {
 	public AuthorizationPhaseType getPhase() {
 		return authorizationType.getPhase();
 	}
+	
+	public AuthorizationEnforcementStrategyType getEnforcementStrategy() {
+		return authorizationType.getEnforcementStrategy();
+	}
+	
+	public boolean maySkipOnSearch() {
+		return getEnforcementStrategy() == AuthorizationEnforcementStrategyType.MAY_SKIP_ON_SEARCH;
+	}
 
-	public List<OwnedObjectSpecificationType> getObject() {
+	public List<OwnedObjectSelectorType> getObject() {
 		return authorizationType.getObject();
 	}
 
+	@NotNull
 	public List<ItemPathType> getItem() {
 		return authorizationType.getItem();
 	}
 
-	public List<OwnedObjectSpecificationType> getTarget() {
+	public List<OwnedObjectSelectorType> getTarget() {
 		return authorizationType.getTarget();
 	}
 
@@ -134,7 +144,22 @@ public class Authorization implements GrantedAuthority, DebugDumpable {
 
 	@Override
 	public String toString() {
-		return "Authorization(" + authorizationType == null ? "null" : authorizationType.getAction() + ")";
+		return "Authorization(" + (authorizationType == null ? "null" : authorizationType.getAction() + ")");
 	}
 
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (!(o instanceof Authorization))
+			return false;
+		Authorization that = (Authorization) o;
+		return Objects.equals(authorizationType, that.authorizationType) &&
+				Objects.equals(sourceDescription, that.sourceDescription);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(authorizationType, sourceDescription);
+	}
 }

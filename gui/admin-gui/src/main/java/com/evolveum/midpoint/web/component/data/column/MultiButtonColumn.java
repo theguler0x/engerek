@@ -31,11 +31,16 @@ import java.util.List;
  */
 public class MultiButtonColumn<T extends Serializable> extends AbstractColumn<T, String> {
 
-    private MultiButtonPanel panel;
+    protected MultiButtonPanel panel;
 
     private List<String> captions;
-    private IModel<T> rowModel;
-    private int numberOfButtons;
+    protected IModel<T> rowModel;
+    protected int numberOfButtons;
+
+    public MultiButtonColumn(int numberOfButtons) {
+        super(null);
+        this.numberOfButtons = numberOfButtons;
+    }
 
     public MultiButtonColumn(IModel<String> displayModel, int numberOfButtons) {
         super(displayModel);
@@ -55,6 +60,11 @@ public class MultiButtonColumn<T extends Serializable> extends AbstractColumn<T,
             }
 
             @Override
+            public String getButtonTitle(int id) {
+                return MultiButtonColumn.this.getButtonTitle(id);
+            }
+
+            @Override
             public boolean isButtonEnabled(int id, IModel<T> model) {
                 return MultiButtonColumn.this.isButtonEnabled(id, model);
             }
@@ -62,6 +72,11 @@ public class MultiButtonColumn<T extends Serializable> extends AbstractColumn<T,
             @Override
             public boolean isButtonVisible(int id, IModel<T> model) {
                 return MultiButtonColumn.this.isButtonVisible(id, model);
+            }
+
+            @Override
+            protected String getButtonCssClass(int id) {
+                return MultiButtonColumn.this.getButtonCssClass(id);
             }
 
             @Override
@@ -86,6 +101,16 @@ public class MultiButtonColumn<T extends Serializable> extends AbstractColumn<T,
 
     public boolean isButtonEnabled(int id, IModel<T> model) {
         return true;
+    }
+
+    protected String getButtonCssClass(int id) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(DoubleButtonColumn.BUTTON_BASE_CLASS).append(" ");
+        sb.append(getButtonColorCssClass(id)).append(" ").append(getButtonSizeCssClass(id));
+        if (!isButtonEnabled(id, getRowModel())) {
+            sb.append(" disabled");
+        }
+        return sb.toString();
     }
 
     public boolean isButtonVisible(int id, IModel<T> model) {
@@ -114,4 +139,9 @@ public class MultiButtonColumn<T extends Serializable> extends AbstractColumn<T,
     public IModel<T> getRowModel(){
         return rowModel;
     }
+
+    public String getButtonTitle(int id) {
+        return "";
+    }
+
 }

@@ -22,49 +22,30 @@ import com.evolveum.midpoint.common.validator.EventResult;
 import com.evolveum.midpoint.common.validator.Validator;
 import com.evolveum.midpoint.model.api.ModelExecuteOptions;
 import com.evolveum.midpoint.model.api.ModelService;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
 import com.evolveum.midpoint.model.impl.migrator.Migrator;
 import com.evolveum.midpoint.model.impl.util.Utils;
 import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.prism.crypto.EncryptionException;
 import com.evolveum.midpoint.prism.crypto.Protector;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
-import com.evolveum.midpoint.prism.query.EqualFilter;
-import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
-import com.evolveum.midpoint.prism.query.QueryJaxbConvertor;
 import com.evolveum.midpoint.prism.schema.PrismSchema;
-import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
-import com.evolveum.midpoint.repo.api.RepoAddOptions;
+import com.evolveum.midpoint.prism.schema.PrismSchemaImpl;
 import com.evolveum.midpoint.repo.api.RepositoryService;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.result.OperationResultStatus;
-import com.evolveum.midpoint.schema.util.ConnectorTypeUtil;
-import com.evolveum.midpoint.schema.util.MiscSchemaUtil;
-import com.evolveum.midpoint.schema.util.ObjectQueryUtil;
-import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
-import com.evolveum.midpoint.schema.util.ResourceTypeUtil;
+import com.evolveum.midpoint.schema.util.*;
 import com.evolveum.midpoint.task.api.LightweightIdentifierGenerator;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.task.api.TaskManager;
-import com.evolveum.midpoint.util.DOMUtil;
-import com.evolveum.midpoint.util.exception.CommonException;
-import com.evolveum.midpoint.util.exception.CommunicationException;
-import com.evolveum.midpoint.util.exception.ConfigurationException;
-import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
-import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
-import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.exception.SecurityViolationException;
-import com.evolveum.midpoint.util.exception.SystemException;
+import com.evolveum.midpoint.util.exception.*;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ImportOptionsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-import com.evolveum.prism.xml.ns._public.query_3.QueryType;
-
+import com.evolveum.prism.xml.ns._public.types_3.EvaluationTimeType;
 import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,10 +53,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
 
 import javax.xml.namespace.QName;
-
 import java.io.InputStream;
 import java.util.Collection;
 import java.util.List;
@@ -156,7 +135,7 @@ public class ObjectImporter {
                 
                 Utils.resolveReferences(object, repository, 
                 		(options == null || options.isReferentialIntegrity() == null) ? false : options.isReferentialIntegrity(),
-                        false, prismContext, objectResult);
+                        false, EvaluationTimeType.IMPORT, false, prismContext, objectResult);
                 
                 objectResult.computeStatus();
                 if (!objectResult.isAcceptable()) {
@@ -214,34 +193,34 @@ public class ObjectImporter {
                 } catch (SchemaException e) {
                     objectResult.recordFatalError("Schema violation: "+e.getMessage(), e);
                     LOGGER.error("Import of object {} failed: Schema violation: {}",
-                            new Object[]{object, e.getMessage(), e});
+							object, e.getMessage(), e);
                 } catch (ObjectAlreadyExistsException e) {
                 	objectResult.recordFatalError("Object already exists: "+e.getMessage(), e);
                     LOGGER.error("Import of object {} failed: Object already exists: {}",
-                            new Object[]{object, e.getMessage(), e});
+							object, e.getMessage(), e);
                     LOGGER.error("Object already exists", e);
                 } catch (RuntimeException e) {
                     objectResult.recordFatalError("Unexpected problem: "+e.getMessage(), e);
                     LOGGER.error("Import of object {} failed: Unexpected problem: {}",
-                            new Object[]{object, e.getMessage(), e});
+							object, e.getMessage(), e);
                 } catch (ObjectNotFoundException e) {
                 	LOGGER.error("Import of object {} failed: Object referred from this object was not found: {}",
-                            new Object[]{object, e.getMessage(), e});
+							object, e.getMessage(), e);
 				} catch (ExpressionEvaluationException e) {
 					LOGGER.error("Import of object {} failed: Expression evaluation error: {}",
-                            new Object[]{object, e.getMessage(), e});
+							object, e.getMessage(), e);
 				} catch (CommunicationException e) {
 					LOGGER.error("Import of object {} failed: Communication error: {}",
-                            new Object[]{object, e.getMessage(), e});
+							object, e.getMessage(), e);
 				} catch (ConfigurationException e) {
 					LOGGER.error("Import of object {} failed: Configuration error: {}",
-                            new Object[]{object, e.getMessage(), e});
+							object, e.getMessage(), e);
 				} catch (PolicyViolationException e) {
 					LOGGER.error("Import of object {} failed: Policy violation: {}",
-                            new Object[]{object, e.getMessage(), e});
+							object, e.getMessage(), e);
 				} catch (SecurityViolationException e) {
 					LOGGER.error("Import of object {} failed: Security violation: {}",
-                            new Object[]{object, e.getMessage(), e});
+							object, e.getMessage(), e);
 				}
 
                 objectResult.recordSuccessIfUnknown();
@@ -422,8 +401,8 @@ public class ObjectImporter {
                 return;
             }
 
-            PrismObject<ConnectorType> connector = null;
-            ConnectorType connectorType = null;
+            PrismObject<ConnectorType> connector;
+            ConnectorType connectorType;
             try {
                 connector = repository.getObject(ConnectorType.class, connectorOid, null, result);
                 connectorType = connector.asObjectable();
@@ -441,14 +420,14 @@ public class ObjectImporter {
             }
             
             Element connectorSchemaElement = ConnectorTypeUtil.getConnectorXsdSchema(connector);
-            PrismSchema connectorSchema = null;
+            PrismSchema connectorSchema;
             if (connectorSchemaElement == null) {
             	// No schema to validate with
             	result.recordSuccessIfUnknown();
             	return;
             }
 			try {
-				connectorSchema = PrismSchema.parse(connectorSchemaElement, true, "schema for " + connector, prismContext);
+				connectorSchema = PrismSchemaImpl.parse(connectorSchemaElement, true, "schema for " + connector, prismContext);
 			} catch (SchemaException e) {
 				result.recordFatalError("Error parsing connector schema for " + connector + ": "+e.getMessage(), e);
 				return;
@@ -489,15 +468,10 @@ public class ObjectImporter {
         }
 
         result.recordSuccessIfUnknown();
-        return;
     }
 
     /**
      * Try to parse the schema using schema processor. Report errors.
-     *
-     * @param dynamicSchema
-     * @param schemaName
-     * @param objectResult
      */
     private void checkSchema(XmlSchemaType dynamicSchema, String schemaName, OperationResult objectResult) {
         OperationResult result = objectResult.createSubresult(ObjectImporter.class.getName() + ".check" + StringUtils.capitalize(schemaName) + "Schema");
@@ -510,7 +484,7 @@ public class ObjectImporter {
         }
 
         try {
-            PrismSchema.parse(xsdElement, true, schemaName, prismContext);
+            PrismSchemaImpl.parse(xsdElement, true, schemaName, prismContext);
         } catch (SchemaException e) {
             result.recordFatalError("Error during " + schemaName + " schema integrity check: " + e.getMessage(), e);
             return;
@@ -524,8 +498,6 @@ public class ObjectImporter {
      * @param contentElements DOM tree to validate
      * @param elementRef      the "correct" name of the root element
      * @param dynamicSchema   dynamic schema
-     * @param schemaName
-     * @param objectResult
      */
     private PrismContainer validateDynamicSchema(List<Object> contentElements, QName elementRef,
                                                     XmlSchemaType dynamicSchema, String schemaName, OperationResult objectResult) {
@@ -537,9 +509,9 @@ public class ObjectImporter {
         	return null;
         }
 
-        com.evolveum.midpoint.prism.schema.PrismSchema schema = null;
+        com.evolveum.midpoint.prism.schema.PrismSchema schema;
         try {
-            schema = com.evolveum.midpoint.prism.schema.PrismSchema.parse(xsdElement, true, schemaName, prismContext);
+            schema = com.evolveum.midpoint.prism.schema.PrismSchemaImpl.parse(xsdElement, true, schemaName, prismContext);
         } catch (SchemaException e) {
             result.recordFatalError("Error during " + schemaName + " schema parsing: " + e.getMessage(), e);
             LOGGER.trace("Validation error: {}" + e.getMessage());
@@ -566,4 +538,4 @@ public class ObjectImporter {
 	}
     
 }
- 
+

@@ -16,7 +16,6 @@
 package com.evolveum.midpoint.certification.impl;
 
 import com.evolveum.midpoint.certification.api.CertificationManager;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
 import com.evolveum.midpoint.model.impl.trigger.TriggerHandler;
 import com.evolveum.midpoint.model.impl.trigger.TriggerHandlerRegistry;
 import com.evolveum.midpoint.prism.PrismObject;
@@ -24,9 +23,6 @@ import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.CertCampaignTypeUtil;
 import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.util.exception.CommunicationException;
-import com.evolveum.midpoint.util.exception.ConfigurationException;
-import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
@@ -36,10 +32,13 @@ import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.TriggerType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
+
+import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignStateType.IN_REVIEW_STAGE;
 
 /**
  * @author mederly
@@ -64,7 +63,7 @@ public class AccessCertificationCloseStageTriggerHandler implements TriggerHandl
 	}
 	
 	@Override
-	public <O extends ObjectType> void handle(PrismObject<O> prismObject, Task task, OperationResult result) {
+	public <O extends ObjectType> void handle(PrismObject<O> prismObject, TriggerType trigger, Task task, OperationResult result) {
 		try {
 			ObjectType object = prismObject.asObjectable();
 			if (!(object instanceof AccessCertificationCampaignType)) {
@@ -76,15 +75,21 @@ public class AccessCertificationCloseStageTriggerHandler implements TriggerHandl
 			AccessCertificationCampaignType campaign = (AccessCertificationCampaignType) object;
 			LOGGER.info("Automatically closing current stage of {}", ObjectTypeUtil.toShortString(campaign));
 
+			if (campaign.getState() != IN_REVIEW_STAGE) {
+				LOGGER.warn("Campaign {} is not in a review stage; this 'close stage' trigger will be ignored.", ObjectTypeUtil.toShortString(campaign));
+				return;
+			}
+
 			int currentStageNumber = campaign.getStageNumber();
 			certificationManager.closeCurrentStage(campaign.getOid(), currentStageNumber, task, result);
 			if (currentStageNumber < CertCampaignTypeUtil.getNumberOfStages(campaign)) {
 				LOGGER.info("Automatically opening next stage of {}", ObjectTypeUtil.toShortString(campaign));
 				certificationManager.openNextStage(campaign.getOid(), currentStageNumber + 1, task, result);
+			} else {
+				LOGGER.info("Automatically starting remediation for {}", ObjectTypeUtil.toShortString(campaign));
+				certificationManager.startRemediation(campaign.getOid(), task, result);
 			}
-		} catch (SchemaException|ObjectNotFoundException|ExpressionEvaluationException|CommunicationException|
-				ObjectAlreadyExistsException|ConfigurationException|PolicyViolationException|
-				SecurityViolationException|RuntimeException e) {
+		} catch (SchemaException|ObjectNotFoundException|ObjectAlreadyExistsException|SecurityViolationException|RuntimeException e) {
 			LoggingUtils.logException(LOGGER, "Couldn't close current campaign and possibly advance to the next one", e);
 		}
 	}

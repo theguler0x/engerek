@@ -28,11 +28,11 @@ public class ColumnMenuAction<T extends Serializable> extends InlineMenuItemActi
 
     private IModel<T> rowModel;
 
-    void setRowModel(IModel<T> rowModel) {
+    public void setRowModel(IModel<T> rowModel) {
         this.rowModel = rowModel;
     }
 
-    protected IModel<T> getRowModel() {
+    public IModel<T> getRowModel() {
         return rowModel;
     }
 }

@@ -16,8 +16,6 @@
 
 package com.evolveum.midpoint.model.api;
 
-import com.evolveum.midpoint.prism.Item;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -30,9 +28,9 @@ import java.util.List;
 public class ScriptExecutionResult {
 
     private String consoleOutput;
-    private List<Item> dataOutput;      // unmodifiable + always non-null
+    private List<PipelineItem> dataOutput;      // unmodifiable + always non-null
 
-    public ScriptExecutionResult(String consoleOutput, List<Item> dataOutput) {
+    public ScriptExecutionResult(String consoleOutput, List<PipelineItem> dataOutput) {
         this.consoleOutput = consoleOutput;
         if (dataOutput == null) {
             dataOutput = new ArrayList<>();
@@ -44,7 +42,7 @@ public class ScriptExecutionResult {
         return consoleOutput;
     }
 
-    public List<Item> getDataOutput() {
+    public List<PipelineItem> getDataOutput() {
         return dataOutput;
     }
 }

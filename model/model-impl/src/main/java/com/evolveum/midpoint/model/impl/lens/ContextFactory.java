@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,30 +23,26 @@ import org.apache.commons.lang.Validate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import com.evolveum.midpoint.common.InternalsConfig;
-import com.evolveum.midpoint.common.crypto.CryptoUtil;
 import com.evolveum.midpoint.common.refinery.ShadowDiscriminatorObjectDelta;
 import com.evolveum.midpoint.model.api.ModelExecuteOptions;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.crypto.EncryptionException;
 import com.evolveum.midpoint.prism.crypto.Protector;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.provisioning.api.ProvisioningService;
 import com.evolveum.midpoint.provisioning.api.ResourceObjectShadowChangeDescription;
-import com.evolveum.midpoint.repo.cache.RepositoryCache;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.internals.InternalsConfig;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.exception.SystemException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 
@@ -67,7 +63,7 @@ public class ContextFactory {
 	Protector protector;
 	
 	public <F extends ObjectType> LensContext<F> createContext(
-			Collection<ObjectDelta<? extends ObjectType>> deltas, ModelExecuteOptions options, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException {
+			Collection<ObjectDelta<? extends ObjectType>> deltas, ModelExecuteOptions options, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, ExpressionEvaluationException {
 		ObjectDelta<F> focusDelta = null;
 		Collection<ObjectDelta<ShadowType>> projectionDeltas = new ArrayList<ObjectDelta<ShadowType>>(deltas.size());
 		ObjectDelta<? extends ObjectType> confDelta = null;
@@ -142,7 +138,7 @@ public class ContextFactory {
 				// We are little bit more liberal regarding projection deltas. 
 				// If the deltas represent shadows we tolerate missing attribute definitions.
 				// We try to add the definitions by calling provisioning
-				provisioningService.applyDefinition(projectionDelta, result);
+				provisioningService.applyDefinition(projectionDelta, task, result);
 						
 				if (projectionDelta instanceof ShadowDiscriminatorObjectDelta) {
 					ShadowDiscriminatorObjectDelta<ShadowType> shadowDelta = (ShadowDiscriminatorObjectDelta<ShadowType>)projectionDelta;
@@ -157,7 +153,7 @@ public class ContextFactory {
 		}
 
 		// This forces context reload before the next projection
-		context.rot();
+		context.rot("context initialization");
 		
 		if (InternalsConfig.consistencyChecks) context.checkConsistence();
 		
@@ -166,41 +162,42 @@ public class ContextFactory {
 	
 	
 	public <F extends ObjectType, O extends ObjectType> LensContext<F> createRecomputeContext(
-    		PrismObject<O> object, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException {
+    		PrismObject<O> object, ModelExecuteOptions options, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, ExpressionEvaluationException {
 		Class<O> typeClass = object.getCompileTimeClass();
 		LensContext<F> context;
 		if (isFocalClass(typeClass)) {
-			context = createRecomputeFocusContext((Class<F>)typeClass, (PrismObject<F>) object, task, result);
+			context = createRecomputeFocusContext((Class<F>)typeClass, (PrismObject<F>) object, options, task, result);
 		} else if (ShadowType.class.isAssignableFrom(typeClass)) {
-			context =  createRecomputeProjectionContext((PrismObject<ShadowType>) object, task, result);
+			context =  createRecomputeProjectionContext((PrismObject<ShadowType>) object, options, task, result);
 		} else {
 			throw new IllegalArgumentException("Cannot create recompute context for "+object);
 		}
+		context.setOptions(options);
 		context.setLazyAuditRequest(true);
 		return context;
 	}
 	
 	public <F extends ObjectType> LensContext<F> createRecomputeFocusContext(
-    		Class<F> focusType, PrismObject<F> focus, Task task, OperationResult result) {
+    		Class<F> focusType, PrismObject<F> focus, ModelExecuteOptions options, Task task, OperationResult result) {
     	LensContext<F> syncContext = new LensContext<F>(focusType,
 				prismContext, provisioningService);
 		LensFocusContext<F> focusContext = syncContext.createFocusContext();
 		focusContext.setLoadedObject(focus);
 		focusContext.setOid(focus.getOid());
 		syncContext.setChannel(QNameUtil.qNameToUri(SchemaConstants.CHANGE_CHANNEL_RECOMPUTE));
-		syncContext.setDoReconciliationForAllProjections(true);
+		syncContext.setDoReconciliationForAllProjections(ModelExecuteOptions.isReconcile(options));
 		return syncContext;
     }
 	
 	public <F extends ObjectType> LensContext<F> createRecomputeProjectionContext(
-    		PrismObject<ShadowType> shadow, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException {
-		provisioningService.applyDefinition(shadow, result);
+    		PrismObject<ShadowType> shadow, ModelExecuteOptions options, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, ExpressionEvaluationException {
+		provisioningService.applyDefinition(shadow, task, result);
     	LensContext<F> syncContext = new LensContext<F>(null,
 				prismContext, provisioningService);
     	LensProjectionContext projectionContext = syncContext.createProjectionContext();
     	projectionContext.setLoadedObject(shadow);
     	projectionContext.setOid(shadow.getOid());
-    	projectionContext.setDoReconciliation(true);
+    	projectionContext.setDoReconciliation(ModelExecuteOptions.isReconcile(options));
 		syncContext.setChannel(QNameUtil.qNameToUri(SchemaConstants.CHANGE_CHANNEL_RECOMPUTE));
 		return syncContext;
     }

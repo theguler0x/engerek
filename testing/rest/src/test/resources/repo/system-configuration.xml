@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -37,6 +37,10 @@
 			<level>DEBUG</level>
 		</classLogger>
 		<classLogger>
+			<package>com.evolveum.midpoint.model.impl.security.MidpointRestAuthenticationHandler</package>
+			<level>TRACE</level>
+		</classLogger>
+		<classLogger>
 			<package>PROFILING</package>
 			<level>TRACE</level>
 		</classLogger>
@@ -48,4 +52,6 @@
 		<rootLoggerAppender>IDM_LOG</rootLoggerAppender>
 		<rootLoggerLevel>INFO</rootLoggerLevel>
 	</logging>
+	<globalPasswordPolicyRef oid="81818181-76e0-59e2-8888-3d4f02d3fffb" type="ValuePolicyType"/>
+	<globalSecurityPolicyRef oid="28bf845a-b107-11e3-85bc-001e8c717e5b" type="SecurityPolicyType"/>
 </systemConfiguration>

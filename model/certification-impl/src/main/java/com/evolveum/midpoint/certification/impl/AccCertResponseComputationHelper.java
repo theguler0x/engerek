@@ -16,25 +16,24 @@
 
 package com.evolveum.midpoint.certification.impl;
 
+import com.evolveum.midpoint.certification.api.OutcomeUtils;
+import com.evolveum.midpoint.certification.impl.outcomeStrategies.OutcomeStrategy;
+import com.evolveum.midpoint.certification.impl.outcomeStrategies.ResponsesSummary;
 import com.evolveum.midpoint.schema.util.CertCampaignTypeUtil;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationApprovalStrategyType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCaseType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationDecisionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationStageDefinitionType;
+import com.evolveum.midpoint.schema.util.WorkItemTypeUtil;
+import com.evolveum.midpoint.util.logging.Trace;
+import com.evolveum.midpoint.util.logging.TraceManager;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
+import org.apache.commons.lang3.ObjectUtils;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.stream.Collectors;
 
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.ACCEPT;
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.DELEGATE;
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.NOT_DECIDED;
+import static com.evolveum.midpoint.schema.util.ObjectTypeUtil.toShortString;
+import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCaseOutcomeStrategyType.ALL_MUST_ACCEPT;
+import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCaseOutcomeStrategyType.ONE_ACCEPT_ACCEPTS;
 import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.NO_RESPONSE;
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.REDUCE;
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.REVOKE;
 
 /**
  * @author mederly
@@ -42,160 +41,128 @@ import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertifi
 @Component
 public class AccCertResponseComputationHelper {
 
+    private static final transient Trace LOGGER = TraceManager.getTrace(AccCertResponseComputationHelper.class);
+
+    public static final AccessCertificationCaseOutcomeStrategyType DEFAULT_CASE_STAGE_OUTCOME_STRATEGY = ONE_ACCEPT_ACCEPTS;
+    public static final AccessCertificationCaseOutcomeStrategyType DEFAULT_CASE_OVERALL_OUTCOME_STRATEGY = ALL_MUST_ACCEPT;
+
+    Map<AccessCertificationCaseOutcomeStrategyType, OutcomeStrategy> outcomeStrategyMap = new HashMap<>();
+
+    public void registerOutcomeStrategy(AccessCertificationCaseOutcomeStrategyType strategyName, OutcomeStrategy strategy) {
+        outcomeStrategyMap.put(strategyName, strategy);
+    }
+
+    private OutcomeStrategy getOutcomeStrategy(AccessCertificationCaseOutcomeStrategyType outcomeStrategy) {
+        OutcomeStrategy strategyImpl = outcomeStrategyMap.get(outcomeStrategy);
+        if (strategyImpl == null) {
+            throw new IllegalStateException("Unknown/unsupported outcome strategy " + outcomeStrategy);
+        }
+        return strategyImpl;
+    }
+
     // should be the case enabled in the following stage?
-    public boolean computeEnabled(AccessCertificationCampaignType campaign, AccessCertificationCaseType _case) {
-        if (_case.getCurrentStageNumber() != campaign.getStageNumber()) {
-            return false;
+    public boolean computeEnabled(AccessCertificationCampaignType campaign, AccessCertificationCaseType _case, List<AccessCertificationResponseType> outcomesToStopOn) {
+        if (_case.getStageNumber() != campaign.getStageNumber()) {
+            return false;           // it is not enabled in the current stage at all
         }
-        if (_case.getCurrentResponse() == null) {
-            return true;
+        AccessCertificationResponseType currentOutcome = OutcomeUtils.fromUri(_case.getCurrentStageOutcome());
+        if (currentOutcome == null) {
+            currentOutcome = NO_RESPONSE;
         }
-        switch (_case.getCurrentResponse()) {
-            case REVOKE: return false;
-            case REDUCE: return false;
-            case ACCEPT: return true;
-            case DELEGATE: return true;         // TODO
-            case NO_RESPONSE: return true;
-            case NOT_DECIDED: return true;
-            default: throw new IllegalStateException("Unknown response: " + _case.getCurrentResponse());
-        }
+        return !outcomesToStopOn.contains(currentOutcome);
     }
 
-    public AccessCertificationResponseType computeResponseForStage(AccessCertificationCaseType _case, AccessCertificationDecisionType newDecision,
-                                                                   AccessCertificationCampaignType campaign) {
-        int stageNumber = campaign.getStageNumber();
-        List<AccessCertificationDecisionType> allDecisions = getDecisions(_case, newDecision, stageNumber);
-        return computeResponseForStageInternal(allDecisions, _case, campaign);
-    }
-
-    public AccessCertificationResponseType computeResponseForStage(AccessCertificationCaseType _case, AccessCertificationCampaignType campaign) {
-        List<AccessCertificationDecisionType> allDecisions = getDecisions(_case, campaign.getStageNumber());
-        return computeResponseForStageInternal(allDecisions, _case, campaign);
-    }
-
-    private AccessCertificationResponseType computeResponseForStageInternal(List<AccessCertificationDecisionType> allDecisions, AccessCertificationCaseType _case, AccessCertificationCampaignType campaign) {
-        int stageNumber = campaign.getStageNumber();
-        AccessCertificationStageDefinitionType stageDef = CertCampaignTypeUtil.findStageDefinition(campaign, stageNumber);
-        AccessCertificationApprovalStrategyType approvalStrategy = null;
-        if (stageDef != null && stageDef.getReviewerSpecification() != null) {
-            approvalStrategy = stageDef.getReviewerSpecification().getApprovalStrategy();
-        }
-        if (approvalStrategy == null) {
-            approvalStrategy = AccessCertificationApprovalStrategyType.ONE_APPROVAL_APPROVES;
-        }
-        switch (approvalStrategy) {
-            case ALL_MUST_APPROVE: return computeUnderAllMustApprove(allDecisions, _case);
-            case APPROVED_IF_NOT_DENIED: return computeUnderApprovedIfNotDenied(allDecisions);
-            case ONE_APPROVAL_APPROVES: return computeUnderOneApprovalApproves(allDecisions);
-            case ONE_DENY_DENIES: return computeUnderOneDenyDenies(allDecisions);
-            default: throw new IllegalStateException("Unknown approval strategy: " + approvalStrategy);
-        }
-    }
-
-    private AccessCertificationResponseType computeUnderApprovedIfNotDenied(List<AccessCertificationDecisionType> allDecisions) {
-        AccessCertificationResponseType finalResponse = null;
-        for (AccessCertificationDecisionType decision : allDecisions) {
-            AccessCertificationResponseType response = decision.getResponse();
-            finalResponse = lower(finalResponse, response);
-        }
-        if (finalResponse == REVOKE || finalResponse == REDUCE) {
-            return finalResponse;
+    public List<AccessCertificationResponseType> getOutcomesToStopOn(AccessCertificationCampaignType campaign) {
+        final List<AccessCertificationResponseType> rv;
+        AccessCertificationStageDefinitionType stageDefinition = CertCampaignTypeUtil.getCurrentStageDefinition(campaign);
+        if (!stageDefinition.getStopReviewOn().isEmpty() || !stageDefinition.getAdvanceToNextStageOn().isEmpty()) {
+            rv = CertCampaignTypeUtil.getOutcomesToStopOn(stageDefinition.getStopReviewOn(), stageDefinition.getAdvanceToNextStageOn());
         } else {
-            return ACCEPT;
-        }
-    }
-
-    private AccessCertificationResponseType computeUnderAllMustApprove(List<AccessCertificationDecisionType> allDecisions, AccessCertificationCaseType _case) {
-        AccessCertificationResponseType finalResponse = null;
-        for (AccessCertificationDecisionType decision : allDecisions) {
-            AccessCertificationResponseType response = decision.getResponse();
-            finalResponse = lower(finalResponse, response);
-        }
-        // but now check if all reviewers said "APPROVE"
-        // we can do that easily: if # of decisions is less than # of reviewers, and final decision seems to be APPROVED, someone must have provided no response
-        if (finalResponse == ACCEPT) {
-            if (allDecisions.size() < _case.getReviewerRef().size()) {
-                return NO_RESPONSE;
+            final AccessCertificationCaseReviewStrategyType reviewStrategy = campaign.getReviewStrategy();
+            if (reviewStrategy != null && (!reviewStrategy.getStopReviewOn().isEmpty() || !reviewStrategy.getAdvanceToNextStageOn().isEmpty())) {
+                rv = CertCampaignTypeUtil.getOutcomesToStopOn(reviewStrategy.getStopReviewOn(), reviewStrategy.getAdvanceToNextStageOn());
             } else {
-                return ACCEPT;
-            }
-        } else {
-            return finalResponse != null ? finalResponse : NO_RESPONSE;
-        }
-    }
-
-    private AccessCertificationResponseType computeUnderOneDenyDenies(List<AccessCertificationDecisionType> allDecisions) {
-        AccessCertificationResponseType finalResponse = null;
-        boolean atLeastOneApprove = false;
-        for (AccessCertificationDecisionType decision : allDecisions) {
-            AccessCertificationResponseType response = decision.getResponse();
-            if (response == ACCEPT) {
-                atLeastOneApprove = true;
-            }
-            finalResponse = lower(finalResponse, response);
-        }
-        if (!atLeastOneApprove || finalResponse == REVOKE || finalResponse == REDUCE) {
-            return finalResponse != null ? finalResponse : NO_RESPONSE;
-        } else {
-            return ACCEPT;
-        }
-    }
-
-    private AccessCertificationResponseType computeUnderOneApprovalApproves(List<AccessCertificationDecisionType> allDecisions) {
-        AccessCertificationResponseType finalResponse = null;
-        for (AccessCertificationDecisionType decision : allDecisions) {
-            final AccessCertificationResponseType response = decision.getResponse();
-            if (ACCEPT.equals(response)) {
-                return ACCEPT;
-            }
-            finalResponse = lower(finalResponse, response);
-        }
-        return finalResponse != null ? finalResponse : NO_RESPONSE;
-    }
-
-    private List<AccessCertificationDecisionType> getDecisions(AccessCertificationCaseType _case, AccessCertificationDecisionType newDecision, int stageNumber) {
-        List<AccessCertificationDecisionType> rv = new ArrayList<>();
-        for (AccessCertificationDecisionType decision : _case.getDecision()) {
-            if (decision.getStageNumber() == stageNumber && !Objects.equals(decision.getReviewerRef().getOid(), newDecision.getReviewerRef().getOid())) {
-                rv.add(decision);
+                final OutcomeStrategy outcomeStrategy = getOverallOutcomeStrategy(campaign);
+                rv = outcomeStrategy.getOutcomesToStopOn();
             }
         }
-        rv.add(newDecision);
-        return rv;
-    }
-
-    private List<AccessCertificationDecisionType> getDecisions(AccessCertificationCaseType _case, int stageNumber) {
-        List<AccessCertificationDecisionType> rv = new ArrayList<>();
-        for (AccessCertificationDecisionType decision : _case.getDecision()) {
-            if (decision.getStageNumber() == stageNumber) {
-                rv.add(decision);
-            }
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace("Outcomes to stop on for campaign {}, stage {}: {}", toShortString(campaign), campaign.getStageNumber(), rv);
         }
         return rv;
     }
 
-    private AccessCertificationResponseType lower(AccessCertificationResponseType resp1, AccessCertificationResponseType resp2) {
-        if (resp1 == null) {
-            return resp2;
-        } else if (resp2 == null) {
-            return resp1;
+    private OutcomeStrategy getOverallOutcomeStrategy(AccessCertificationCampaignType campaign) {
+        final AccessCertificationCaseOutcomeStrategyType strategyName;
+        if (campaign.getReviewStrategy() != null && campaign.getReviewStrategy().getOutcomeStrategy() != null) {
+            strategyName = campaign.getReviewStrategy().getOutcomeStrategy();
+        } else {
+            strategyName = DEFAULT_CASE_OVERALL_OUTCOME_STRATEGY;
         }
-        if (resp1 == REVOKE || resp2 == REVOKE) {
-            return REVOKE;
+        if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace("Outcome strategy for {} is {}", toShortString(campaign), strategyName);
         }
-        if (resp1 == REDUCE || resp2 == REDUCE) {
-            return REDUCE;
-        }
-        if (resp1 == NOT_DECIDED || resp2 == NOT_DECIDED) {
-            return NOT_DECIDED;
-        }
-        if (resp1 == NO_RESPONSE || resp2 == NO_RESPONSE || resp1 == DELEGATE || resp2 == DELEGATE) {
-            return NO_RESPONSE;
-        }
-        if (resp1 == ACCEPT && resp2 == ACCEPT) {
-            return ACCEPT;
-        }
-        throw new IllegalStateException("Unsupported combination: resp1 = " + resp1 + ", resp2 = " + resp2);
+        return getOutcomeStrategy(strategyName);
     }
 
+    public AccessCertificationResponseType computeOutcomeForStage(AccessCertificationCaseType _case, AccessCertificationCampaignType campaign, int stageNunber) {
+        List<AccessCertificationResponseType> allResponses = getResponses(_case, stageNunber);
+        return computeResponseForStageInternal(allResponses, _case, campaign, stageNunber);
+    }
+
+    // allResponses must include null ones (i.e. not provided)
+    private AccessCertificationResponseType computeResponseForStageInternal(
+            List<AccessCertificationResponseType> allResponses, AccessCertificationCaseType _case, AccessCertificationCampaignType campaign,
+            int stageNumber) {
+        AccessCertificationStageDefinitionType stageDef = CertCampaignTypeUtil.findStageDefinition(campaign, stageNumber);
+        AccessCertificationCaseOutcomeStrategyType outcomeStrategy = ObjectUtils.defaultIfNull(stageDef.getOutcomeStrategy(), DEFAULT_CASE_STAGE_OUTCOME_STRATEGY);
+		OutcomeStrategy strategyImpl = getOutcomeStrategy(outcomeStrategy);
+        if (allResponses.isEmpty()) {
+            return stageDef.getOutcomeIfNoReviewers();
+        } else {
+            ResponsesSummary summary = summarize(allResponses);        // TODO eventually merge extraction and summarizing
+            return strategyImpl.computeOutcome(summary);
+        }
+    }
+
+    private List<AccessCertificationResponseType> getResponses(AccessCertificationCaseType _case, int stageNumber) {
+        return _case.getWorkItem().stream()
+				.filter(wi -> wi.getStageNumber() == stageNumber)
+				.map(wi -> ObjectUtils.defaultIfNull(
+				                OutcomeUtils.fromUri(WorkItemTypeUtil.getOutcome(wi)),
+                                AccessCertificationResponseType.NO_RESPONSE))
+				.collect(Collectors.toList());
+    }
+
+    private ResponsesSummary summarize(List<AccessCertificationResponseType> responses) {
+        ResponsesSummary summary = new ResponsesSummary();
+        for (AccessCertificationResponseType response : responses) {
+            if (response == null) {
+                summary.add(NO_RESPONSE);
+            } else {
+                summary.add(response);
+            }
+        }
+        return summary;
+    }
+
+    public AccessCertificationResponseType computeOverallOutcome(AccessCertificationCaseType aCase, AccessCertificationCampaignType campaign) {
+		final OutcomeStrategy strategy = getOverallOutcomeStrategy(campaign);
+		return strategy.computeOutcome(summarize(OutcomeUtils.fromUri(CertCampaignTypeUtil.getOutcomesFromCompletedStages(aCase))));
+    }
+
+    // aCase contains outcomes from stages 1..N-1. Outcome from stage N is in currentStageOutcome
+	AccessCertificationResponseType computeOverallOutcome(AccessCertificationCaseType aCase, AccessCertificationCampaignType campaign,
+			String currentStageOutcome) {
+    	return computeOverallOutcome(aCase, campaign, OutcomeUtils.fromUri(currentStageOutcome));
+	}
+
+	AccessCertificationResponseType computeOverallOutcome(AccessCertificationCaseType aCase, AccessCertificationCampaignType campaign,
+			AccessCertificationResponseType currentStageOutcome) {
+        final OutcomeStrategy strategy = getOverallOutcomeStrategy(campaign);
+        final List<AccessCertificationResponseType> stageOutcomes = new ArrayList<>();
+        stageOutcomes.addAll(OutcomeUtils.fromUri(CertCampaignTypeUtil.getOutcomesFromCompletedStages(aCase)));
+        stageOutcomes.add(currentStageOutcome);
+        return strategy.computeOutcome(summarize(stageOutcomes));
+    }
 }

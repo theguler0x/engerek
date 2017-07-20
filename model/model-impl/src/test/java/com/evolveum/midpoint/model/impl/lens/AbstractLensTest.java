@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Evolveum
+ * Copyright (c) 2013-2016 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,21 +15,9 @@
  */
 package com.evolveum.midpoint.model.impl.lens;
 
-import static com.evolveum.midpoint.test.IntegrationTestTools.display;
-import static org.testng.AssertJUnit.assertEquals;
-import static org.testng.AssertJUnit.assertFalse;
-import static org.testng.AssertJUnit.assertNotNull;
-import static org.testng.AssertJUnit.assertNull;
-import static org.testng.AssertJUnit.assertTrue;
-
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
 
 import javax.xml.bind.JAXBException;
-import javax.xml.datatype.XMLGregorianCalendar;
-import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismContainerDefinition;
@@ -40,12 +28,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.ContextConfiguration;
-import org.testng.AssertJUnit;
-import org.testng.annotations.Test;
 
 import com.evolveum.midpoint.model.impl.AbstractInternalModelIntegrationTest;
 import com.evolveum.midpoint.model.impl.lens.projector.Projector;
 import com.evolveum.midpoint.task.api.TaskManager;
+import com.evolveum.midpoint.test.util.MidPointTestConstants;
 
 /**
  * @author semancik
@@ -55,8 +42,7 @@ import com.evolveum.midpoint.task.api.TaskManager;
 @DirtiesContext(classMode = ClassMode.AFTER_CLASS)
 public abstract class AbstractLensTest extends AbstractInternalModelIntegrationTest {
 		
-	protected static final File TEST_DIR = new File("src/test/resources/lens");
-	protected static final File TEST_DIR_COMMON = new File("./src/test/resources/common");
+	protected static final File TEST_DIR = new File(MidPointTestConstants.TEST_RESOURCES_DIR, "lens");
 	
 	protected static final File ASSIGNMENT_DIRECT_FILE = new File(TEST_DIR, "assignment-direct.xml");
 	protected static final File ASSIGNMENT_DIRECT_EXPRESSION_FILE = new File(TEST_DIR, "assignment-direct-expression.xml");
@@ -91,12 +77,26 @@ public abstract class AbstractLensTest extends AbstractInternalModelIntegrationT
             "user-barbossa-modify-delete-assignment-account-dummy-attr.xml");
 	
 	protected static final File ROLE_PIRATE_FILE = new File(TEST_DIR, "role-pirate.xml");
+	protected static final File ROLE_PIRATE_SITUATION_ONLY_FILE = new File(TEST_DIR, "role-pirate-situation-only.xml");
 	protected static final String ROLE_PIRATE_OID = "12345678-d34d-b33f-f00d-555555556666";
 	
 	protected static final File ROLE_MUTINIER_FILE = new File(TEST_DIR, "role-mutinier.xml");
 	protected static final String ROLE_MUTINIER_OID = "12345678-d34d-b33f-f00d-555555556668";
 
-    protected static final File ROLE_CORP_CONTRACTOR_FILE = new File(TEST_DIR, "role-corp-contractor.xml");
+	protected static final File ROLE_JUDGE_FILE = new File(TEST_DIR, "role-judge.xml");
+	protected static final File ROLE_JUDGE_SITUATION_ONLY_FILE = new File(TEST_DIR, "role-judge-situation-only.xml");
+	protected static final String ROLE_JUDGE_OID = "12345111-1111-2222-1111-121212111111";
+	
+	protected static final File ROLE_CONSTABLE_FILE = new File(TEST_DIR, "role-constable.xml");
+	protected static final String ROLE_CONSTABLE_OID = "16ac2572-de66-11e6-bc86-23e62333976a";
+	
+	protected static final File ROLE_THIEF_FILE = new File(TEST_DIR, "role-thief.xml");
+	protected static final String ROLE_THIEF_OID = "5ad00bd6-c550-466f-b15e-4d5fb195b369";
+
+	protected static final File ROLE_METAROLE_SOD_NOTIFICATION_FILE = new File(TEST_DIR, "role-metarole-sod-notification.xml");
+	protected static final String ROLE_METAROLE_SOD_NOTIFICATION_OID = "f8f217f2-b864-416b-bce6-90c85385e43e";
+
+	protected static final File ROLE_CORP_CONTRACTOR_FILE = new File(TEST_DIR, "role-corp-contractor.xml");
     protected static final String ROLE_CORP_CONTRACTOR_OID = "12345678-d34d-b33f-f00d-55555555a004";
 
     protected static final File ROLE_CORP_CUSTOMER_FILE = new File(TEST_DIR, "role-corp-customer.xml");
@@ -120,7 +120,12 @@ public abstract class AbstractLensTest extends AbstractInternalModelIntegrationT
     protected static final File ROLE_CORP_JOB_METAROLE_FILE = new File(TEST_DIR, "role-corp-job-metarole.xml");
     protected static final String ROLE_CORP_JOB_METAROLE_OID = "12345678-d34d-b33f-f00d-55555555a010";
 
-    protected static final File[] ROLE_CORP_FILES = {
+	protected static final File ROLE_CORP_AUTH_FILE = new File(TEST_DIR, "role-corp-auth.xml");
+	protected static final String ROLE_CORP_AUTH_OID = "12345678-d34d-b33f-f00d-55555555aaaa";
+
+	protected static final File[] ROLE_CORP_FILES = {
+			ROLE_METAROLE_SOD_NOTIFICATION_FILE,
+			ROLE_CORP_AUTH_FILE,
             ROLE_CORP_GENERIC_METAROLE_FILE,
             ROLE_CORP_JOB_METAROLE_FILE,
             ROLE_CORP_VISITOR_FILE,
@@ -130,6 +135,9 @@ public abstract class AbstractLensTest extends AbstractInternalModelIntegrationT
             ROLE_CORP_ENGINEER_FILE,
             ROLE_CORP_MANAGER_FILE
     };
+	
+	protected static final File ROLE_PERSONA_ADMIN_FILE = new File(TEST_DIR, "role-persona-admin.xml");
+	protected static final String ROLE_PERSONA_ADMIN_OID = "16813ae6-2c0a-11e7-91fc-8333c244329e";
 
     protected static final File ORG_BRETHREN_FILE = new File(TEST_DIR, "org-brethren.xml");
 	protected static final String ORG_BRETHREN_OID = "9c6bfc9a-ca01-11e3-a5aa-001e8c717e5b";

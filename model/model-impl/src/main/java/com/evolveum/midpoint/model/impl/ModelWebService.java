@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,21 +15,12 @@
  */
 package com.evolveum.midpoint.model.impl;
 
-import com.evolveum.midpoint.model.api.ModelExecuteOptions;
-import com.evolveum.midpoint.model.api.ModelPort;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
-import com.evolveum.midpoint.model.api.ScriptExecutionResult;
-import com.evolveum.midpoint.model.api.ScriptingService;
+import com.evolveum.midpoint.model.api.*;
 import com.evolveum.midpoint.model.common.util.AbstractModelWebService;
-import com.evolveum.midpoint.model.impl.controller.ModelController;
-import com.evolveum.midpoint.model.impl.scripting.Data;
-import com.evolveum.midpoint.model.impl.scripting.ExecutionContext;
-import com.evolveum.midpoint.model.api.ScriptExecutionException;
-import com.evolveum.midpoint.model.impl.scripting.ScriptingExpressionEvaluator;
-import com.evolveum.midpoint.prism.Item;
-import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.PrismProperty;
+import com.evolveum.midpoint.prism.PrismReferenceValue;
+import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.prism.query.QueryJaxbConvertor;
@@ -42,50 +33,21 @@ import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.MiscSchemaUtil;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.util.exception.AuthorizationException;
-import com.evolveum.midpoint.util.exception.CommunicationException;
-import com.evolveum.midpoint.util.exception.ConfigurationException;
-import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
-import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
-import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.exception.SecurityViolationException;
+import com.evolveum.midpoint.util.exception.*;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ExecuteScriptsOptionsType;
-import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ObjectDeltaListType;
-import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ObjectDeltaOperationListType;
-import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ObjectListType;
-import com.evolveum.midpoint.xml.ns._public.common.api_types_3.OutputFormatType;
-import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ScriptOutputsType;
-import com.evolveum.midpoint.xml.ns._public.common.api_types_3.SelectorQualifiedGetOptionsType;
-import com.evolveum.midpoint.xml.ns._public.common.api_types_3.SingleScriptOutputType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ModelExecuteOptionsType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectDeltaOperationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceObjectShadowChangeDescriptionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.TaskType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
-import com.evolveum.midpoint.xml.ns._public.common.fault_3.CommunicationFaultType;
-import com.evolveum.midpoint.xml.ns._public.common.fault_3.ConfigurationFaultType;
-import com.evolveum.midpoint.xml.ns._public.common.fault_3.FaultMessage;
-import com.evolveum.midpoint.xml.ns._public.common.fault_3.FaultType;
-import com.evolveum.midpoint.xml.ns._public.common.fault_3.IllegalArgumentFaultType;
-import com.evolveum.midpoint.xml.ns._public.common.fault_3.ObjectAlreadyExistsFaultType;
-import com.evolveum.midpoint.xml.ns._public.common.fault_3.ObjectNotFoundFaultType;
-import com.evolveum.midpoint.xml.ns._public.common.fault_3.PolicyViolationFaultType;
-import com.evolveum.midpoint.xml.ns._public.common.fault_3.SchemaViolationFaultType;
-import com.evolveum.midpoint.xml.ns._public.common.fault_3.SystemFaultType;
+import com.evolveum.midpoint.xml.ns._public.common.api_types_3.*;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
+import com.evolveum.midpoint.xml.ns._public.common.fault_3.*;
 import com.evolveum.midpoint.xml.ns._public.model.model_3.ExecuteScriptsResponseType;
 import com.evolveum.midpoint.xml.ns._public.model.model_3.ExecuteScriptsType;
 import com.evolveum.midpoint.xml.ns._public.model.model_3.ModelPortType;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ItemListType;
+import com.evolveum.midpoint.xml.ns._public.model.scripting_3.PipelineDataType;
+import com.evolveum.midpoint.xml.ns._public.model.scripting_3.PipelineItemType;
+import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ScriptingExpressionEvaluationOptionsType;
 import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ScriptingExpressionType;
 import com.evolveum.prism.xml.ns._public.query_3.QueryType;
-import com.evolveum.prism.xml.ns._public.types_3.RawType;
-
 import org.apache.commons.lang.StringUtils;
 import org.apache.cxf.interceptor.Fault;
 import org.apache.wss4j.common.ext.WSSecurityException;
@@ -96,7 +58,6 @@ import javax.xml.bind.JAXBElement;
 import javax.xml.bind.JAXBException;
 import javax.xml.namespace.QName;
 import javax.xml.ws.Holder;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -114,10 +75,6 @@ public class ModelWebService extends AbstractModelWebService implements ModelPor
 	@Autowired(required = true)
 	private ModelCrudService model;
 	
-    // for more complicated interactions (like executeChanges)
-    @Autowired
-    private ModelController modelController;
-		
     @Autowired
     private ScriptingService scriptingService;
 
@@ -185,7 +142,7 @@ public class ModelWebService extends AbstractModelWebService implements ModelPor
                 prismContext.adopt(delta);
             }
             ModelExecuteOptions options = ModelExecuteOptions.fromModelExecutionOptionsType(optionsType);
-            Collection<ObjectDeltaOperation<? extends ObjectType>> objectDeltaOperations = modelController.executeChanges((Collection) deltas, options, task, operationResult);        // brutally eliminating type-safety compiler barking
+            Collection<ObjectDeltaOperation<? extends ObjectType>> objectDeltaOperations = modelService.executeChanges((Collection) deltas, options, task, operationResult);        // brutally eliminating type-safety compiler barking
 			ObjectDeltaOperationListType retval = new ObjectDeltaOperationListType();
             for (ObjectDeltaOperation objectDeltaOperation : objectDeltaOperations) {
                 ObjectDeltaOperationType objectDeltaOperationType = DeltaConvertor.toObjectDeltaOperationType(objectDeltaOperation, null);
@@ -278,7 +235,7 @@ public class ModelWebService extends AbstractModelWebService implements ModelPor
             // here comes MSL script decoding (however with a quick hack to allow passing XML as text here)
             String scriptsAsString = parameters.getMslScripts();
             if (scriptsAsString.startsWith("<?xml")) {
-                PrismProperty expressionType = (PrismProperty) prismContext.parseAnyData(scriptsAsString, PrismContext.LANG_XML);
+                PrismProperty expressionType = (PrismProperty) prismContext.parserFor(scriptsAsString).xml().parseItem();
                 if (expressionType.size() != 1) {
                     throw new IllegalArgumentException("Unexpected number of scripting expressions at input: " + expressionType.size() + " (expected 1)");
                 }
@@ -295,6 +252,11 @@ public class ModelWebService extends AbstractModelWebService implements ModelPor
 
         try {
             for (JAXBElement<?> script : scriptsToExecute) {
+            	
+            	Object scriptValue = script.getValue();
+            	if (!(scriptValue instanceof ScriptingExpressionType)) {
+            		throw new SchemaException("Expected that scripts will be of type ScriptingExpressionType, but it was "+scriptValue.getClass().getName());
+            	}
 
                 ScriptExecutionResult executionResult = scriptingService.evaluateExpression((ScriptingExpressionType) script.getValue(), task, result);
 
@@ -303,11 +265,11 @@ public class ModelWebService extends AbstractModelWebService implements ModelPor
 
                 output.setTextOutput(executionResult.getConsoleOutput());
                 if (options == null || options.getOutputFormat() == null || options.getOutputFormat() == OutputFormatType.XML) {
-                    output.setXmlData(prepareXmlData(executionResult.getDataOutput()));
+                    output.setDataOutput(prepareXmlData(executionResult.getDataOutput(), null));
                 } else {
                     // temporarily we send serialized XML in the case of MSL output
-                    ItemListType jaxbOutput = prepareXmlData(executionResult.getDataOutput());
-                    output.setMslData(prismContext.serializeAnyData(jaxbOutput, SchemaConstants.C_VALUE, PrismContext.LANG_XML));
+                    PipelineDataType jaxbOutput = prepareXmlData(executionResult.getDataOutput(), null);
+                    output.setMslData(prismContext.xmlSerializer().serializeAnyData(jaxbOutput, SchemaConstants.C_VALUE));
                 }
             }
             result.computeStatusIfUnknown();
@@ -320,17 +282,30 @@ public class ModelWebService extends AbstractModelWebService implements ModelPor
         return response;
     }
 
-    private ItemListType prepareXmlData(List<Item> output) throws JAXBException, SchemaException {
-        ItemListType itemListType = new ItemListType();
+    public static PipelineDataType prepareXmlData(List<PipelineItem> output,
+			ScriptingExpressionEvaluationOptionsType options) throws JAXBException, SchemaException {
+		boolean hideResults = options != null && Boolean.TRUE.equals(options.isHideOperationResults());
+        PipelineDataType rv = new PipelineDataType();
         if (output != null) {
-            for (Item item : output) {
-                RawType rawType = prismContext.toRawType(item);
-                itemListType.getItem().add(rawType);
+            for (PipelineItem item: output) {
+				PipelineItemType itemType = new PipelineItemType();
+				PrismValue value = item.getValue();
+				if (value instanceof PrismReferenceValue) {
+					// This is a bit of hack: value.getRealValue() would return unserializable object (PRV$1 - does not have type QName)
+					ObjectReferenceType ort = new ObjectReferenceType();
+					ort.setupReferenceValue((PrismReferenceValue) value);
+					itemType.setValue(ort);
+				} else {
+					itemType.setValue(value.getRealValue());                        // TODO - ok?
+				}
+				if (!hideResults) {
+					itemType.setResult(item.getResult().createOperationResultType());
+				}
+				rv.getItem().add(itemType);
             }
         }
-        return itemListType;
+        return rv;
     }
-
 
 	private void handleOperationResult(OperationResult result, Holder<OperationResultType> holder) {
 		result.recordSuccess();
@@ -374,7 +349,7 @@ public class ModelWebService extends AbstractModelWebService implements ModelPor
 		return new FaultMessage(message, faultType);
 	}
 
-    public void throwFault(Exception ex, OperationResult result) throws FaultMessage {
+    public void throwFault(Throwable ex, OperationResult result) throws FaultMessage {
 		if (result != null) {
 			result.recordFatalError(ex.getMessage(), ex);
 		}
@@ -384,17 +359,17 @@ public class ModelWebService extends AbstractModelWebService implements ModelPor
 			faultType = new ObjectNotFoundFaultType();
 		} else if (ex instanceof IllegalArgumentException) {
 			faultType = new IllegalArgumentFaultType();
-		} else if (ex instanceof ObjectAlreadyExistsException){
+		} else if (ex instanceof ObjectAlreadyExistsException) {
 			faultType = new ObjectAlreadyExistsFaultType();
-		} else if (ex instanceof CommunicationException){
+		} else if (ex instanceof CommunicationException) {
 			faultType = new CommunicationFaultType();
-		} else if (ex instanceof ConfigurationException){
+		} else if (ex instanceof ConfigurationException) {
 			faultType = new ConfigurationFaultType();
-		} else if (ex instanceof ExpressionEvaluationException){
+		} else if (ex instanceof ExpressionEvaluationException) {
 			faultType = new SystemFaultType();
-		} else if (ex instanceof SchemaException){
+		} else if (ex instanceof SchemaException) {
 			faultType = new SchemaViolationFaultType();
-		} else if (ex instanceof PolicyViolationException){
+		} else if (ex instanceof PolicyViolationException) {
 			faultType = new PolicyViolationFaultType();
 		} else if (ex instanceof AuthorizationException) {
 			throw new Fault(new WSSecurityException(WSSecurityException.ErrorCode.FAILED_AUTHENTICATION),
@@ -450,31 +425,7 @@ public class ModelWebService extends AbstractModelWebService implements ModelPor
 		
 		try {
 			model.notifyChange(changeDescription, parentResult, task);
-			} catch (ObjectNotFoundException ex) {
-				LoggingUtils.logException(LOGGER, "# MODEL notifyChange() failed", ex);
-				auditLogout(task);
-				throwFault(ex, parentResult);
-			} catch (SchemaException ex) {
-				 LoggingUtils.logException(LOGGER, "# MODEL notifyChange() failed", ex);
-				auditLogout(task);
-				throwFault(ex, parentResult);
-			} catch (CommunicationException ex) {
-				LoggingUtils.logException(LOGGER, "# MODEL notifyChange() failed", ex);
-				auditLogout(task);
-				throwFault(ex, parentResult);
-			} catch (ConfigurationException ex) {
-				LoggingUtils.logException(LOGGER, "# MODEL notifyChange() failed", ex);
-				auditLogout(task);
-				throwFault(ex, parentResult);
-			} catch (SecurityViolationException ex) {
-				LoggingUtils.logException(LOGGER, "# MODEL notifyChange() failed", ex);
-				auditLogout(task);
-				throwFault(ex, parentResult);
-			} catch (RuntimeException ex){
-				LoggingUtils.logException(LOGGER, "# MODEL notifyChange() failed", ex);
-				auditLogout(task);
-				throwFault(ex, parentResult);
-			} catch (ObjectAlreadyExistsException ex){
+			} catch (ObjectNotFoundException | SchemaException | CommunicationException | ConfigurationException | SecurityViolationException | ObjectAlreadyExistsException | ExpressionEvaluationException | RuntimeException | Error ex) {
 				LoggingUtils.logException(LOGGER, "# MODEL notifyChange() failed", ex);
 				auditLogout(task);
 				throwFault(ex, parentResult);

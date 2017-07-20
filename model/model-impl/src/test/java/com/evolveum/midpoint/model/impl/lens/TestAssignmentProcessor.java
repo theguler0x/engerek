@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,29 +16,25 @@
 package com.evolveum.midpoint.model.impl.lens;
 
 import com.evolveum.midpoint.common.Clock;
+import com.evolveum.midpoint.model.api.context.EvaluatedPolicyRule;
 import com.evolveum.midpoint.model.common.mapping.Mapping;
 import com.evolveum.midpoint.model.common.mapping.PrismValueDeltaSetTripleProducer;
 import com.evolveum.midpoint.model.impl.lens.projector.AssignmentProcessor;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.PrismPropertyDefinition;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
-import com.evolveum.midpoint.prism.delta.ChangeType;
-import com.evolveum.midpoint.prism.delta.ContainerDelta;
-import com.evolveum.midpoint.prism.delta.PlusMinusZero;
-import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
-import com.evolveum.midpoint.prism.delta.ObjectDelta;
+import com.evolveum.midpoint.prism.delta.*;
+import com.evolveum.midpoint.prism.delta.builder.DeltaBuilder;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.prism.util.PrismAsserts;
+import com.evolveum.midpoint.schema.constants.ObjectTypes;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.test.DummyResourceContoller;
 import com.evolveum.midpoint.test.util.TestUtil;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnforcementType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ProjectionPolicyType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.testng.annotations.Test;
@@ -47,11 +43,7 @@ import javax.xml.bind.JAXBException;
 import javax.xml.datatype.XMLGregorianCalendar;
 import javax.xml.namespace.QName;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 import static com.evolveum.midpoint.prism.delta.PlusMinusZero.MINUS;
 import static com.evolveum.midpoint.prism.delta.PlusMinusZero.PLUS;
@@ -66,10 +58,10 @@ public class TestAssignmentProcessor extends AbstractLensTest {
 
     private static final ItemPath ATTRIBUTES_PARENT_PATH = new ItemPath(ShadowType.F_ATTRIBUTES);
 
-    @Autowired(required = true)
+    @Autowired
     private AssignmentProcessor assignmentProcessor;
     
-    @Autowired(required = true)
+    @Autowired
     private Clock clock;
 
     public TestAssignmentProcessor() throws JAXBException {
@@ -96,7 +88,7 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_JACK_OID, result);
         context.recompute();
 
@@ -121,9 +113,9 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
         addModificationToContextReplaceUserProperty(context, UserType.F_LOCALITY, new PolyString("Tortuga"));
         context.recompute();
 
@@ -167,11 +159,11 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         Construction zeroAccountConstruction = getZeroAccountConstruction(accountConstructionDeltaSetTriple, "Brethren account construction");
                         
         assertNoZeroAttributeValues(zeroAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
         assertPlusAttributeValues(zeroAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME), "Tortuga");
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME), "Tortuga");
         assertMinusAttributeValues(zeroAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME), "Caribbean");
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME), "Caribbean");
                 
     }
     
@@ -184,7 +176,7 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_JACK_OID, result);
         addFocusModificationToContext(context, REQ_USER_JACK_MODIFY_ADD_ASSIGNMENT_ACCOUNT_DUMMY);
         context.recompute();
@@ -226,7 +218,7 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_JACK_OID, result);
         addFocusModificationToContext(context, REQ_USER_JACK_MODIFY_ADD_ASSIGNMENT_ACCOUNT_DUMMY_ATTR);
         context.recompute();
@@ -236,9 +228,11 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         assertFocusModificationSanity(context);
 
         // WHEN
+        TestUtil.displayWhen(TEST_NAME);
         assignmentProcessor.processAssignmentsProjections(context, getNow(), task, result);
 
         // THEN
+        TestUtil.displayThen(TEST_NAME);
         display("Output context", context);
         display("outbound processor result", result);
 //		assertSuccess("Outbound processor failed (result)", result);
@@ -270,19 +264,19 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         Construction plusAccountConstruction = getPlusAccountConstruction(accountConstructionDeltaSetTriple);
                 
         assertZeroAttributeValues(plusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME),
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME),
         		"Pirate Brethren, Inc.");
         assertNoPlusAttributeValues(plusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
         assertNoMinusAttributeValues(plusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
         
         assertZeroAttributeValues(plusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME), "Caribbean");
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME), "Caribbean");
         assertNoPlusAttributeValues(plusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
         assertNoMinusAttributeValues(plusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
                 
     }
 
@@ -294,9 +288,9 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
         addFocusModificationToContext(context, REQ_USER_BARBOSSA_MODIFY_ADD_ASSIGNMENT_ACCOUNT_DUMMY_ATTR);
         context.recompute();
 
@@ -339,61 +333,59 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         		"Brethren account construction");
         
         assertZeroAttributeValues(zeroAccountConstruction,
-                dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME),
+                getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME),
                 "Pirate Brethren, Inc.");
         assertNoPlusAttributeValues(zeroAccountConstruction,
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
         assertNoMinusAttributeValues(zeroAccountConstruction,
-                dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
+                getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
         
         assertZeroAttributeValues(zeroAccountConstruction,
-                dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME), "Caribbean");
+                getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME), "Caribbean");
         assertNoPlusAttributeValues(zeroAccountConstruction,
-                dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
+                getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
         assertNoMinusAttributeValues(zeroAccountConstruction,
-                dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
+                getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
         
         assertZeroAttributeValues(zeroAccountConstruction,
-                dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME), "Sword");
+                getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME), "Sword");
         assertNoPlusAttributeValues(zeroAccountConstruction,
-                dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
+                getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
         assertNoMinusAttributeValues(zeroAccountConstruction,
-                dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
+                getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
         
         assertSetSize("plus", accountConstructionDeltaSetTriple.getPlusSet(), 1);
         Construction plusAccountConstruction = getPlusAccountConstruction(accountConstructionDeltaSetTriple, "Monkey account construction");
         
         assertZeroAttributeValues(plusAccountConstruction,
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_DRINK_NAME), "Rum");
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_DRINK_NAME), "Rum");
         assertNoPlusAttributeValues(plusAccountConstruction,
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_DRINK_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_DRINK_NAME));
         assertNoMinusAttributeValues(plusAccountConstruction,
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_DRINK_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_DRINK_NAME));
         
         assertZeroAttributeValues(plusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME),
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME),
         		"Dagger", "Pistol");
         assertNoPlusAttributeValues(plusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
         assertNoMinusAttributeValues(plusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
 
     }
-
-		
 
 	@Test
     public void test031DeleteAssignmentModifyAccount() throws Exception {
 		final String TEST_NAME = "test031DeleteAssignmentModifyAccount";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_BARBOSSA_OID, result);
-        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, result);
+        fillContextWithAccount(context, ACCOUNT_HBARBOSSA_DUMMY_OID, task, result);
         addFocusModificationToContext(context, REQ_USER_BARBOSSA_MODIFY_DELETE_ASSIGNMENT_ACCOUNT_DUMMY_ATTR);
         context.recomputeFocus();
 
@@ -405,12 +397,14 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         assertFocusModificationSanity(context);
 
         // WHEN
+        displayWhen(TEST_NAME);
         assignmentProcessor.processAssignmentsProjections(context, getNow(), task, result);
 
         // THEN
+        displayThen(TEST_NAME);
         display("Output context", context.dump(true));
-        display("outbound processor result", result);
-//		assertSuccess("Outbound processor failed (result)", result);
+        display("result", result);
+        assertSuccess(result);
 
         assertTrue(context.getFocusContext().getPrimaryDelta().getChangeType() == ChangeType.MODIFY);
         assertNull("Unexpected user changes", context.getFocusContext().getSecondaryDelta());
@@ -439,30 +433,30 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         Construction zeroAccountConstruction = getZeroAccountConstruction(accountConstructionDeltaSetTriple);
         
         assertZeroAttributeValues(zeroAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME), "Caribbean");
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME), "Caribbean");
         assertNoPlusAttributeValues(zeroAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
         assertNoMinusAttributeValues(zeroAccountConstruction,
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME));
         
         assertZeroAttributeValues(zeroAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME),
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME),
         		"Pirate Brethren, Inc.");
         assertNoPlusAttributeValues(zeroAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
         assertNoMinusAttributeValues(zeroAccountConstruction,
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
         
         assertSetSize("minus", accountConstructionDeltaSetTriple.getMinusSet(), 1);
         Construction minusAccountConstruction = getMinusAccountConstruction(accountConstructionDeltaSetTriple);
         
         assertZeroAttributeValues(minusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME),
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME),
         		"Undead Monkey");
         assertNoPlusAttributeValues(minusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
         assertNoMinusAttributeValues(minusAccountConstruction, 
-        		dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME));
 
     }
 	
@@ -475,11 +469,11 @@ public class TestAssignmentProcessor extends AbstractLensTest {
 	        Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
 	        OperationResult result = task.getResult();
 
-	        repoAddObjectFromFile(USER_LARGO_FILENAME, UserType.class, result);
+	        repoAddObjectFromFile(USER_LARGO_FILE, result);
 	        
-	        LensContext<UserType> context = createUserAccountContext();
+	        LensContext<UserType> context = createUserLensContext();
 	        fillContextWithUser(context, USER_LARGO_OID, result);
-	        fillContextWithAccountFromFile(context, ACCOUNT_SHADOW_ELAINE_DUMMY_FILENAME, result);
+	        fillContextWithAccountFromFile(context, ACCOUNT_SHADOW_ELAINE_DUMMY_FILE, task, result);
 	        context.recompute();
 	        
 	        ProjectionPolicyType accountSynchronizationSettings = new ProjectionPolicyType();
@@ -521,7 +515,7 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         fillContextWithUser(context, USER_JACK_OID, result);
         addFocusModificationToContext(context, REQ_USER_JACK_MODIFY_ADD_ASSIGNMENT_ROLE_ENGINEER);
         context.recompute();
@@ -561,8 +555,8 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         PrismAsserts.assertTripleNoMinus(accountConstructionDeltaSetTriple);
         PrismAsserts.assertTripleNoZero(accountConstructionDeltaSetTriple);
 
-        final QName TITLE_QNAME = dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME);
-        final QName LOCATION_QNAME = dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME);
+        final QName TITLE_QNAME = getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME);
+        final QName LOCATION_QNAME = getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME);
 
         assertSetSize("plus", accountConstructionDeltaSetTriple.getPlusSet(), 4);
         assertAttributeValues(accountConstructionDeltaSetTriple.getPlusSet(), TITLE_QNAME, ZERO, "Engineer", "Employee");
@@ -586,7 +580,7 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
-        LensContext<UserType> context = createUserAccountContext();
+        LensContext<UserType> context = createUserLensContext();
         PrismObject<UserType> user = getUser(USER_JACK_OID);
         AssignmentType assignmentType = getAssignmentType(ASSIGNMENT_ROLE_MANAGER_FILE);
         assignmentType.asPrismContainerValue().setParent(null);
@@ -630,8 +624,8 @@ public class TestAssignmentProcessor extends AbstractLensTest {
 
         PrismAsserts.assertTripleNoMinus(accountConstructionDeltaSetTriple);
 
-        final QName TITLE_QNAME = dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME);
-        final QName LOCATION_QNAME = dummyResourceCtl.getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME);
+        final QName TITLE_QNAME = getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME);
+        final QName LOCATION_QNAME = getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOCATION_NAME);
 
         assertSetSize("zero", accountConstructionDeltaSetTriple.getZeroSet(), 3);
         assertAttributeValues(accountConstructionDeltaSetTriple.getZeroSet(), TITLE_QNAME, ZERO, "Employee");
@@ -652,7 +646,120 @@ public class TestAssignmentProcessor extends AbstractLensTest {
         assertAttributeValues(accountConstructionDeltaSetTriple.getPlusSet(), LOCATION_QNAME, MINUS);
     }
 
-    private <T> void assertAttributeValues(Collection<PrismPropertyValue<Construction>> accountConstructions, QName attrName, PlusMinusZero attrSet, T... expectedValue) {
+    /**
+	 * NOTE - these two tests are legacy. They should be placed in TestPolicyRules. Please do not add
+	 * any similar tests here; use TestPolicyRules instead. It contains better 'assume' methods for policies.
+	 * TODO move these ones as well
+	 * ===============================================================================================
+	 *
+     * Checking approval policy rules.
+	 * Visitor has a generic metarole that has associated policy rule (approve-any-corp-role).
+	 * Generic metarole also induces metarole-sod-notifications that has "notify-exclusion-violations" rule.
+     */
+    @Test
+    public void test200AssignVisitor() throws Exception {
+        final String TEST_NAME = "test200AssignVisitor";
+        TestUtil.displayTestTile(this, TEST_NAME);
+        // GIVEN
+        Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
+        OperationResult result = task.getResult();
+
+        LensContext<UserType> context = createUserLensContext();
+        PrismObject<UserType> user = getUser(USER_JACK_OID);
+        AssignmentType assignmentType = new AssignmentType(prismContext);
+        assignmentType.setTargetRef(ObjectTypeUtil.createObjectRef(ROLE_CORP_VISITOR_OID, ObjectTypes.ROLE));
+        fillContextWithFocus(context, user);
+
+        addFocusDeltaToContext(context, (ObjectDelta) DeltaBuilder.deltaFor(UserType.class, prismContext)
+                .item(UserType.F_ASSIGNMENT).add(assignmentType)
+                .asObjectDelta(USER_JACK_OID));
+        context.recompute();
+
+        display("Input context", context);
+
+        assertFocusModificationSanity(context);
+
+        // WHEN
+        assignmentProcessor.processAssignmentsProjections(context, getNow(), task, result);
+
+        // THEN
+	    //DebugUtil.setDetailedDebugDump(true);
+        display("Output context", context);
+        display("outbound processor result", result);
+        //assertSuccess("Outbound processor failed (result)", result);
+
+        assertTrue(context.getFocusContext().getPrimaryDelta().getChangeType() == ChangeType.MODIFY);
+        assertNull("Unexpected user changes", context.getFocusContext().getSecondaryDelta());
+        assertFalse("No account changes", context.getProjectionContexts().isEmpty());
+
+        DeltaSetTriple<EvaluatedAssignmentImpl<?>> evaluatedAssignmentTriple = context.getEvaluatedAssignmentTriple();
+        assertEquals("Wrong # of added assignments", 1, evaluatedAssignmentTriple.getPlusSet().size());
+
+        display("Policy rules", context.dumpPolicyRules(3));
+
+		EvaluatedAssignmentImpl evaluatedAssignment = evaluatedAssignmentTriple.getPlusSet().iterator().next();
+		assertEquals("Wrong # of focus policy rules", 0, evaluatedAssignment.getFocusPolicyRules().size());
+		Collection<EvaluatedPolicyRule> targetPolicyRules = evaluatedAssignment.getAllTargetsPolicyRules();
+		assertEquals("Wrong # of target policy rules", 2, targetPolicyRules.size());
+    }
+
+	/**
+	 * Checking approval policy rules. (See note above.)
+	 * Engineer has a generic metarole that provides these policy rules: approve-any-corp-rule, notify-exclusion-violations.
+	 * However, it induces an Employee role that has also this generic metarole. Moreover, it has "employee-excludes-contractor"
+	 * rule.
+	 *
+	 * First occurrence of the approval rule should have a trigger. Second one should be without a trigger.
+	 */
+	@Test
+	public void test210AssignEngineer() throws Exception {
+		final String TEST_NAME = "test210AssignEngineer";
+		TestUtil.displayTestTile(this, TEST_NAME);
+		// GIVEN
+		Task task = taskManager.createTaskInstance(TestAssignmentProcessor.class.getName() + "." + TEST_NAME);
+		OperationResult result = task.getResult();
+
+		LensContext<UserType> context = createUserLensContext();
+		PrismObject<UserType> user = getUser(USER_JACK_OID);
+		AssignmentType assignmentType = new AssignmentType(prismContext);
+		assignmentType.setTargetRef(ObjectTypeUtil.createObjectRef(ROLE_CORP_ENGINEER_OID, ObjectTypes.ROLE));
+		fillContextWithFocus(context, user);
+
+		addFocusDeltaToContext(context, (ObjectDelta) DeltaBuilder.deltaFor(UserType.class, prismContext)
+				.item(UserType.F_ASSIGNMENT).add(assignmentType)
+				.asObjectDelta(USER_JACK_OID));
+		context.recompute();
+
+		display("Input context", context);
+
+		assertFocusModificationSanity(context);
+
+		// WHEN
+		assignmentProcessor.processAssignmentsProjections(context, getNow(), task, result);
+
+		// THEN
+		//DebugUtil.setDetailedDebugDump(true);
+		display("Output context", context);
+		display("outbound processor result", result);
+		//assertSuccess("Outbound processor failed (result)", result);
+
+		assertTrue(context.getFocusContext().getPrimaryDelta().getChangeType() == ChangeType.MODIFY);
+		assertNull("Unexpected user changes", context.getFocusContext().getSecondaryDelta());
+		assertFalse("No account changes", context.getProjectionContexts().isEmpty());
+
+		DeltaSetTriple<EvaluatedAssignmentImpl<?>> evaluatedAssignmentTriple = context.getEvaluatedAssignmentTriple();
+		assertEquals("Wrong # of added assignments", 1, evaluatedAssignmentTriple.getPlusSet().size());
+
+		display("Policy rules", context.dumpPolicyRules(3));
+
+		EvaluatedAssignmentImpl evaluatedAssignment = evaluatedAssignmentTriple.getPlusSet().iterator().next();
+		assertEquals("Wrong # of focus policy rules", 0, evaluatedAssignment.getFocusPolicyRules().size());
+		assertEquals("Wrong # of this target policy rules", 2, evaluatedAssignment.getThisTargetPolicyRules().size());
+		Collection<EvaluatedPolicyRule> policyRules = evaluatedAssignment.getAllTargetsPolicyRules();
+		assertEquals("Wrong # of target policy rules", 5, policyRules.size());
+	}
+
+	private <T> void assertAttributeValues(Collection<PrismPropertyValue<Construction>> accountConstructions, QName attrName, PlusMinusZero attrSet, T... expectedValue) {
         Set<T> realValues = getAttributeValues(accountConstructions, attrName, attrSet);
         assertEquals("Unexpected attributes", new HashSet(Arrays.asList(expectedValue)), realValues);
     }

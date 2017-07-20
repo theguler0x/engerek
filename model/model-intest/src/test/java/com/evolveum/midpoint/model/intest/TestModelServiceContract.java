@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2014 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,18 +29,18 @@ import java.util.Collection;
 import java.util.List;
 
 import javax.xml.bind.JAXBElement;
-import javax.xml.bind.JAXBException;
 import javax.xml.datatype.XMLGregorianCalendar;
 import javax.xml.namespace.QName;
 
 import com.evolveum.icf.dummy.resource.BreakMode;
+import com.evolveum.midpoint.common.refinery.RefinedResourceSchemaImpl;
 import com.evolveum.midpoint.notifications.api.transports.Message;
-import com.evolveum.midpoint.prism.ConsistencyCheckScope;
+import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
-import com.evolveum.midpoint.prism.match.PolyStringOrigMatchingRule;
-import com.evolveum.midpoint.prism.query.EqualFilter;
-import com.evolveum.midpoint.prism.query.NotFilter;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
+import com.evolveum.midpoint.prism.query.builder.QueryBuilder;
+import com.evolveum.midpoint.schema.*;
+import com.evolveum.midpoint.schema.processor.*;
 import com.evolveum.prism.xml.ns._public.types_3.ItemPathType;
 import com.evolveum.prism.xml.ns._public.types_3.RawType;
 
@@ -50,27 +50,15 @@ import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.ContextConfiguration;
 import org.testng.AssertJUnit;
 import org.testng.annotations.Test;
-import org.w3c.dom.Element;
 
 import com.evolveum.icf.dummy.resource.DummyAccount;
+import com.evolveum.midpoint.audit.api.AuditEventStage;
 import com.evolveum.midpoint.common.StaticExpressionUtil;
-import com.evolveum.midpoint.common.monitor.InternalMonitor;
 import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
 import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
 import com.evolveum.midpoint.common.refinery.ShadowDiscriminatorObjectDelta;
 import com.evolveum.midpoint.model.api.ModelExecuteOptions;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
 import com.evolveum.midpoint.model.api.context.ModelContext;
-import com.evolveum.midpoint.model.common.expression.evaluator.LiteralExpressionEvaluatorFactory;
-import com.evolveum.midpoint.prism.Containerable;
-import com.evolveum.midpoint.prism.Objectable;
-import com.evolveum.midpoint.prism.PrismContainer;
-import com.evolveum.midpoint.prism.PrismContainerDefinition;
-import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismProperty;
-import com.evolveum.midpoint.prism.PrismPropertyDefinition;
-import com.evolveum.midpoint.prism.PrismPropertyValue;
-import com.evolveum.midpoint.prism.PrismReferenceValue;
 import com.evolveum.midpoint.prism.delta.ChangeType;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.ReferenceDelta;
@@ -78,14 +66,10 @@ import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.prism.util.PrismAsserts;
 import com.evolveum.midpoint.prism.util.PrismTestUtil;
-import com.evolveum.midpoint.schema.GetOperationOptions;
-import com.evolveum.midpoint.schema.ObjectDeltaOperation;
-import com.evolveum.midpoint.schema.ResultHandler;
-import com.evolveum.midpoint.schema.SelectorOptions;
-import com.evolveum.midpoint.schema.constants.MidPointConstants;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
-import com.evolveum.midpoint.schema.processor.ResourceAttribute;
-import com.evolveum.midpoint.schema.processor.ResourceAttributeContainer;
+import com.evolveum.midpoint.schema.internals.InternalCounters;
+import com.evolveum.midpoint.schema.internals.InternalMonitor;
+import com.evolveum.midpoint.schema.internals.InternalOperationClasses;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.result.OperationResultStatus;
 import com.evolveum.midpoint.schema.util.MiscSchemaUtil;
@@ -99,10 +83,10 @@ import com.evolveum.midpoint.util.DOMUtil;
 import com.evolveum.midpoint.util.MiscUtil;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
+import com.evolveum.midpoint.util.exception.PolicyViolationException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnforcementType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ConnectorConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ConstructionType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ExpressionType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingType;
@@ -139,12 +123,13 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		InternalMonitor.reset();
 //		InternalMonitor.setTraceShadowFetchOperation(true);
 //		InternalMonitor.setTraceResourceSchemaOperations(true);
+		InternalMonitor.setTrace(InternalOperationClasses.PRISM_OBJECT_CLONES, true);
 	}
 		
 	@Test
     public void test050GetUserJack() throws Exception {
 		final String TEST_NAME = "test050GetUserJack";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
@@ -155,7 +140,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
         // THEN
         display("User jack", userJack);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         assertUserJack(userJack);
         
         result.computeStatus();
@@ -167,7 +152,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test051GetUserBarbossa() throws Exception {
 		final String TEST_NAME = "test051GetUserBarbossa";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
@@ -178,7 +163,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
         // THEN
         display("User barbossa", userBarbossa);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         assertUser(userBarbossa, USER_BARBOSSA_OID, "barbossa", "Hector Barbossa", "Hector", "Barbossa");
         
         result.computeStatus();
@@ -208,9 +193,9 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // the following modifies nothing but it is used to produce a user-level notification (LINK_REF by itself causes no such notification)
         PropertyDelta<String> attributeDelta = PropertyDelta.createReplaceDeltaOrEmptyDelta(getUserDefinition(), UserType.F_TELEPHONE_NUMBER, "555-1234");
         userDelta.addModification(attributeDelta);
-        Collection<ObjectDelta<? extends ObjectType>> deltas = (Collection)MiscUtil.createCollection(userDelta);
+        Collection<ObjectDelta<? extends ObjectType>> deltas = MiscSchemaUtil.createCollection(userDelta);
 
-        dummyResource.setAddBreakMode(BreakMode.UNSUPPORTED);       // hopefully this does not kick consistency mechanism
+        getDummyResource().setAddBreakMode(BreakMode.UNSUPPORTED);       // hopefully this does not kick consistency mechanism
 
         // WHEN
         modelService.executeChanges(deltas, null, task, result);
@@ -218,7 +203,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // THEN
         result.computeStatus();
         TestUtil.assertFailure(result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
 
         // Check accountRef
         PrismObject<UserType> userJack = modelService.getObject(UserType.class, USER_JACK_OID, null, task, result);
@@ -238,10 +223,10 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 //        dummyAuditService.assertExecutionSuccess();
 
         notificationManager.setDisabled(true);
-        dummyResource.resetBreakMode();
+        getDummyResource().resetBreakMode();
 
         // Check notifications
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 0);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);        // actually I don't know why provisioning does not report unsupported operation as a failure...
@@ -257,10 +242,10 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
     @Test
     public void test100ModifyUserAddAccount() throws Exception {
     	final String TEST_NAME = "test100ModifyUserAddAccount";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + ".test100ModifyUserAddAccount");
+        Task task = createTask(TEST_NAME);
         OperationResult result = task.getResult();
         preTestCleanup(AssignmentPolicyEnforcementType.POSITIVE);
         
@@ -275,10 +260,11 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess(result);
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		// Check accountRef
 		PrismObject<UserType> userJack = modelService.getObject(UserType.class, USER_JACK_OID, null, task, result);
+		display("User jack after", userJack);
         assertUserJack(userJack);
         UserType userJackType = userJack.asObjectable();
         assertEquals("Unexpected number of accountRefs", 1, userJackType.getLinkRef().size());
@@ -301,7 +287,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // Check account in dummy resource
         assertDefaultDummyAccount("jack", "Jack Sparrow", true);
                 
-        assertDummyScriptsAdd(userJack, accountModel, resourceDummyType);
+        assertDummyScriptsAdd(userJack, accountModel, getDummyResourceType());
         
         // Check audit
         display("Audit", dummyAuditService);
@@ -317,7 +303,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         notificationManager.setDisabled(true);
 
         // Check notifications
-        checkDummyTransportMessages("accountPasswordNotifier", 1);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 1);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -343,10 +329,11 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
     @Test
     public void test101GetAccount() throws Exception {
-        TestUtil.displayTestTile(this, "test101GetAccount");
+    	final String TEST_NAME = "test101GetAccount";
+        displayTestTile(TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + ".test101GetAccount");
+        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         preTestCleanup(AssignmentPolicyEnforcementType.POSITIVE);
         
@@ -356,7 +343,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         DummyAccount jackDummyAccount = getDummyAccount(null, ACCOUNT_JACK_DUMMY_USERNAME);
         jackDummyAccount.replaceAttributeValue(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME, "The best pirate captain ever");
         jackDummyAccount.replaceAttributeValue(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WATER_NAME, "cold");
-        rememberShadowFetchOperationCount();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
         
 		// WHEN
 		PrismObject<ShadowType> account = modelService.getObject(ShadowType.class, accountJackOid, null , task, result);
@@ -364,7 +351,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		display("Account", account);
 		display("Account def", account.getDefinition());
-		assertShadowFetchOperationCountIncrement(1);
+		assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 1);
 		PrismContainer<Containerable> accountContainer = account.findContainer(ShadowType.F_ATTRIBUTES);
 		display("Account attributes def", accountContainer.getDefinition());
 		display("Account attributes def complex type def", accountContainer.getDefinition().getComplexTypeDefinition());
@@ -375,17 +362,31 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
         account.checkConsistence(true, true, ConsistencyCheckScope.THOROUGH);
         
-        IntegrationTestTools.assertAttribute(account, getAttributeQName(resourceDummy, DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME), 
+        IntegrationTestTools.assertAttribute(account,
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_TITLE_NAME),
         		"The best pirate captain ever");
         // This one should still be here, even if ignored
-        IntegrationTestTools.assertAttribute(account, getAttributeQName(resourceDummy, DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WATER_NAME), 
+        IntegrationTestTools.assertAttribute(account, 
+        		getDummyResourceController().getAttributeQName(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WATER_NAME), 
         		"cold");
         
         ResourceAttributeContainer attributesContainer = ShadowUtil.getAttributesContainer(account);
         assertNotNull("No attribute container from "+account, attributesContainer);
-        Collection<ResourceAttribute<?>> identifiers = attributesContainer.getIdentifiers();
+        Collection<ResourceAttribute<?>> identifiers = attributesContainer.getPrimaryIdentifiers();
         assertNotNull("No identifiers (null) in attributes container in "+accountJackOid, identifiers);
         assertFalse("No identifiers (empty) in attributes container in "+accountJackOid, identifiers.isEmpty());
+        
+        ResourceAttribute<String> fullNameAttr = attributesContainer.findAttribute(dummyResourceCtl.getAttributeFullnameQName());
+        PrismAsserts.assertPropertyValue(fullNameAttr, ACCOUNT_JACK_DUMMY_FULLNAME);
+        ResourceAttributeDefinition<String> fullNameAttrDef = fullNameAttr.getDefinition();
+        display("attribute fullname definition", fullNameAttrDef);
+        PrismAsserts.assertDefinition(fullNameAttrDef, dummyResourceCtl.getAttributeFullnameQName(),
+        		DOMUtil.XSD_STRING, 1, 1);
+        // MID-3144
+		if (fullNameAttrDef.getDisplayOrder() == null || fullNameAttrDef.getDisplayOrder() < 100 || fullNameAttrDef.getDisplayOrder() > 400) {
+			AssertJUnit.fail("Wrong fullname displayOrder: " + fullNameAttrDef.getDisplayOrder());
+		}
+		assertEquals("Wrong fullname displayName", "Full Name", fullNameAttrDef.getDisplayName());
         
         assertSteadyResources();
 	}
@@ -406,7 +407,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		
 		display("Account", account);
 		display("Account def", account.getDefinition());
-		assertShadowFetchOperationCountIncrement(0);
+		assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
 		PrismContainer<Containerable> accountContainer = account.findContainer(ShadowType.F_ATTRIBUTES);
 		display("Account attributes def", accountContainer.getDefinition());
 		display("Account attributes def complex type def", accountContainer.getDefinition().getComplexTypeDefinition());
@@ -434,7 +435,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		
 		display("Account", account);
 		display("Account def", account.getDefinition());
-		assertShadowFetchOperationCountIncrement(0);
+		assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
 		PrismContainer<Containerable> accountContainer = account.findContainer(ShadowType.F_ATTRIBUTES);
 		display("Account attributes def", accountContainer.getDefinition());
 		display("Account attributes def complex type def", accountContainer.getDefinition().getComplexTypeDefinition());
@@ -444,6 +445,65 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         TestUtil.assertSuccess("getObject result", result);
         
         assertSteadyResources();
+	}
+
+	@Test
+	public void test105SearchAccount() throws Exception {
+		TestUtil.displayTestTile(this, "test105SearchAccount");
+
+		// GIVEN
+		Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + ".test105SearchAccount");
+		OperationResult result = task.getResult();
+
+		// get weapon attribute definition
+		PrismObject<ResourceType> dummyResource = repositoryService.getObject(ResourceType.class, RESOURCE_DUMMY_OID, null, result);
+		ResourceSchema resourceSchema = RefinedResourceSchema.getResourceSchema(dummyResource, prismContext);
+		assertCounterIncrement(InternalCounters.RESOURCE_SCHEMA_PARSE_COUNT, 1);
+
+		QName accountObjectClassQName = dummyResourceCtl.getAccountObjectClassQName();
+		ObjectClassComplexTypeDefinition accountObjectClassDefinition = resourceSchema.findObjectClassDefinition(accountObjectClassQName);
+		QName weaponQName = dummyResourceCtl.getAttributeWeaponQName();
+		ResourceAttributeDefinition<String> weaponDefinition = accountObjectClassDefinition.findAttributeDefinition(weaponQName);
+
+		ObjectQuery q = QueryBuilder.queryFor(ShadowType.class, prismContext)
+				.item(ShadowType.F_RESOURCE_REF).ref(RESOURCE_DUMMY_OID)
+				.and().item(ShadowType.F_OBJECT_CLASS).eq(accountObjectClassQName)
+				.and().item(new ItemPath(ShadowType.F_ATTRIBUTES, weaponQName), weaponDefinition).eq("rum")
+				.build();
+
+		// WHEN
+		List<PrismObject<ShadowType>> list = modelService.searchObjects(ShadowType.class, q, null, task, result);
+
+		// THEN
+		display("Accounts", list);
+		assertEquals("Wrong # of objects returned", 1, list.size());
+	}
+
+	@Test
+	public void test106SearchAccountWithoutResourceSchema() throws Exception {
+		TestUtil.displayTestTile(this, "test106SearchAccountWithoutResourceSchema");
+
+		// GIVEN
+		Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + ".test106SearchAccountWithoutResourceSchema");
+		OperationResult result = task.getResult();
+
+		// create weapon attribute definition - NOT SUPPORTED, use only when you know what you're doing!
+		QName accountObjectClassQName = dummyResourceCtl.getAccountObjectClassQName();
+		QName weaponQName = dummyResourceCtl.getAttributeWeaponQName();
+		PrismPropertyDefinition<String> weaponFakeDef = new PrismPropertyDefinitionImpl<>(weaponQName, DOMUtil.XSD_STRING, prismContext);
+
+		ObjectQuery q = QueryBuilder.queryFor(ShadowType.class, prismContext)
+				.item(ShadowType.F_RESOURCE_REF).ref(RESOURCE_DUMMY_OID)
+				.and().item(ShadowType.F_OBJECT_CLASS).eq(accountObjectClassQName)
+				.and().item(new ItemPath(ShadowType.F_ATTRIBUTES, weaponQName), weaponFakeDef).eq("rum")
+				.build();
+
+		// WHEN
+		List<PrismObject<ShadowType>> list = modelService.searchObjects(ShadowType.class, q, null, task, result);
+
+		// THEN
+		display("Accounts", list);
+		assertEquals("Wrong # of objects returned", 1, list.size());
 	}
 
 	@Test
@@ -462,7 +522,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		accountRefVal.setObject(account);
 		ReferenceDelta accountDelta = ReferenceDelta.createModificationAdd(UserType.F_LINK_REF, getUserDefinition(), accountRefVal);
 		userDelta.addModification(accountDelta);
-		Collection<ObjectDelta<? extends ObjectType>> deltas = (Collection)MiscUtil.createCollection(userDelta);
+		Collection<ObjectDelta<? extends ObjectType>> deltas = MiscSchemaUtil.createCollection(userDelta);
 
 		try {
 			
@@ -480,7 +540,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 			assertMessageContains(message, "default");
 		}
 		
-		assertShadowFetchOperationCountIncrement(0);
+		assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
 		
 		// Check audit
         display("Audit", dummyAuditService);
@@ -495,10 +555,11 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	
 	@Test
     public void test109ModifyUserAddAccountAgain() throws Exception {
-        TestUtil.displayTestTile(this, "test109ModifyUserAddAccountAgain");
+		final String TEST_NAME = "test109ModifyUserAddAccountAgain";
+        displayTestTile(TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + ".test109ModifyUserAddAccountAgain");
+        Task task = createTask(TEST_NAME);
         OperationResult result = task.getResult();
         preTestCleanup(AssignmentPolicyEnforcementType.POSITIVE);
         
@@ -510,7 +571,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		accountRefVal.setObject(account);
 		ReferenceDelta accountDelta = ReferenceDelta.createModificationAdd(UserType.F_LINK_REF, getUserDefinition(), accountRefVal);
 		userDelta.addModification(accountDelta);
-		Collection<ObjectDelta<? extends ObjectType>> deltas = (Collection)MiscUtil.createCollection(userDelta);
+		Collection<ObjectDelta<? extends ObjectType>> deltas = MiscSchemaUtil.createCollection(userDelta);
 		
 		try {
 			
@@ -529,7 +590,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		
 		assertNoProvisioningScripts();
 		
-		assertShadowFetchOperationCountIncrement(0);
+		assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
 		
 		// Check audit
         display("Audit", dummyAuditService);
@@ -544,10 +605,11 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
 	@Test
     public void test110GetUserResolveAccount() throws Exception {
-        TestUtil.displayTestTile(this, "test110GetUserResolveAccount");
+		final String TEST_NAME = "test110GetUserResolveAccount";
+        displayTestTile(TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + ".test110GetUserResolveAccount");
+        Task task = createTask(TEST_NAME);
         OperationResult result = task.getResult();
         preTestCleanup(AssignmentPolicyEnforcementType.POSITIVE);
 
@@ -558,7 +620,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		PrismObject<UserType> userJack = modelService.getObject(UserType.class, USER_JACK_OID, options , task, result);
 		
 		// THEN
-		assertShadowFetchOperationCountIncrement(1);
+		assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 1);
         assertUserJack(userJack);
         UserType userJackType = userJack.asObjectable();
         assertEquals("Unexpected number of accountRefs", 1, userJackType.getLinkRef().size());
@@ -583,10 +645,11 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
 	@Test
     public void test111GetUserResolveAccountResource() throws Exception {
-        TestUtil.displayTestTile(this, "test111GetUserResolveAccountResource");
+		final String TEST_NAME = "test111GetUserResolveAccountResource";
+        displayTestTile(TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + ".test111GetUserResolveAccountResource");
+        Task task = createTask(TEST_NAME);
         OperationResult result = task.getResult();
         preTestCleanup(AssignmentPolicyEnforcementType.POSITIVE);
 
@@ -600,7 +663,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		PrismObject<UserType> userJack = modelService.getObject(UserType.class, USER_JACK_OID, options , task, result);
 		
 		// THEN
-		assertShadowFetchOperationCountIncrement(1);
+		assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 1);
         assertUserJack(userJack);
         UserType userJackType = userJack.asObjectable();
         assertEquals("Unexpected number of accountRefs", 1, userJackType.getLinkRef().size());
@@ -618,8 +681,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
         assertNotNull("Resource in account was not resolved", shadow.getResource());
         
-        result.computeStatus();
-        TestUtil.assertSuccess("getObject result", result);
+        assertSuccess("getObject result", result);
         
         userJack.checkConsistence(true, true);
         
@@ -628,10 +690,11 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
 	@Test
     public void test112GetUserResolveAccountNoFetch() throws Exception {
-        TestUtil.displayTestTile(this, "test112GetUserResolveAccountNoFetch");
+		final String TEST_NAME = "test112GetUserResolveAccountNoFetch";
+        displayTestTile(TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + ".test112GetUserResolveAccountNoFetch");
+        Task task = createTask(TEST_NAME);
         OperationResult result = task.getResult();
         preTestCleanup(AssignmentPolicyEnforcementType.POSITIVE);
 
@@ -645,7 +708,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		PrismObject<UserType> userJack = modelService.getObject(UserType.class, USER_JACK_OID, options , task, result);
 		
 		// THEN
-		assertShadowFetchOperationCountIncrement(0);
+		assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         assertUserJack(userJack);
         UserType userJackType = userJack.asObjectable();
         assertEquals("Unexpected number of accountRefs", 1, userJackType.getLinkRef().size());
@@ -672,7 +735,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test119ModifyUserDeleteAccount() throws Exception {
 		final String TEST_NAME = "test119ModifyUserDeleteAccount";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -695,7 +758,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		TestUtil.displayThen(TEST_NAME);
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result, 2);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		// Check accountRef
 		PrismObject<UserType> userJack = modelService.getObject(UserType.class, USER_JACK_OID, null, task, result);
@@ -729,7 +792,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -763,7 +826,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
         accountJackOid = accountDelta.getOid();
         assertNotNull("No account OID in resulting delta", accountJackOid);
@@ -787,7 +850,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         assertDefaultDummyAccount("jack", "Jack Sparrow", true);
         
         // The user is not associated with the account
-        assertDummyScriptsAdd(null, accountModel, resourceDummyType);
+        assertDummyScriptsAdd(null, accountModel, getDummyResourceType());
         
         // Check audit
         display("Audit", dummyAuditService);
@@ -796,12 +859,13 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.assertAnyRequestDeltas();
         dummyAuditService.assertExecutionDeltas(1);
         dummyAuditService.assertHasDelta(ChangeType.ADD, ShadowType.class);
-        dummyAuditService.assertTarget(accountShadow.getOid());
+        // We cannot have OID in the request. The OID is not assigned yet at that stage.
+        dummyAuditService.assertTarget(accountShadow.getOid(), AuditEventStage.EXECUTION);
         dummyAuditService.assertExecutionSuccess();
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);          // there's no password for that account
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);          // there's no password for that account
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -837,7 +901,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         TestUtil.assertSuccess("executeChanges result", result);
         
         // There is strong mapping. Complete account is fetched.
-        assertShadowFetchOperationCountIncrement(1);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 1);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		assertUserJack(userJack);
@@ -867,7 +931,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -904,7 +968,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
         assertUserJack(userJack);
@@ -934,7 +998,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 0);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -964,7 +1028,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
         result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
         assertUserJack(userJack);
@@ -991,7 +1055,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1024,7 +1088,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("previewChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -1052,33 +1116,37 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test131ModifyUserJackAssignAccount() throws Exception {
 		final String TEST_NAME="test131ModifyUserJackAssignAccount";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = createTask(TEST_NAME);
         OperationResult result = task.getResult();
         preTestCleanup(AssignmentPolicyEnforcementType.FULL);
         
-        Collection<ObjectDelta<? extends ObjectType>> deltas = new ArrayList<ObjectDelta<? extends ObjectType>>();
-        ObjectDelta<UserType> accountAssignmentUserDelta = createAccountAssignmentUserDelta(USER_JACK_OID, RESOURCE_DUMMY_OID, null, true);
-        deltas.add(accountAssignmentUserDelta);
+        rememberCounter(InternalCounters.PRISM_OBJECT_CLONE_COUNT);
         
         XMLGregorianCalendar startTime = clock.currentTimeXMLGregorianCalendar();
                   
 		// WHEN
         TestUtil.displayWhen(TEST_NAME);
-		modelService.executeChanges(deltas, null, task, result);
+        assignAccount(USER_JACK_OID, RESOURCE_DUMMY_OID, null, task, result);
 		
 		// THEN
 		TestUtil.displayThen(TEST_NAME);
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
+        assertCounterIncrement(InternalCounters.PRISM_OBJECT_CLONE_COUNT, 66); 
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
 		assertUserJack(userJack);
+		AssignmentType assignmentType = assertAssignedAccount(userJack, RESOURCE_DUMMY_OID);
+        assertAssignments(userJack, 1);
+        assertModifyMetadata(userJack, startTime, endTime);
+        assertCreateMetadata(assignmentType, startTime, endTime);
+        
         accountJackOid = getSingleLinkOid(userJack);
         
 		// Check shadow
@@ -1094,7 +1162,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // Check account in dummy resource
         assertDefaultDummyAccount("jack", "Jack Sparrow", true);
         
-        assertDummyScriptsAdd(userJack, accountModel, resourceDummyType);
+        assertDummyScriptsAdd(userJack, accountModel, getDummyResourceType());
         
         // Check audit
         display("Audit", dummyAuditService);
@@ -1109,7 +1177,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 1);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 1);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1127,7 +1195,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test132ModifyAccountJackDummy() throws Exception {
 		final String TEST_NAME = "test132ModifyAccountJackDummy";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -1149,7 +1217,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         // There is strong mapping. Complete account is fetched.
-        assertShadowFetchOperationCountIncrement(1);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 1);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -1202,7 +1270,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1214,10 +1282,76 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         assertSteadyResources();
     }
 	
+	/**
+	 * MID-3080
+	 */
+	@Test
+    public void test135ModifyUserJackAssignAccountAgain() throws Exception {
+		final String TEST_NAME="test135ModifyUserJackAssignAccountAgain";
+        displayTestTile(TEST_NAME);
+
+        // GIVEN
+        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        OperationResult result = task.getResult();
+        preTestCleanup(AssignmentPolicyEnforcementType.FULL);
+        
+		// WHEN
+        TestUtil.displayWhen(TEST_NAME);
+        assignAccount(USER_JACK_OID, RESOURCE_DUMMY_OID, null, task, result);
+		
+		// THEN
+		TestUtil.displayThen(TEST_NAME);
+		result.computeStatus();
+        TestUtil.assertSuccess("executeChanges result", result);
+        
+		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
+		display("User after change execution", userJack);
+		assertUserJack(userJack);
+		assertAssignedAccount(userJack, RESOURCE_DUMMY_OID);
+        assertAssignments(userJack, 1);
+
+        accountJackOid = getSingleLinkOid(userJack);
+        
+        
+		// Check shadow
+        PrismObject<ShadowType> accountShadow = repositoryService.getObject(ShadowType.class, accountJackOid, null, result);
+        assertDummyAccountShadowRepo(accountShadow, accountJackOid, "jack");
+        
+        // Check account
+        PrismObject<ShadowType> accountModel = modelService.getObject(ShadowType.class, accountJackOid, null, task, result);
+        assertDummyAccountShadowModel(accountModel, accountJackOid, "jack", "Cpt. Jack Sparrow");
+        
+        // Check account in dummy resource
+        assertDefaultDummyAccount("jack", "Cpt. Jack Sparrow", true);
+        
+        // Check audit
+        display("Audit", dummyAuditService);
+        dummyAuditService.assertRecords(2);
+        dummyAuditService.assertSimpleRecordSanity();
+        dummyAuditService.assertAnyRequestDeltas();
+        dummyAuditService.assertExecutionDeltas(1);
+        dummyAuditService.assertHasDelta(ChangeType.MODIFY, UserType.class);
+        dummyAuditService.assertTarget(USER_JACK_OID);
+        dummyAuditService.assertExecutionSuccess();
+
+        // Check notifications
+        notificationManager.setDisabled(true);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
+        checkDummyTransportMessages("userPasswordNotifier", 0);
+        checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 0);
+        checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
+        checkDummyTransportMessages("simpleAccountNotifier-ADD-SUCCESS", 0);
+        checkDummyTransportMessages("simpleAccountNotifier-DELETE-SUCCESS", 0);
+        checkDummyTransportMessages("simpleUserNotifier", 1);
+        checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
+        
+        assertSteadyResources();
+    }
+	
 	@Test
     public void test139ModifyUserJackUnassignAccount() throws Exception {
 		final String TEST_NAME = "test139ModifyUserJackUnassignAccount";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -1234,7 +1368,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		assertUserJack(userJack, "Jack Sparrow", "Jack", "Sparrow");
@@ -1262,7 +1396,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1280,7 +1414,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test141ModifyUserJackAssignAccountPositiveEnforcement() throws Exception {
 		final String TEST_NAME = "test141ModifyUserJackAssignAccountPositiveEnforcement";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -1296,7 +1430,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
         // This is a second time we assigned this account. Therefore all the scripts in mapping should already
         // be compiled ... check this.
-        rememberScriptCompileCount();
+        rememberCounter(InternalCounters.SCRIPT_COMPILE_COUNT);
         
         XMLGregorianCalendar startTime = clock.currentTimeXMLGregorianCalendar();
                 
@@ -1307,7 +1441,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -1327,7 +1461,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // Check account in dummy resource
         assertDefaultDummyAccount("jack", "Jack Sparrow", true);
         
-        assertDummyScriptsAdd(userJack, accountModel, resourceDummyType);
+        assertDummyScriptsAdd(userJack, accountModel, getDummyResourceType());
         
         // Check audit
         display("Audit", dummyAuditService);
@@ -1342,7 +1476,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 1);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 1);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1353,8 +1487,8 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
         // This is a second time we assigned this account. Therefore all the scripts in mapping should already
         // be compiled ... check this.
-        assertScriptCompileIncrement(0);
-        
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
+         
         assertSteadyResources();
     }
 	
@@ -1364,7 +1498,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test148ModifyUserJackUnassignAccountPositiveEnforcement() throws Exception {
 		final String TEST_NAME = "test148ModifyUserJackUnassignAccountPositiveEnforcement";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() 
@@ -1384,7 +1518,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // the previous command changes resource, therefore let's explicitly re-read it before test
         // to refresh the cache and not affect the performance results (monitor).
         modelService.getObject(ResourceType.class, RESOURCE_DUMMY_OID, null, task, result);
-        assertResourceSchemaParseCountIncrement(1);
+        assertCounterIncrement(InternalCounters.RESOURCE_SCHEMA_PARSE_COUNT, 1);
         
 		// WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -1395,7 +1529,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         // There is strong mapping. Complete account is fetched.
-        assertShadowFetchOperationCountIncrement(1);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 1);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -1427,7 +1561,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 0);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1436,7 +1570,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 1);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
         
         // return resource to the previous state..delete assignment enforcement to prevent next test to fail..
@@ -1444,7 +1578,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // the previous command changes resource, therefore let's explicitly re-read it before test
         // to refresh the cache and not affect the performance results (monitor).
         modelService.getObject(ResourceType.class, RESOURCE_DUMMY_OID, null, task, result);
-        assertResourceSchemaParseCountIncrement(1);
+        assertCounterIncrement(InternalCounters.RESOURCE_SCHEMA_PARSE_COUNT, 1);
     }
 
 	/**
@@ -1454,7 +1588,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test149ModifyUserJackDeleteAccount() throws Exception {
 		final String TEST_NAME = "test149ModifyUserJackDeleteAccount";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -1477,7 +1611,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		assertUserJack(userJack, "Jack Sparrow", "Jack", "Sparrow");
@@ -1505,7 +1639,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1514,7 +1648,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 0);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 	
@@ -1524,7 +1658,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test151ModifyUserJackAssignAccountRelativeEnforcement() throws Exception {
 		final String TEST_NAME = "test151ModifyUserJackAssignAccountRelativeEnforcement";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -1547,7 +1681,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -1567,7 +1701,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // Check account in dummy resource
         assertDefaultDummyAccount("jack", "Jack Sparrow", true);
         
-        assertDummyScriptsAdd(userJack, accountModel, resourceDummyType);
+        assertDummyScriptsAdd(userJack, accountModel, getDummyResourceType());
         
         // Check audit
         display("Audit", dummyAuditService);
@@ -1582,7 +1716,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 1);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 1);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1591,7 +1725,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 1);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 	
@@ -1601,7 +1735,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test158ModifyUserJackUnassignAccountRelativeEnforcement() throws Exception {
 		final String TEST_NAME = "test158ModifyUserJackUnassignAccountRelativeEnforcement";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() 
@@ -1619,7 +1753,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
         PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		assertUserJack(userJack, "Jack Sparrow", "Jack", "Sparrow");
@@ -1647,7 +1781,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1656,7 +1790,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 1);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
 
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 	
@@ -1666,7 +1800,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test161ModifyUserJackAssignAccountNoneEnforcement() throws Exception {
 		final String TEST_NAME = "test161ModifyUserJackAssignAccountNoneEnforcement";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -1686,7 +1820,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
         PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		assertUserJack(userJack, "Jack Sparrow", "Jack", "Sparrow");
@@ -1699,7 +1833,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // Check if dummy resource account is gone
         assertNoDummyAccount("jack");
         
-        assertDummyScriptsNone();
+        assertDummyProvisioningScriptsNone();
         
         // Check audit
         display("Audit", dummyAuditService);
@@ -1713,7 +1847,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 0);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1722,14 +1856,14 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 1);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 	
 	@Test
     public void test163ModifyUserJackAddAccountNoneEnforcement() throws Exception {
 		final String TEST_NAME = "test163ModifyUserJackAddAccountNoneEnforcement";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -1758,7 +1892,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -1778,7 +1912,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // Check account in dummy resource
         assertDefaultDummyAccount("jack", "Jack Sparrow", true);
         
-        assertDummyScriptsAdd(userJack, accountModel, resourceDummyType);
+        assertDummyScriptsAdd(userJack, accountModel, getDummyResourceType());
         
         // Check audit
         display("Audit", dummyAuditService);
@@ -1794,7 +1928,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         notificationManager.setDisabled(true);
 
         // Check notifications
-        checkDummyTransportMessages("accountPasswordNotifier", 1);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 1);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1802,14 +1936,14 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 0);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
 	}
 	
 	@Test
     public void test164ModifyUserJackUnassignAccountNoneEnforcement() throws Exception {
 		final String TEST_NAME = "test164ModifyUserJackUnassignAccountNoneEnforcement";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() 
@@ -1828,7 +1962,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         // Strong mappings
-        assertShadowFetchOperationCountIncrement(1);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 1);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -1846,7 +1980,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // Check account in dummy resource
         assertDefaultDummyAccount("jack", "Jack Sparrow", true);
         
-        assertDummyScriptsNone();
+        assertDummyProvisioningScriptsNone();
         
         // Check audit
         display("Audit", dummyAuditService);
@@ -1861,7 +1995,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         notificationManager.setDisabled(true);
 
         // Check notifications
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 0);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1869,14 +2003,14 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 1);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 	
 	@Test
     public void test169ModifyUserJackDeleteAccountNoneEnforcement() throws Exception {
 		final String TEST_NAME = "test169ModifyUserJackDeleteAccountNoneEnforcement";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -1899,7 +2033,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		assertUserJack(userJack, "Jack Sparrow", "Jack", "Sparrow");
@@ -1927,7 +2061,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -1936,14 +2070,14 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 0);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
 
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 
 	@Test
     public void test180ModifyUserAddAccountFullEnforcement() throws Exception {
 		final String TEST_NAME = "test180ModifyUserAddAccountFullEnforcement";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -1973,7 +2107,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertFailure("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		assertUserJack(userJack, "Jack Sparrow", "Jack", "Sparrow");
@@ -1997,14 +2131,14 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.assertExecutionOutcome(OperationResultStatus.FATAL_ERROR);
         dummyAuditService.assertTarget(USER_JACK_OID);
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
 	}
 	
 	@Test
     public void test182ModifyUserAddAndAssignAccountPositiveEnforcement() throws Exception {
 		final String TEST_NAME = "test182ModifyUserAddAndAssignAccountPositiveEnforcement";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -2027,7 +2161,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 			
 		// THEN
 		XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-		assertShadowFetchOperationCountIncrement(0);
+		assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
 		// Check accountRef
 		PrismObject<UserType> userJack = modelService.getObject(UserType.class, USER_JACK_OID, null, task, result);
         assertUserJack(userJack);
@@ -2056,7 +2190,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         
-        assertDummyScriptsAdd(userJack, accountModel, resourceDummyType);
+        assertDummyScriptsAdd(userJack, accountModel, getDummyResourceType());
         
         // Check audit
         display("Audit", dummyAuditService);
@@ -2069,7 +2203,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.assertTarget(USER_JACK_OID);
         dummyAuditService.assertExecutionSuccess();
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
 	}
 	
@@ -2099,7 +2233,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		assertUserJack(userJack, "Jack Sparrow", "Jack", "Sparrow");
@@ -2125,7 +2259,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.assertTarget(USER_JACK_OID);
         dummyAuditService.assertExecutionSuccess();
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
 	}
 	
@@ -2162,7 +2296,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -2185,7 +2319,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         assertDummyAccountAttribute(null, USER_JACK_USERNAME, DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME, "smell");
         assertNull("Unexpected loot", dummyAccount.getAttributeValue("loot", Integer.class));
         
-        assertDummyScriptsAdd(userJack, accountModel, resourceDummyType);
+        assertDummyScriptsAdd(userJack, accountModel, getDummyResourceType());
         
         // Check audit
         display("Audit", dummyAuditService);
@@ -2200,7 +2334,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 1);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 1);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -2209,7 +2343,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 1);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
 
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 
@@ -2220,7 +2354,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
     @Test
     public void test191ModifyUserJackModifyAssignment() throws Exception {
     	final String TEST_NAME = "test191ModifyUserJackModifyAssignment";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -2232,9 +2366,9 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         PrismObject<ResourceType> dummyResource = repositoryService.getObject(ResourceType.class, RESOURCE_DUMMY_OID, null, result);
         
-        RefinedResourceSchema refinedSchema = RefinedResourceSchema.getRefinedSchema(dummyResource, prismContext);
+        RefinedResourceSchema refinedSchema = RefinedResourceSchemaImpl.getRefinedSchema(dummyResource, prismContext);
         // This explicitly parses the schema, therefore ...
-        assertResourceSchemaParseCountIncrement(1);
+        assertCounterIncrement(InternalCounters.RESOURCE_SCHEMA_PARSE_COUNT, 1);
         
         RefinedObjectClassDefinition accountDefinition = refinedSchema.getRefinedDefinition(ShadowKindType.ACCOUNT, (String) null);
         PrismPropertyDefinition gossipDefinition = accountDefinition.findPropertyDefinition(new QName(
@@ -2266,8 +2400,12 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         value.setExpression(expression);
         radt.setOutbound(value);
         accountConstruction.getAttribute().add(radt);
+
+        PrismObject<UserType> jackBefore = getUserFromRepo(USER_JACK_OID);
+        assertEquals("Wrong # of assignments", 1, jackBefore.asObjectable().getAssignment().size());
+        Long assignmentId = jackBefore.asObjectable().getAssignment().get(0).getId();
         ObjectDelta<UserType> accountAssignmentUserDelta =
-                createReplaceAccountConstructionUserDelta(USER_JACK_OID, 1L, accountConstruction);
+                createReplaceAccountConstructionUserDelta(USER_JACK_OID, assignmentId, accountConstruction);
         deltas.add(accountAssignmentUserDelta);
         
         preTestCleanup(AssignmentPolicyEnforcementType.POSITIVE);
@@ -2287,7 +2425,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // First fetch: initial account read
         // Second fetch: fetchback after modification to correctly process inbound
-        assertShadowFetchOperationCountIncrement(2);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 2);
 
         PrismObject<UserType> userJack = getUser(USER_JACK_OID);
         display("User after change execution", userJack);
@@ -2323,14 +2461,14 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.assertTarget(USER_JACK_OID);
         dummyAuditService.assertExecutionSuccess();
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 
     @Test
     public void test195ModifyUserJack() throws Exception {
     	final String TEST_NAME = "test195ModifyUserJack";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -2347,7 +2485,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         // Strong mappings
-        assertShadowFetchOperationCountIncrement(1);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 1);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -2387,7 +2525,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -2396,14 +2534,14 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 1);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
     
     @Test
     public void test196ModifyUserJackLocationEmpty() throws Exception {
     	final String TEST_NAME = "test196ModifyUserJackLocationEmpty";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -2417,7 +2555,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         // Strong mappings
-        assertShadowFetchOperationCountIncrement(1);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 1);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -2451,7 +2589,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -2460,14 +2598,14 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier", 1);
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
 
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 
     @Test
     public void test197ModifyUserJackLocationNull() throws Exception {
     	final String TEST_NAME = "test197ModifyUserJackLocationNull";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -2485,7 +2623,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertFailure(result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
         assertNoProvisioningScripts();
         
@@ -2494,7 +2632,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // This should fail even before the request record is created
         dummyAuditService.assertRecords(0);
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
 	}
     
@@ -2517,7 +2655,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -2544,11 +2682,10 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.assertAnyRequestDeltas();
         dummyAuditService.assertExecutionDeltas(1);
         dummyAuditService.assertHasDelta(ChangeType.MODIFY, UserType.class);
-        // raw operation, no target
-        // dummyAuditService.assertTarget(USER_JACK_OID); // MID-2451
+        dummyAuditService.assertTarget(USER_JACK_OID); // MID-2451
         dummyAuditService.assertExecutionSuccess();
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 		
@@ -2570,7 +2707,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		try {
 			PrismObject<UserType> userJack = getUser(USER_JACK_OID);
@@ -2600,7 +2737,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -2610,14 +2747,14 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         checkDummyTransportMessages("simpleUserNotifier-ADD", 0);
         checkDummyTransportMessages("simpleUserNotifier-DELETE", 1);
         
-        assertScriptCompileIncrement(0);
+        assertCounterIncrement(InternalCounters.SCRIPT_COMPILE_COUNT, 0);
         assertSteadyResources();
     }
 	
 	@Test
     public void test200AddUserBlackbeardWithAccount() throws Exception {
 		final String TEST_NAME = "test200AddUserBlackbeardWithAccount";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = createTask(TEST_NAME);
@@ -2639,7 +2776,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userBlackbeard = modelService.getObject(UserType.class, USER_BLACKBEARD_OID, null, task, result);
         UserType userBlackbeardType = userBlackbeard.asObjectable();
@@ -2648,7 +2785,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         String accountOid = accountRefType.getOid();
         assertFalse("No accountRef oid", StringUtils.isBlank(accountOid));
         
-        assertEncryptedPassword(userBlackbeard, "QueenAnne");
+        assertEncryptedUserPassword(userBlackbeard, "QueenAnne");
         assertPasswordMetadata(userBlackbeard, true, startTime, endTime, USER_ADMINISTRATOR_OID, "http://pirates.net/avast");
         
 		// Check shadow
@@ -2666,7 +2803,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         DummyAccount dummyAccount = getDummyAccount(null, "blackbeard");
         assertEquals("Wrong loot", (Integer)10000, dummyAccount.getAttributeValue("loot", Integer.class));
         
-        assertDummyScriptsAdd(userBlackbeard, accountModel, resourceDummyType);
+        assertDummyScriptsAdd(userBlackbeard, accountModel, getDummyResourceType());
         
         // Check audit        
         display("Audit", dummyAuditService);
@@ -2686,7 +2823,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 1);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 1);
         checkDummyTransportMessages("userPasswordNotifier", 1);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -2703,7 +2840,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test210AddUserMorganWithAssignment() throws Exception {
 		final String TEST_NAME = "test210AddUserMorganWithAssignment";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = createTask(TEST_NAME);
@@ -2717,22 +2854,28 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         XMLGregorianCalendar startTime = clock.currentTimeXMLGregorianCalendar();
                 
 		// WHEN
+        TestUtil.displayWhen(TEST_NAME);
 		modelService.executeChanges(deltas, null, task, result);
 		
 		// THEN
+		TestUtil.displayThen(TEST_NAME);
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userMorgan = modelService.getObject(UserType.class, USER_MORGAN_OID, null, task, result);
+		display("User morgan after", userMorgan);
         UserType userMorganType = userMorgan.asObjectable();
-        assertEquals("Unexpected number of accountRefs", 1, userMorganType.getLinkRef().size());
+        AssignmentType assignmentType = assertAssignedAccount(userMorgan, RESOURCE_DUMMY_OID);
+        assertLinks(userMorgan, 1);
         ObjectReferenceType accountRefType = userMorganType.getLinkRef().get(0);
         String accountOid = accountRefType.getOid();
         assertFalse("No accountRef oid", StringUtils.isBlank(accountOid));
+        assertCreateMetadata(userMorgan, startTime, endTime);
+        assertCreateMetadata(assignmentType, startTime, endTime);
         
-        assertEncryptedPassword(userMorgan, "rum");
+        assertEncryptedUserPassword(userMorgan, "rum");
         assertPasswordMetadata(userMorgan, true, startTime, endTime);
         
 		// Check shadow
@@ -2748,11 +2891,11 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         // Check account in dummy resource
         assertDefaultDummyAccount("morgan", "Sir Henry Morgan", true);
         
-        assertDummyScriptsAdd(userMorgan, accountModel, resourceDummyType);
+        assertDummyScriptsAdd(userMorgan, accountModel, getDummyResourceType());
         
      // Check audit
         display("Audit", dummyAuditService);
-        dummyAuditService.assertRecords(3);
+        dummyAuditService.assertRecords(2);
         dummyAuditService.assertSimpleRecordSanity();
         dummyAuditService.assertAnyRequestDeltas();
         dummyAuditService.assertExecutionDeltas(3);
@@ -2764,7 +2907,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 1);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 1);
         checkDummyTransportMessages("userPasswordNotifier", 1);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -2780,7 +2923,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test212RenameUserMorgan() throws Exception {
 		final String TEST_NAME = "test212RenameUserMorgan";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -2788,13 +2931,15 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         preTestCleanup(AssignmentPolicyEnforcementType.FULL);
                 
 		// WHEN
+        TestUtil.displayWhen(TEST_NAME);
         modifyUserReplace(USER_MORGAN_OID, UserType.F_NAME, task, result, PrismTestUtil.createPolyString("sirhenry"));
 		
 		// THEN
+        TestUtil.displayThen(TEST_NAME);
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         // Strong mappings
-        assertShadowFetchOperationCountIncrement(1);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 1);
         
 		PrismObject<UserType> userMorgan = modelService.getObject(UserType.class, USER_MORGAN_OID, null, task, result);
         UserType userMorganType = userMorgan.asObjectable();
@@ -2804,12 +2949,14 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         assertFalse("No accountRef oid", StringUtils.isBlank(accountOid));
         
 		// Check shadow
-        PrismObject<ShadowType> accountShadow = repositoryService.getObject(ShadowType.class, accountOid, null, result);
-        assertDummyAccountShadowRepo(accountShadow, accountOid, "sirhenry");
+        PrismObject<ShadowType> accountShadowRepo = repositoryService.getObject(ShadowType.class, accountOid, null, result);
+        display("Shadow repo", accountShadowRepo);
+        assertDummyAccountShadowRepo(accountShadowRepo, accountOid, "sirhenry");
         
         // Check account
-        PrismObject<ShadowType> accountModel = modelService.getObject(ShadowType.class, accountOid, null, task, result);
-        assertDummyAccountShadowModel(accountModel, accountOid, "sirhenry", "Sir Henry Morgan");
+        PrismObject<ShadowType> accountShadowModel = modelService.getObject(ShadowType.class, accountOid, null, task, result);
+        display("Shadow model", accountShadowModel);
+        assertDummyAccountShadowModel(accountShadowModel, accountOid, "sirhenry", "Sir Henry Morgan");
         
         // Check account in dummy resource
         assertDefaultDummyAccount("sirhenry", "Sir Henry Morgan", true);
@@ -2825,7 +2972,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.assertHasDelta(ChangeType.MODIFY, UserType.class);
         ObjectDeltaOperation<ShadowType> auditShadowDelta = dummyAuditService.assertHasDelta(ChangeType.MODIFY, ShadowType.class);
         
-        assertEquals("Unexpected number of modifications in shadow audit delta: "+auditShadowDelta.debugDump(), 4, auditShadowDelta.getObjectDelta().getModifications().size());
+        assertEquals("Unexpected number of modifications in shadow audit delta: "+auditShadowDelta.debugDump(), 3, auditShadowDelta.getObjectDelta().getModifications().size());
         
         dummyAuditService.assertOldValue(ChangeType.MODIFY, UserType.class,
         		UserType.F_NAME, PrismTestUtil.createPolyString("morgan"));
@@ -2833,15 +2980,17 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         		new ItemPath(ShadowType.F_ATTRIBUTES, SchemaConstants.ICFS_NAME), "morgan");
         dummyAuditService.assertOldValue(ChangeType.MODIFY, ShadowType.class, 
         		new ItemPath(ShadowType.F_ATTRIBUTES, SchemaConstants.ICFS_UID), "morgan");
-        dummyAuditService.assertOldValue(ChangeType.MODIFY, ShadowType.class, 
-        		new ItemPath(ShadowType.F_NAME), PrismTestUtil.createPolyString("morgan"));
+        // This is a side-effect change. It is silently done by provisioning. It is not supposed to
+        // appear in audit log.
+//        dummyAuditService.assertOldValue(ChangeType.MODIFY, ShadowType.class, 
+//        		new ItemPath(ShadowType.F_NAME), PrismTestUtil.createPolyString("morgan"));
         
         dummyAuditService.assertTarget(USER_MORGAN_OID);
         dummyAuditService.assertExecutionSuccess();
 
         // Check notifications
         notificationManager.setDisabled(true);
-        checkDummyTransportMessages("accountPasswordNotifier", 0);
+        checkDummyTransportMessages(NOTIFIER_ACCOUNT_PASSWORD_NAME, 0);
         checkDummyTransportMessages("userPasswordNotifier", 0);
         checkDummyTransportMessages("simpleAccountNotifier-SUCCESS", 1);
         checkDummyTransportMessages("simpleAccountNotifier-FAILURE", 0);
@@ -2860,7 +3009,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test240AddUserCharlesRaw() throws Exception {
 		final String TEST_NAME = "test240AddUserCharlesRaw";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -2877,7 +3026,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
         PrismObject<UserType> userAfter = findUserByUsername("charles");
         assertNotNull("No charles", userAfter);
@@ -2905,7 +3054,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test241DeleteUserCharlesRaw() throws Exception {
 		final String TEST_NAME = "test241DeleteUserCharlesRaw";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
         Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
@@ -2921,7 +3070,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		// THEN
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
         PrismObject<UserType> userAfter = findUserByUsername("charles");
         assertNull("Charles is not gone", userAfter);
@@ -2945,15 +3094,15 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test300AddUserJackWithAssignmentBlue() throws Exception {
 		final String TEST_NAME="test300AddUserJackWithAssignmentBlue";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = createTask(TEST_NAME);
         OperationResult result = task.getResult();
         preTestCleanup(AssignmentPolicyEnforcementType.RELATIVE);
         
         PrismObject<UserType> userJack = PrismTestUtil.parseObject(USER_JACK_FILE);
-        AssignmentType assignmentBlue = createAssignment(RESOURCE_DUMMY_BLUE_OID, ShadowKindType.ACCOUNT, null);
+        AssignmentType assignmentBlue = createConstructionAssignment(RESOURCE_DUMMY_BLUE_OID, ShadowKindType.ACCOUNT, null);
 		userJack.asObjectable().getAssignment().add(assignmentBlue);
         
         ObjectDelta<UserType> delta = ObjectDelta.createAddDelta(userJack);
@@ -2961,15 +3110,15 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         XMLGregorianCalendar startTime = clock.currentTimeXMLGregorianCalendar();
                   
 		// WHEN
-        TestUtil.displayWhen(TEST_NAME);
+        displayWhen(TEST_NAME);
 		modelService.executeChanges(MiscSchemaUtil.createCollection(delta), null, task, result);
 		
 		// THEN
-		TestUtil.displayThen(TEST_NAME);
-		result.computeStatus();
-        TestUtil.assertSuccess("executeChanges result", result);
+		displayThen(TEST_NAME);
+		assertSuccess(result);
+		
         XMLGregorianCalendar endTime = clock.currentTimeXMLGregorianCalendar();
-        assertShadowFetchOperationCountIncrement(0);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
         
 		PrismObject<UserType> userJackAfter = getUser(USER_JACK_OID);
 		display("User after change execution", userJackAfter);
@@ -2978,12 +3127,13 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
 		// Check shadow
         PrismObject<ShadowType> accountShadow = repositoryService.getObject(ShadowType.class, accountJackBlueOid, null, result);
-        assertAccountShadowRepo(accountShadow, accountJackBlueOid, USER_JACK_USERNAME, resourceDummyBlueType);
+        assertAccountShadowRepo(accountShadow, accountJackBlueOid, USER_JACK_USERNAME, getDummyResourceType(RESOURCE_DUMMY_BLUE_NAME));
         assertEnableTimestampShadow(accountShadow, startTime, endTime);
         
         // Check account
         PrismObject<ShadowType> accountModel = modelService.getObject(ShadowType.class, accountJackBlueOid, null, task, result);
-        assertShadowModel(accountModel, accountJackBlueOid, USER_JACK_USERNAME, resourceDummyBlueType, getAccountObjectClass(resourceDummyBlueType));
+        assertShadowModel(accountModel, accountJackBlueOid, USER_JACK_USERNAME, getDummyResourceType(RESOURCE_DUMMY_BLUE_NAME), 
+        		getAccountObjectClass(getDummyResourceType(RESOURCE_DUMMY_BLUE_NAME)));
         assertEnableTimestampShadow(accountModel, startTime, endTime);
         
         // Check account in dummy resource
@@ -2991,7 +3141,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
         // Check audit
         display("Audit", dummyAuditService);
-        dummyAuditService.assertRecords(3);
+        dummyAuditService.assertRecords(2);
         dummyAuditService.assertSimpleRecordSanity();
         dummyAuditService.assertAnyRequestDeltas();
         dummyAuditService.assertExecutionDeltas(3);
@@ -3010,18 +3160,19 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 	@Test
     public void test302ModifyAccountJackDummyBlue() throws Exception {
 		final String TEST_NAME = "test302ModifyAccountJackDummyBlue";
-        TestUtil.displayTestTile(this, TEST_NAME);
+        displayTestTile(TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = createTask(TEST_NAME);
         OperationResult result = task.getResult();
         preTestCleanup(AssignmentPolicyEnforcementType.FULL);
         
         Collection<ObjectDelta<? extends ObjectType>> deltas = new ArrayList<ObjectDelta<? extends ObjectType>>();
         ObjectDelta<ShadowType> accountDelta = ObjectDelta.createModificationReplaceProperty(ShadowType.class,
-        		accountJackBlueOid, dummyResourceCtlBlue.getAttributeFullnamePath(), prismContext, "Cpt. Jack Sparrow");
+        		accountJackBlueOid, getDummyResourceController(RESOURCE_DUMMY_BLUE_NAME).getAttributeFullnamePath(), prismContext, 
+        		"Cpt. Jack Sparrow");
         accountDelta.addModificationReplaceProperty(
-        		dummyResourceCtlBlue.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME),
+        		getDummyResourceController(RESOURCE_DUMMY_BLUE_NAME).getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME),
         		"Queen Anne's Revenge");
         deltas.add(accountDelta);
                 
@@ -3034,7 +3185,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 		result.computeStatus();
         TestUtil.assertSuccess("executeChanges result", result);
         // Not sure why 2 ... but this is not a big problem now
-        assertShadowFetchOperationCountIncrement(2);
+        assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 2);
         
 		PrismObject<UserType> userJack = getUser(USER_JACK_OID);
 		display("User after change execution", userJack);
@@ -3044,12 +3195,12 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         
 		// Check shadow
         PrismObject<ShadowType> accountShadow = repositoryService.getObject(ShadowType.class, accountJackOid, null, result);
-        assertAccountShadowRepo(accountShadow, accountJackBlueOid, USER_JACK_USERNAME, resourceDummyBlueType);
+        assertAccountShadowRepo(accountShadow, accountJackBlueOid, USER_JACK_USERNAME, getDummyResourceType(RESOURCE_DUMMY_BLUE_NAME));
         
         // Check account
         // All the changes should be reflected to the account
         PrismObject<ShadowType> accountModel = modelService.getObject(ShadowType.class, accountJackOid, null, task, result);
-        assertAccountShadowRepo(accountShadow, accountJackBlueOid, USER_JACK_USERNAME, resourceDummyBlueType);
+        assertAccountShadowRepo(accountShadow, accountJackBlueOid, USER_JACK_USERNAME, getDummyResourceType(RESOURCE_DUMMY_BLUE_NAME));
         
         // Check account in dummy resource
         assertDummyAccount(RESOURCE_DUMMY_BLUE_NAME, USER_JACK_USERNAME, "Cpt. Jack Sparrow", true);
@@ -3063,34 +3214,16 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
         dummyAuditService.assertExecutionDeltas(0, 1);
         dummyAuditService.assertHasDelta(0, ChangeType.MODIFY, ShadowType.class);
         dummyAuditService.assertOldValue(0, ChangeType.MODIFY, ShadowType.class, 
-        		dummyResourceCtlBlue.getAttributeFullnamePath(), "Jack Sparrow");
+        		getDummyResourceController(RESOURCE_DUMMY_BLUE_NAME).getAttributeFullnamePath(), "Jack Sparrow");
 //        dummyAuditService.assertOldValue(0, ChangeType.MODIFY, ShadowType.class, 
 //        		dummyResourceCtl.getAttributePath(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_SHIP_NAME));
                 
         dummyAuditService.assertTarget(USER_JACK_OID);
         dummyAuditService.assertExecutionSuccess();
 
-        // First time the blue resource is used
-        assertResourceSchemaParseCountIncrement(1);
         assertSteadyResources();
     }
 	
-	
-	private void assertMessageContains(String message, String string) {
-		assert message.contains(string) : "Expected message to contain '"+string+"' but it does not; message: " + message;
-	}
-	
-	private void purgeScriptHistory() {
-		dummyResource.purgeScriptHistory();
-	}
-
-	private void assertNoProvisioningScripts() {
-		if (!dummyResource.getScriptHistory().isEmpty()) {
-			IntegrationTestTools.displayScripts(dummyResource.getScriptHistory());
-			AssertJUnit.fail(dummyResource.getScriptHistory().size()+" provisioning scripts were executed while not expected any");
-		}
-	}
-
 	private void assertDummyScriptsAdd(PrismObject<UserType> user, PrismObject<? extends ShadowType> account, ResourceType resource) {
 		ProvisioningScriptSpec script = new ProvisioningScriptSpec("\nto spiral :size\n" +
 				"   if  :size > 30 [stop]\n   fd :size rt 15\n   spiral :size *1.02\nend\n			");
@@ -3117,7 +3250,7 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 
 		script.addArgSingle("size", "3");
 		script.setLanguage("Logo");
-		IntegrationTestTools.assertScripts(dummyResource.getScriptHistory(), script);
+		IntegrationTestTools.assertScripts(getDummyResource().getScriptHistory(), script);
 	}
 
 	private void assertDummyScriptsModify(PrismObject<UserType> user) {
@@ -3143,27 +3276,23 @@ public class TestModelServiceContract extends AbstractInitializedModelIntegratio
 			reconBeforeScript.addArgSingle("who", name);
 			ProvisioningScriptSpec reconAfterScript = new ProvisioningScriptSpec("He left it dead, and with its head");
 			reconAfterScript.addArgSingle("how", "enabled");
-			IntegrationTestTools.assertScripts(dummyResource.getScriptHistory(), reconBeforeScript, modScript, reconAfterScript);
+			IntegrationTestTools.assertScripts(getDummyResource().getScriptHistory(), reconBeforeScript, modScript, reconAfterScript);
 		} else {
-			IntegrationTestTools.assertScripts(dummyResource.getScriptHistory(), modScript);
+			IntegrationTestTools.assertScripts(getDummyResource().getScriptHistory(), modScript);
 		}
 	}
 
 	private void assertDummyScriptsDelete() {
 		ProvisioningScriptSpec script = new ProvisioningScriptSpec("The Jabberwock, with eyes of flame");
-		IntegrationTestTools.assertScripts(dummyResource.getScriptHistory(), script);
-	}
-	
-	private void assertDummyScriptsNone() {
-		IntegrationTestTools.assertScripts(dummyResource.getScriptHistory());
+		IntegrationTestTools.assertScripts(getDummyResource().getScriptHistory(), script);
 	}
 	
 	private void preTestCleanup(AssignmentPolicyEnforcementType enforcementPolicy) throws ObjectNotFoundException, SchemaException, ObjectAlreadyExistsException {
 		assumeAssignmentPolicy(enforcementPolicy);
         dummyAuditService.clear();
         prepareNotifications();
-        purgeScriptHistory();
-        rememberShadowFetchOperationCount();
+        purgeProvisioningScriptHistory();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
 	}
 
 }

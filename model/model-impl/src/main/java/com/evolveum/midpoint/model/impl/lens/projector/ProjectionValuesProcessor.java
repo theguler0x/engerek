@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,29 +15,26 @@
  */
 package com.evolveum.midpoint.model.impl.lens.projector;
 
-import static com.evolveum.midpoint.common.InternalsConfig.consistencyChecks;
+import static com.evolveum.midpoint.schema.internals.InternalsConfig.consistencyChecks;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.List;
 
+import com.evolveum.midpoint.model.impl.sync.SynchronizationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import com.evolveum.midpoint.repo.common.expression.ExpressionFactory;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.common.refinery.RefinedAttributeDefinition;
 import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
 import com.evolveum.midpoint.model.api.context.SynchronizationPolicyDecision;
-import com.evolveum.midpoint.model.common.expression.ExpressionFactory;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.model.impl.lens.LensContext;
 import com.evolveum.midpoint.model.impl.lens.LensFocusContext;
 import com.evolveum.midpoint.model.impl.lens.LensProjectionContext;
 import com.evolveum.midpoint.model.impl.lens.LensUtil;
 import com.evolveum.midpoint.model.impl.sync.CorrelationConfirmationEvaluator;
-import com.evolveum.midpoint.model.impl.sync.SynchronizationService;
 import com.evolveum.midpoint.model.impl.util.Utils;
 import com.evolveum.midpoint.prism.OriginType;
 import com.evolveum.midpoint.prism.PrismContext;
@@ -51,6 +48,7 @@ import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.provisioning.api.ProvisioningService;
 import com.evolveum.midpoint.repo.api.RepositoryService;
 import com.evolveum.midpoint.schema.GetOperationOptions;
+import com.evolveum.midpoint.schema.PointInTimeType;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.processor.ResourceAttribute;
@@ -64,6 +62,7 @@ import com.evolveum.midpoint.util.exception.ConfigurationException;
 import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
+import com.evolveum.midpoint.util.exception.PolicyViolationException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.logging.Trace;
@@ -87,38 +86,36 @@ public class ProjectionValuesProcessor {
 	
 	private static final Trace LOGGER = TraceManager.getTrace(ProjectionValuesProcessor.class);
 	
-	@Autowired(required = true)
+	@Autowired
     private OutboundProcessor outboundProcessor;
 	
-	@Autowired(required = true)
+	@Autowired
     private ConsolidationProcessor consolidationProcessor;
 	
-	@Autowired(required = true)
+	@Autowired
     private AssignmentProcessor assignmentProcessor;
 	
-	@Autowired(required = true)
+	@Autowired
 	@Qualifier("cacheRepositoryService")
 	RepositoryService repositoryService;
 	
-	@Autowired(required = true)
+	@Autowired
 	private ExpressionFactory expressionFactory;
 	
-	@Autowired(required = true)
+	@Autowired
 	private PrismContext prismContext;
 	
-	@Autowired(required = true)
+	@Autowired
 	private CorrelationConfirmationEvaluator correlationConfirmationEvaluator;
 	
-	@Autowired(required = true)
+	@Autowired
 	private SynchronizationService synchronizationService;
 
-	@Autowired(required=true)
+	@Autowired
     private ContextLoader contextLoader;
 	
-	@Autowired(required=true)
+	@Autowired
 	private ProvisioningService provisioningService;
-	
-	private List<LensProjectionContext> conflictingAccountContexts = new ArrayList<LensProjectionContext>();
 	
 	public <O extends ObjectType> void process(LensContext<O> context,
 			LensProjectionContext projectionContext, String activityDescription, Task task, OperationResult result)
@@ -132,7 +129,7 @@ public class ProjectionValuesProcessor {
     		// We can do this only for focus types.
     		return;
     	}
-    	OperationResult processorResult = result.createSubresult(ProjectionValuesProcessor.class.getName()+".processAccountsValues");
+    	OperationResult processorResult = result.createMinorSubresult(ProjectionValuesProcessor.class.getName()+".processAccountsValues");
     	processorResult.recordSuccessIfUnknown();
     	processProjections((LensContext<? extends FocusType>) context, projectionContext,
     			activityDescription, task, processorResult);
@@ -159,7 +156,7 @@ public class ProjectionValuesProcessor {
 		if (consistencyChecks) context.checkConsistence();
 		
 		if (!projContext.hasFullShadow() && hasIterationExpression(projContext)) {
-			contextLoader.loadFullShadow(context, projContext, task, result);
+			contextLoader.loadFullShadow(context, projContext, "iteration expression", task, result);
 			if (projContext.getSynchronizationPolicyDecision() == SynchronizationPolicyDecision.BROKEN) {
             	return;
             }
@@ -197,7 +194,8 @@ public class ProjectionValuesProcessor {
 			projContext.setSqueezedAttributes(null);
 			projContext.setSqueezedAssociations(null);
 			
-			LOGGER.trace("Projection values iteration {}, token '{}' for {}", new Object[]{iteration, iterationToken, projContext.getHumanReadableName()});
+			LOGGER.trace("Projection values iteration {}, token '{}' for {}",
+					iteration, iterationToken, projContext.getHumanReadableName());
 			
 //			LensUtil.traceContext(LOGGER, activityDescription, "values (start)", false, context, true);
 			
@@ -205,7 +203,7 @@ public class ProjectionValuesProcessor {
 				
 				conflictMessage = "pre-iteration condition was false";
 				LOGGER.debug("Skipping iteration {}, token '{}' for {} because the pre-iteration condition was false",
-						new Object[]{iteration, iterationToken, projContext.getHumanReadableName()});
+						iteration, iterationToken, projContext.getHumanReadableName());
 			} else {
 							
 				if (consistencyChecks) context.checkConsistence();
@@ -232,6 +230,9 @@ public class ProjectionValuesProcessor {
 				if (consistencyChecks) context.checkConsistence();
 		        context.recompute();
 		        if (consistencyChecks) context.checkConsistence();
+		        
+		        // Aux object classes may have changed during consolidation. Make sure we have up-to-date definitions.
+		        context.refreshAuxiliaryObjectClassDefinitions();
 		        
 		        // Check if we need to reset the iteration counter (and token) e.g. because we have rename
 		        // we cannot do that before because the mappings are not yet evaluated and the triples and not
@@ -277,7 +278,8 @@ public class ProjectionValuesProcessor {
 			        	if (checker.getConflictingShadow() != null){
 			        		PrismObject<ShadowType> fullConflictingShadow = null;
 			        		try{
-			        			fullConflictingShadow = provisioningService.getObject(ShadowType.class, checker.getConflictingShadow().getOid(), null, task, result);
+			        			Collection<SelectorOptions<GetOperationOptions>> options = SelectorOptions.createCollection(GetOperationOptions.createPointInTimeType(PointInTimeType.FUTURE));
+								fullConflictingShadow = provisioningService.getObject(ShadowType.class, checker.getConflictingShadow().getOid(), options, task, result);
 			        		} catch (ObjectNotFoundException ex){
 			        			//if object not found exception occurred, its ok..the account was deleted by the discovery, so there esits no more conflicting shadow
 			        			LOGGER.trace("Conflicting shadow was deleted by discovery. It does not exist anymore. Continue with adding current shadow.");
@@ -362,7 +364,7 @@ public class ProjectionValuesProcessor {
 													conflictingAccountContext.getDependencies().clear();
 													conflictingAccountContext.getDependencies().addAll(projContext.getDependencies());
 													conflictingAccountContext.setWave(projContext.getWave());
-													conflictingAccountContexts.add(conflictingAccountContext);
+													context.addConflictingProjectionContext(conflictingAccountContext);
 												}
 												
 												projContext.setSynchronizationPolicyDecision(SynchronizationPolicyDecision.BROKEN);
@@ -418,49 +420,27 @@ public class ProjectionValuesProcessor {
 			
 	        iteration++;
 	        iterationToken = null;
-	        if (iteration > maxIterations) {
-	        	StringBuilder sb = new StringBuilder();
-	        	if (iteration == 1) {
-	        		sb.append("Error processing ");
-	        	} else {
-	        		sb.append("Too many iterations ("+iteration+") for ");
-	        	}
-	        	sb.append(projContext.getHumanReadableName());
-	        	if (iteration == 1) {
-	        		sb.append(": constraint violation: ");
-	        	} else {
-	        		sb.append(": cannot determine values that satisfy constraints: ");
-	        	}
-	        	if (conflictMessage != null) {
-	        		sb.append(conflictMessage);
-	        	}
-	        	throw new ObjectAlreadyExistsException(sb.toString());
-	        }
-	        
-	        cleanupContext(projContext);
+			LensUtil.checkMaxIterations(iteration, maxIterations, conflictMessage, projContext.getHumanReadableName());
+
+			cleanupContext(projContext);
 	        if (consistencyChecks) context.checkConsistence();
 	        
 		}
 		
 		addIterationTokenDeltas(projContext);
-		
+		result.cleanupResult();
 		if (consistencyChecks) context.checkConsistence();
 		
 					
 	}
-	
-	public <P extends ObjectType> List<LensProjectionContext> getConflictingContexts(){
-		return conflictingAccountContexts;
-	}
-	
-	
+
 	private boolean willResetIterationCounter(LensProjectionContext projectionContext) throws SchemaException {
 		ObjectDelta<ShadowType> accountDelta = projectionContext.getDelta();
 		if (accountDelta == null) {
 			return false;
 		}
-		RefinedObjectClassDefinition oOcDef = projectionContext.getStructuralObjectClassDefinition();
-		for (RefinedAttributeDefinition identifierDef: oOcDef.getIdentifiers()) {
+		RefinedObjectClassDefinition oOcDef = projectionContext.getCompositeObjectClassDefinition();
+		for (RefinedAttributeDefinition identifierDef: oOcDef.getPrimaryIdentifiers()) {
 			ItemPath identifierPath = new ItemPath(ShadowType.F_ATTRIBUTES, identifierDef.getName());
 			if (accountDelta.findPropertyDelta(identifierPath) != null) {
 				return true;
@@ -522,9 +502,10 @@ public class ProjectionValuesProcessor {
 	}
 		
 	private <F extends ObjectType> ExpressionVariables createExpressionVariables(LensContext<F> context, 
-			LensProjectionContext accountContext) {
-		return Utils.getDefaultExpressionVariables(context.getFocusContext().getObjectNew(), accountContext.getObjectNew(),
-				accountContext.getResourceShadowDiscriminator(), accountContext.getResource().asPrismObject(), context.getSystemConfiguration());
+			LensProjectionContext projectionContext) {
+		return Utils.getDefaultExpressionVariables(context.getFocusContext().getObjectNew(), projectionContext.getObjectNew(),
+				projectionContext.getResourceShadowDiscriminator(), projectionContext.getResource().asPrismObject(), 
+				context.getSystemConfiguration(), projectionContext);
 	}
 
 	private <F extends ObjectType> boolean evaluateIterationCondition(LensContext<F> context, 
@@ -552,7 +533,7 @@ public class ProjectionValuesProcessor {
 			return;
 		}
 		
-		RefinedObjectClassDefinition rAccountDef = accountContext.getStructuralObjectClassDefinition();
+		RefinedObjectClassDefinition rAccountDef = accountContext.getCompositeObjectClassDefinition();
 		if (rAccountDef == null) {
 			throw new SchemaException("No definition for account type '"
 					+accountContext.getResourceShadowDiscriminator()+"' in "+accountContext.getResource());

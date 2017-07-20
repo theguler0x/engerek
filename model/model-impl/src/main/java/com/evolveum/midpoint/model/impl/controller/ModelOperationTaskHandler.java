@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,29 +16,24 @@
 
 package com.evolveum.midpoint.model.impl.controller;
 
+import com.evolveum.midpoint.model.api.context.ModelState;
 import com.evolveum.midpoint.model.impl.lens.Clockwork;
 import com.evolveum.midpoint.model.impl.lens.LensContext;
 import com.evolveum.midpoint.model.impl.lens.LensProjectionContext;
-import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismProperty;
+import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.provisioning.api.ProvisioningService;
-import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.task.api.TaskCategory;
 import com.evolveum.midpoint.task.api.TaskHandler;
 import com.evolveum.midpoint.task.api.TaskManager;
 import com.evolveum.midpoint.task.api.TaskRunResult;
-import com.evolveum.midpoint.util.exception.CommunicationException;
-import com.evolveum.midpoint.util.exception.ConfigurationException;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
-import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.exception.SystemException;
+import com.evolveum.midpoint.util.exception.*;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.model.model_context_3.LensContextType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.LensContextType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -66,17 +61,10 @@ public class ModelOperationTaskHandler implements TaskHandler {
 
     public static final String MODEL_OPERATION_TASK_URI = "http://midpoint.evolveum.com/xml/ns/public/model/operation/handler-3";
 
-    @Autowired(required = true)
-	private TaskManager taskManager;
-
-    @Autowired(required = true)
-    private PrismContext prismContext;
-
-    @Autowired(required = true)
-    private ProvisioningService provisioningService;
-
-    @Autowired(required = true)
-    private Clockwork clockwork;
+    @Autowired private TaskManager taskManager;
+    @Autowired private PrismContext prismContext;
+	@Autowired private ProvisioningService provisioningService;
+	@Autowired private Clockwork clockwork;
 
 	@Override
 	public TaskRunResult run(Task task) {
@@ -84,67 +72,59 @@ public class ModelOperationTaskHandler implements TaskHandler {
 		OperationResult result = task.getResult().createSubresult(DOT_CLASS + "run");
 		TaskRunResult runResult = new TaskRunResult();
 
-        PrismProperty<Boolean> skipProperty = task.getExtensionProperty(SchemaConstants.SKIP_MODEL_CONTEXT_PROCESSING_PROPERTY);
-
-        if (skipProperty != null && Boolean.TRUE.equals(skipProperty.getRealValue())) {
-
-            LOGGER.trace("Found " + skipProperty + ", skipping the model operation execution.");
-            if (result.isUnknown()) {
-                result.computeStatus();
-            }
-            runResult.setRunResultStatus(TaskRunResult.TaskRunResultStatus.FINISHED);
-
-        } else {
-
-            PrismContainer<LensContextType> contextTypeContainer = (PrismContainer) task.getExtensionItem(SchemaConstants.MODEL_CONTEXT_NAME);
-            if (contextTypeContainer == null) {
-                throw new SystemException("There's no model context container in task " + task + " (" + SchemaConstants.MODEL_CONTEXT_NAME + ")");
-            }
-
-            LensContext context = null;
+		LensContextType contextType = task.getModelOperationContext();
+		if (contextType == null) {
+			LOGGER.trace("No model context found, skipping the model operation execution.");
+			if (result.isUnknown()) {
+				result.computeStatus();
+			}
+			runResult.setRunResultStatus(TaskRunResult.TaskRunResultStatus.FINISHED);
+		} else {
+            LensContext context;
             try {
-                context = LensContext.fromLensContextType(contextTypeContainer.getValue().asContainerable(), prismContext, provisioningService, result);
+                context = LensContext.fromLensContextType(contextType, prismContext, provisioningService, task, result);
             } catch (SchemaException e) {
                 throw new SystemException("Cannot recover model context from task " + task + " due to schema exception", e);
-            } catch (ObjectNotFoundException e) {
+            } catch (ObjectNotFoundException | ConfigurationException | ExpressionEvaluationException e) {
                 throw new SystemException("Cannot recover model context from task " + task, e);
             } catch (CommunicationException e) {
                 throw new SystemException("Cannot recover model context from task " + task, e);     // todo wait and retry
-            } catch (ConfigurationException e) {
-                throw new SystemException("Cannot recover model context from task " + task, e);
             }
 
             if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace("Context to be executed = " + context.debugDump());
+                LOGGER.trace("Context to be executed = {}", context.debugDump());
             }
 
             try {
                 // here we brutally remove all the projection contexts -- because if we are continuing after rejection of a role/resource assignment
                 // that resulted in such projection contexts, we DO NOT want them to appear in the context any more
-                context.rot();
+                context.rot("assignment rejection");
                 Iterator<LensProjectionContext> projectionIterator = context.getProjectionContextsIterator();
                 while (projectionIterator.hasNext()) {
                     LensProjectionContext projectionContext = projectionIterator.next();
-                    if (projectionContext.getPrimaryDelta() != null && !projectionContext.getPrimaryDelta().isEmpty()) {
-                        continue;       // don't remove client requested actions!
+                    if (!ObjectDelta.isNullOrEmpty(projectionContext.getPrimaryDelta()) || !ObjectDelta.isNullOrEmpty(projectionContext.getSyncDelta())) {
+                        continue;       // don't remove client requested or externally triggered actions!
                     }
                     if (LOGGER.isTraceEnabled()) {
                         LOGGER.trace("Removing projection context {}", projectionContext.getHumanReadableName());
                     }
                     projectionIterator.remove();
                 }
+				if (task.getChannel() == null) {
+					task.setChannel(context.getChannel());
+				}
                 clockwork.run(context, task, result);
 
-                task.setExtensionContainer(context.toPrismContainer());
+				task.setModelOperationContext(context.toLensContextType(context.getState() == ModelState.FINAL));
                 task.savePendingModifications(result);
 
                 if (result.isUnknown()) {
                     result.computeStatus();
                 }
                 runResult.setRunResultStatus(TaskRunResult.TaskRunResultStatus.FINISHED);
-            } catch (Exception e) { // too many various exceptions; will be fixed with java7 :)
+            } catch (RuntimeException|CommonException e) {
                 String message = "An exception occurred within model operation, in task " + task;
-                LoggingUtils.logException(LOGGER, message, e);
+                LoggingUtils.logUnexpectedException(LOGGER, message, e);
                 result.recordPartialError(message, e);
                 // TODO: here we do not know whether the error is temporary or permanent (in the future we could discriminate on the basis of particular exception caught)
                 runResult.setRunResultStatus(TaskRunResult.TaskRunResultStatus.TEMPORARY_ERROR);

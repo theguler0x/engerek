@@ -1,16 +1,29 @@
+/*
+ * Copyright (c) 2010-2017 Evolveum
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.evolveum.midpoint.web.component.form;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
-import com.evolveum.midpoint.web.page.admin.configuration.component.ObjectSelectionPage;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
-import org.apache.wicket.Page;
-import org.apache.wicket.PageReference;
+import javax.xml.namespace.QName;
+
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.form.AjaxFormComponentUpdatingBehavior;
 import org.apache.wicket.ajax.markup.html.AjaxLink;
-import org.apache.wicket.extensions.ajax.markup.html.modal.ModalWindow;
 import org.apache.wicket.feedback.ComponentFeedbackMessageFilter;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.form.TextField;
@@ -18,289 +31,245 @@ import org.apache.wicket.markup.html.panel.FeedbackPanel;
 import org.apache.wicket.model.AbstractReadOnlyModel;
 import org.apache.wicket.model.IModel;
 
+import com.evolveum.midpoint.gui.api.component.BasePanel;
+import com.evolveum.midpoint.gui.api.component.ObjectBrowserPanel;
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
 import com.evolveum.midpoint.prism.PrismReferenceValue;
 import com.evolveum.midpoint.prism.query.InOidFilter;
 import com.evolveum.midpoint.prism.query.NotFilter;
 import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
+import com.evolveum.midpoint.util.MiscUtil;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.web.component.form.multivalue.MultiValueChoosePanel;
-import com.evolveum.midpoint.web.component.util.SimplePanel;
-import com.evolveum.midpoint.web.page.admin.configuration.component.ObjectSelectionPanel;
 import com.evolveum.midpoint.web.page.admin.dto.ObjectViewDto;
-import com.evolveum.midpoint.web.page.admin.roles.component.UserOrgReferenceChoosePanel;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 
-public class ValueChoosePanel<T, C extends ObjectType> extends SimplePanel<T> {
+/**
+ *
+ * TODO: rename to ValueObjectChoicePanel, PrismValueObjectSelectorPanel or
+ * something better
+ *
+ * @param <T>
+ * @param <O>
+ *            common superclass for all the options of objects that this panel
+ *            should choose
+ */
+public class ValueChoosePanel<T, O extends ObjectType> extends BasePanel<T> {
 
-    private static final Trace LOGGER = TraceManager.getTrace(MultiValueChoosePanel.class);
+	private static final long serialVersionUID = 1L;
 
-    private static final String ID_LABEL = "label";
+	private static final Trace LOGGER = TraceManager.getTrace(ValueChoosePanel.class);
 
-    private static final String ID_TEXT_WRAPPER = "textWrapper";
-    private static final String ID_TEXT = "text";
-    private static final String ID_FEEDBACK = "feedback";
-    private static final String ID_ADD = "add";
-    private static final String ID_REMOVE = "remove";
-    private static final String ID_BUTTON_GROUP = "buttonGroup";
-    private static final String ID_EDIT = "edit";
+	private static final String ID_TEXT_WRAPPER = "textWrapper";
+	private static final String ID_TEXT = "text";
+	private static final String ID_FEEDBACK = "feedback";
+	private static final String ID_EDIT = "edit";
 
-    protected static final String MODAL_ID_OBJECT_SELECTION_POPUP = "objectSelectionPopup";
+	protected static final String MODAL_ID_OBJECT_SELECTION_POPUP = "objectSelectionPopup";
 
-    private static final String CLASS_MULTI_VALUE = "multivalue-form";
+	private Collection<Class<? extends O>> types;
 
-    public ValueChoosePanel(String id, IModel<T> value, List<PrismReferenceValue> values, boolean required, Class<C> type) {
-        super(id, value);
-        setOutputMarkupId(true);
+	public ValueChoosePanel(String id, IModel<T> value, Collection<Class<? extends O>> types) {
+		this(id, value, null, false, types);
+	}
 
-        initLayout(value, values, required, type);
+	public ValueChoosePanel(String id, IModel<T> value, List<PrismReferenceValue> values, boolean required,
+			Collection<Class<? extends O>> types) {
+		super(id, value);
+		setOutputMarkupId(true);
+
+		this.types = types;
+
+		initLayout(value, values, required, types);
+	}
+
+    private void initLayout(final IModel<T> value, final List<PrismReferenceValue> values,
+			final boolean required, Collection<Class<? extends O>> types) {
+
+		WebMarkupContainer textWrapper = new WebMarkupContainer(ID_TEXT_WRAPPER);
+
+		textWrapper.setOutputMarkupId(true);
+
+		TextField<String> text = new TextField<String>(ID_TEXT, createTextModel(value));
+		text.add(new AjaxFormComponentUpdatingBehavior("blur") {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			protected void onUpdate(AjaxRequestTarget ajaxRequestTarget) {
+			}
+		});
+		text.setRequired(required);
+		text.setEnabled(false);
+		textWrapper.add(text);
+
+		FeedbackPanel feedback = new FeedbackPanel(ID_FEEDBACK, new ComponentFeedbackMessageFilter(text));
+		textWrapper.add(feedback);
+
+		AjaxLink<String> edit = new AjaxLink<String>(ID_EDIT) {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public void onClick(AjaxRequestTarget target) {
+				editValuePerformed(values, target);
+			}
+		};
+		textWrapper.add(edit);
+		add(textWrapper);
+
+        initButtons();
     }
 
-    private void initLayout(final IModel<T> value, final List<PrismReferenceValue> values, final boolean required, Class<C> type) {
+	protected void replaceIfEmpty(ObjectType object) {
+		ObjectReferenceType ort = ObjectTypeUtil.createObjectRef(object);
+		ort.setTargetName(object.getName());
+		getModel().setObject((T) ort.asReferenceValue());
 
+	}
 
-        WebMarkupContainer textWrapper = new WebMarkupContainer(ID_TEXT_WRAPPER);
+	protected ObjectQuery createChooseQuery(List<PrismReferenceValue> values) {
+		ArrayList<String> oidList = new ArrayList<>();
+		ObjectQuery query = new ObjectQuery();
+		// TODO we should add to filter currently displayed value
+		// not to be displayed on ObjectSelectionPanel instead of saved value
+		// for (PrismReferenceValue ref : values) {
+		// if (ref != null) {
+		// if (ref.getOid() != null && !ref.getOid().isEmpty()) {
+		// oidList.add(ref.getOid());
+		// }
+		// }
+		// }
 
-        textWrapper.setOutputMarkupId(true);
+		// if (isediting) {
+		// oidList.add(orgModel.getObject().getObject().asObjectable().getOid());
+		// }
 
-        TextField text = new TextField<>(ID_TEXT, createTextModel(value));
-        text.add(new AjaxFormComponentUpdatingBehavior("onblur") {
-            @Override
-            protected void onUpdate(AjaxRequestTarget ajaxRequestTarget) {
-            }
-        });
-        text.setRequired(required);
-        text.setEnabled(false);
-        textWrapper.add(text);
+		if (oidList.isEmpty()) {
+			return null;
+		}
 
-        FeedbackPanel feedback = new FeedbackPanel(ID_FEEDBACK, new ComponentFeedbackMessageFilter(text));
-        textWrapper.add(feedback);
+		ObjectFilter oidFilter = InOidFilter.createInOid(oidList);
+		query.setFilter(NotFilter.createNot(oidFilter));
 
-        AjaxLink edit = new AjaxLink(ID_EDIT) {
+		return query;
+	}
 
-            @Override
-            public void onClick(AjaxRequestTarget target) {
-                editValuePerformed(values, target);
-            }
-        };
-        textWrapper.add(edit);
-        add(textWrapper);
+	/**
+	 * @return css class for off-setting other values (not first, left to the
+	 *         first there is a label)
+	 */
+	protected String getOffsetClass() {
+		return "col-md-offset-4";
+	}
 
-        initDialog(type, values);
+	protected IModel<String> createTextModel(final IModel<T> model) {
+		return new AbstractReadOnlyModel<String>() {
+			private static final long serialVersionUID = 1L;
 
+			@Override
+			public String getObject() {
+				T ort = (T) model.getObject();
+
+				if (ort instanceof PrismReferenceValue) {
+					PrismReferenceValue prv = (PrismReferenceValue) ort;
+					return prv == null ? null
+							: (prv.getTargetName() != null
+									? (prv.getTargetName().getOrig() + (prv.getTargetType() != null
+											? ": " + prv.getTargetType().getLocalPart() : ""))
+									: prv.getOid());
+				} else if (ort instanceof ObjectReferenceType) {
+					ObjectReferenceType prv = (ObjectReferenceType) ort;
+					return prv == null ? null
+							: (prv.getTargetName() != null ? (prv.getTargetName().getOrig()
+									+ (prv.getType() != null ? ": " + prv.getType().getLocalPart() : ""))
+									: prv.getOid());
+				} else if (ort instanceof ObjectViewDto) {
+					return ((ObjectViewDto) ort).getName();
+				}
+				return ort != null ? ort.toString() : null;
+
+			}
+		};
+	}
+
+	protected void editValuePerformed(List<PrismReferenceValue> values, AjaxRequestTarget target) {
+		List<QName> supportedTypes = WebComponentUtil.resolveObjectTypesToQNames(types,
+				getPageBase().getPrismContext());
+		ObjectFilter filter = createChooseQuery(values) == null ? null
+				: createChooseQuery(values).getFilter();
+		Class<O> defaultType = (Class<O>) types.iterator().next();
+		ObjectBrowserPanel<O> objectBrowserPanel = new ObjectBrowserPanel<O>(
+				getPageBase().getMainPopupBodyId(), defaultType, supportedTypes, false, getPageBase(),
+				filter) {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			protected void onSelectPerformed(AjaxRequestTarget target, O object) {
+				getPageBase().hideMainPopup(target);
+				ValueChoosePanel.this.choosePerformed(target, object);
+			}
+
+		};
+
+		getPageBase().showMainPopup(objectBrowserPanel, target);
+
+	}
+
+	/*
+	 * TODO - this method contains check, if chosen object already is not in
+	 * selected values array This is a temporary solution until we well be able
+	 * to create "already-chosen" query
+	 */
+	protected void choosePerformed(AjaxRequestTarget target, O object) {
+		choosePerformedHook(target, object);
+
+		if (isObjectUnique(object)) {
+			replaceIfEmpty(object);
+		}
+
+		if (LOGGER.isTraceEnabled()) {
+			LOGGER.trace("New object instance has been added to the model.");
+		}
+		target.add(getTextWrapperComponent());
+	}
+
+    public WebMarkupContainer getTextWrapperComponent(){
+        return (WebMarkupContainer)get(ID_TEXT_WRAPPER);
     }
 
-//	  protected T createNewEmptyItem() throws InstantiationException, IllegalAccessException {
-//	        return ty;
-//	    }
-
-    protected void replaceIfEmpty(Object object) {
-        boolean added = false;
-        ObjectReferenceType ort = ObjectTypeUtil.createObjectRef((ObjectType) object);
-        ort.setTargetName(((ObjectType) object).getName());
-        getModel().setObject((T) ort.asReferenceValue());
-
+    protected void initButtons() {
     }
 
-    protected void initDialog(final Class<C> type, List<PrismReferenceValue> values) {
+    protected boolean isObjectUnique(O object) {
 
-        if (FocusType.class.equals(type)) {
-            initUserOrgDialog();
-        } else {
-            initGenericDialog(type, values);
+		T modelObject = getModelObject();
+		if (modelObject instanceof PrismReferenceValue) {
 
+			PrismReferenceValue old = (PrismReferenceValue) modelObject;
+			if (old == null || old.isEmpty()) {
+				return true;
+			}
 
-        }
-    }
+			return !old.getOid().equals(object.getOid());
+		} else if (modelObject instanceof ObjectReferenceType) {
+			ObjectReferenceType old = (ObjectReferenceType) modelObject;
+			if (old == null) {
+				return true;
+			}
+			return !MiscUtil.equals(old.getOid(),object.getOid());
+		}
 
-    // for ModalWindow treatment see comments in ChooseTypePanel
-    private void initGenericDialog(final Class<C> type, final List<PrismReferenceValue> values) {
-        final ModalWindow dialog = new ModalWindow(MODAL_ID_OBJECT_SELECTION_POPUP);
+		return true;
 
-        ObjectSelectionPanel.Context context = new ObjectSelectionPanel.Context(this) {
+	}
 
-            // See analogous discussion in ChooseTypePanel
-            public ValueChoosePanel getRealParent() {
-                return WebMiscUtil.theSameForPage(ValueChoosePanel.this, getCallingPageReference());
-            }
-
-            @Override
-            public void chooseOperationPerformed(AjaxRequestTarget target, ObjectType object) {
-                getRealParent().choosePerformed(target, object);
-            }
-
-            @Override
-            public ObjectQuery getDataProviderQuery() {
-                return getRealParent().createChooseQuery(values);
-            }
-
-            @Override
-            public boolean isSearchEnabled() {
-                return true;
-            }
-
-            @Override
-            public Class<? extends ObjectType> getObjectTypeClass() {
-                return type;
-            }
-
-        };
-
-        ObjectSelectionPage.prepareDialog(dialog, context, this, "chooseTypeDialog.title", ID_TEXT_WRAPPER);
-        add(dialog);
-    }
-
-
-    private void initUserOrgDialog() {
-        final ModalWindow dialog = new ModalWindow(MODAL_ID_OBJECT_SELECTION_POPUP);
-        ObjectSelectionPanel.Context context = new ObjectSelectionPanel.Context(this) {
-
-            // See analogous discussion in ChooseTypePanel
-            public ValueChoosePanel getRealParent() {
-                return WebMiscUtil.theSameForPage(ValueChoosePanel.this, getCallingPageReference());
-            }
-
-            @Override
-            public void chooseOperationPerformed(AjaxRequestTarget target, ObjectType object) {
-                getRealParent().choosePerformed(target, object);
-            }
-
-            @Override
-            public boolean isSearchEnabled() {
-                return true;
-            }
-
-            @Override
-            public Class<? extends ObjectType> getObjectTypeClass() {
-                return UserType.class;
-            }
-
-            @Override
-            protected WebMarkupContainer createExtraContentContainer(String extraContentId, final ObjectSelectionPanel objectSelectionPanel) {
-                return new UserOrgReferenceChoosePanel(extraContentId, Boolean.FALSE) {
-                    @Override
-                    protected void onReferenceTypeChangePerformed(AjaxRequestTarget target, Boolean newValue) {
-                        objectSelectionPanel.updateTableByTypePerformed(target, Boolean.FALSE.equals(newValue) ? UserType.class : OrgType.class);
-                    }
-                };
-            }
-        };
-
-        ObjectSelectionPage.prepareDialog(dialog, context, this, "chooseTypeDialog.title", ID_TEXT_WRAPPER);
-        add(dialog);
-    }
-
-    protected ObjectQuery createChooseQuery(List<PrismReferenceValue> values) {
-        ArrayList<String> oidList = new ArrayList<>();
-        ObjectQuery query = new ObjectQuery();
-//TODO we should add to filter currently displayed value
-//not to be displayed on ObjectSelectionPanel instead of saved value
-//		for (PrismReferenceValue ref : values) {
-//			if (ref != null) {
-//				if (ref.getOid() != null && !ref.getOid().isEmpty()) {
-//					oidList.add(ref.getOid());
-//				}
-//			}
-//		}
-
-//		if (isediting) {
-//			oidList.add(orgModel.getObject().getObject().asObjectable().getOid());
-//		}
-
-        if (oidList.isEmpty()) {
-            return null;
-        }
-
-        ObjectFilter oidFilter = InOidFilter.createInOid(oidList);
-        query.setFilter(NotFilter.createNot(oidFilter));
-
-        return query;
-    }
-
-    /**
-     * @return css class for off-setting other values (not first, left to the
-     * first there is a label)
-     */
-    protected String getOffsetClass() {
-        return "col-md-offset-4";
-    }
-
-    protected IModel<String> createTextModel(final IModel<T> model) {
-        return new AbstractReadOnlyModel<String>() {
-
-            @Override
-            public String getObject() {
-                T ort = (T) model.getObject();
-
-                if (ort instanceof PrismReferenceValue) {
-                    PrismReferenceValue prv = (PrismReferenceValue) ort;
-                    return prv == null ? null : (prv.getTargetName() != null ? prv.getTargetName().getOrig() : prv.getOid());
-                } else if (ort instanceof ObjectViewDto) {
-                    return ((ObjectViewDto) ort).getName();
-                }
-                return ort != null ? ort.toString() : null;
-
-            }
-        };
-    }
-
-    protected void editValuePerformed(List<PrismReferenceValue> values, AjaxRequestTarget target) {
-        ModalWindow window = (ModalWindow) get(MODAL_ID_OBJECT_SELECTION_POPUP);
-        window.show(target);
-        ObjectSelectionPanel dialog = (ObjectSelectionPanel) window.get(createComponentPath(window.getContentId(), ObjectSelectionPage.ID_OBJECT_SELECTION_PANEL));
-        if (dialog != null) {
-            dialog.updateTablePerformed(target, createChooseQuery(values));
-        }
-    }
-
-    /*
-     * TODO - this method contains check, if chosen object already is not in
-     * selected values array This is a temporary solution until we well be able
-     * to create "already-chosen" query
-     */
-    protected void choosePerformed(AjaxRequestTarget target, C object) {
-        choosePerformedHook(target, object);
-        ModalWindow window = (ModalWindow) get(MODAL_ID_OBJECT_SELECTION_POPUP);
-        window.close(target);
-
-        if (isObjectUnique(object)) {
-            replaceIfEmpty(object);
-        }
-
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("New object instance has been added to the model.");
-        }
-        // has to be done in the context of parent page
-        //target.add(this);
-    }
-
-
-    protected boolean isObjectUnique(C object) {
-
-        // for(T o: ){
-        PrismReferenceValue old = (PrismReferenceValue) getModelObject();
-        if (old == null || old.isEmpty()) {
-            return true;
-        }
-        if (old.getOid().equals(object.getOid())) {
-            return false;
-        }
-        // }
-        return true;
-    }
-
-
-    /**
-     * A custom code in form of hook that can be run on event of choosing new
-     * object with this chooser component
-     */
-    protected void choosePerformedHook(AjaxRequestTarget target, C object) {
-    }
+	/**
+	 * A custom code in form of hook that can be run on event of choosing new
+	 * object with this chooser component
+	 */
+	protected void choosePerformedHook(AjaxRequestTarget target, O object) {
+	}
 
 }

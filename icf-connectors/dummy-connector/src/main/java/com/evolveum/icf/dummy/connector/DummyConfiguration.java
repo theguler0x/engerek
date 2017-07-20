@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,13 +24,15 @@ import org.identityconnectors.framework.spi.ConfigurationProperty;
  * Extends the {@link AbstractConfiguration} class to provide all the necessary
  * parameters to initialize the Test Connector.
  *
- * @author $author$
- * @version $Revision$ $Date$
  */
 public class DummyConfiguration extends AbstractConfiguration {
 
-	public static String UID_MODE_NAME = "name";
-	public static String UID_MODE_UUID = "uuid";
+	public static final String UID_MODE_NAME = "name";
+	public static final String UID_MODE_UUID = "uuid";
+	
+	public static final String PASSWORD_READABILITY_MODE_UNREADABLE = "unreadable";
+	public static final String PASSWORD_READABILITY_MODE_INCOMPLETE = "incomplete";
+	public static final String PASSWORD_READABILITY_MODE_READABLE = "readable";
 	
     private static final Log log = Log.getLog(DummyConfiguration.class);
 
@@ -40,7 +42,7 @@ public class DummyConfiguration extends AbstractConfiguration {
     private boolean supportValidity = false;
     private String uidMode =  UID_MODE_NAME;
     private boolean enforceUniqueName = true;
-    private boolean readablePassword = false;
+    private String passwordReadabilityMode = PASSWORD_READABILITY_MODE_UNREADABLE;
     private boolean requireExplicitEnable = false;
     private boolean caseIgnoreId = false;
     private boolean caseIgnoreValues = false;
@@ -55,6 +57,12 @@ public class DummyConfiguration extends AbstractConfiguration {
 	private boolean generateAccountDescriptionOnUpdate = false;        // simulates volatile behavior (on update)
 	private String[] forbiddenNames = new String[0];
 	private boolean useLegacySchema = true;
+	private String requiredBaseContextOrgName = null;
+	private Integer minPasswordLength = null;
+	private boolean addConnectorStateAttributes = false;
+	private boolean supportReturnDefaultAttributes = false;				// used e.g. for livesync vs. auxiliary object classes test
+	private boolean requireNameHint = false;
+	private boolean monsterized = false;
 
 	/**
      * Defines name of the dummy resource instance. There may be several dummy resource running in
@@ -129,18 +137,18 @@ public class DummyConfiguration extends AbstractConfiguration {
 	public void setEnforceUniqueName(boolean enforceUniqueName) {
 		this.enforceUniqueName = enforceUniqueName;
 	}
-
+	
 	/**
      * If set to true then the password can be read from the resource.
      */
 	@ConfigurationProperty(displayMessageKey = "UI_INSTANCE_READABLE_PASSWORD",
     		helpMessageKey = "UI_INSTANCE_READABLE_PASSWORD_HELP")
-	public boolean getReadablePassword() {
-		return readablePassword;
+	public String getPasswordReadabilityMode() {
+		return passwordReadabilityMode;
 	}
 
-	public void setReadablePassword(boolean readablePassword) {
-		this.readablePassword = readablePassword;
+	public void setPasswordReadabilityMode(String passwordReadabilityMode) {
+		this.passwordReadabilityMode = passwordReadabilityMode;
 	}
 
 	/**
@@ -304,6 +312,59 @@ public class DummyConfiguration extends AbstractConfiguration {
 
 	public void setUseLegacySchema(boolean useLegacySchema) {
 		this.useLegacySchema = useLegacySchema;
+	}
+
+	@ConfigurationProperty(displayMessageKey = "UI_REQUIRED_BASE_CONTEXT_ORG_NAME",
+			helpMessageKey = "UI_REQUIRED_BASE_CONTEXT_ORG_NAME_HELP")
+	public String getRequiredBaseContextOrgName() {
+		return requiredBaseContextOrgName;
+	}
+
+	public void setRequiredBaseContextOrgName(String requiredBaseContextOrgName) {
+		this.requiredBaseContextOrgName = requiredBaseContextOrgName;
+	}
+
+	public Integer getMinPasswordLength() {
+		return minPasswordLength;
+	}
+
+	public void setMinPasswordLength(Integer minPasswordLength) {
+		this.minPasswordLength = minPasswordLength;
+	}
+
+	public boolean isAddConnectorStateAttributes() {
+		return addConnectorStateAttributes;
+	}
+
+	public void setAddConnectorStateAttributes(boolean addConnectorStateAttributes) {
+		this.addConnectorStateAttributes = addConnectorStateAttributes;
+	}
+
+	@ConfigurationProperty
+	public boolean isSupportReturnDefaultAttributes() {
+		return supportReturnDefaultAttributes;
+	}
+
+	public void setSupportReturnDefaultAttributes(boolean supportReturnDefaultAttributes) {
+		this.supportReturnDefaultAttributes = supportReturnDefaultAttributes;
+	}
+
+	@ConfigurationProperty
+	public boolean isRequireNameHint() {
+		return requireNameHint;
+	}
+
+	public void setRequireNameHint(boolean requireNameHint) {
+		this.requireNameHint = requireNameHint;
+	}
+	
+	@ConfigurationProperty
+	public boolean isMonsterized() {
+		return monsterized;
+	}
+
+	public void setMonsterized(boolean monsterized) {
+		this.monsterized = monsterized;
 	}
 
 	/**

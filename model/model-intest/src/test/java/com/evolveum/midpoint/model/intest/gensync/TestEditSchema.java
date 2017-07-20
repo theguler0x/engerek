@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,23 @@
  */
 package com.evolveum.midpoint.model.intest.gensync;
 
+import static org.testng.AssertJUnit.assertEquals;
+import static org.testng.AssertJUnit.assertNotNull;
+import static org.testng.AssertJUnit.assertNull;
+import static org.testng.AssertJUnit.assertTrue;
+
+import java.io.File;
+import java.util.Collection;
+
+import javax.xml.namespace.QName;
+
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.annotation.DirtiesContext.ClassMode;
+import org.springframework.test.context.ContextConfiguration;
+import org.testng.AssertJUnit;
+import org.testng.annotations.Test;
+
 import com.evolveum.midpoint.model.api.ModelExecuteOptions;
-import com.evolveum.midpoint.model.intest.TestModelServiceContract;
 import com.evolveum.midpoint.prism.Containerable;
 import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismContainerDefinition;
@@ -38,7 +53,7 @@ import com.evolveum.midpoint.prism.util.PrismTestUtil;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.RelationalValueSearchQuery;
 import com.evolveum.midpoint.schema.RelationalValueSearchType;
-import com.evolveum.midpoint.schema.ResultHandler;
+import com.evolveum.midpoint.schema.ResourceShadowDiscriminator;
 import com.evolveum.midpoint.schema.RetrieveOption;
 import com.evolveum.midpoint.schema.SearchResultList;
 import com.evolveum.midpoint.schema.SelectorOptions;
@@ -50,36 +65,24 @@ import com.evolveum.midpoint.test.util.TestUtil;
 import com.evolveum.midpoint.util.Validator;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
-import com.evolveum.midpoint.util.exception.TunnelException;
 import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ImportOptionsType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationPhaseType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.CredentialsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.LookupTableRowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.LookupTableType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.PasswordType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemObjectsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
-
-import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.annotation.DirtiesContext.ClassMode;
-import org.springframework.test.context.ContextConfiguration;
-import org.testng.AssertJUnit;
-import org.testng.annotations.Test;
-
-import java.io.File;
-import java.util.Collection;
-
-import javax.xml.namespace.QName;
-
-import static org.testng.AssertJUnit.assertEquals;
-import static org.testng.AssertJUnit.assertNotNull;
-import static org.testng.AssertJUnit.assertNull;
-import static org.testng.AssertJUnit.assertTrue;
 
 /**
  * @author semancik
@@ -108,7 +111,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
 		// WHEN
@@ -136,7 +139,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         Collection<SelectorOptions<GetOperationOptions>> options = SelectorOptions.createCollection(LookupTableType.F_ROW,
@@ -167,7 +170,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
                 
 		// WHEN
@@ -190,7 +193,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         // WHEN
@@ -214,7 +217,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         // WHEN
@@ -239,7 +242,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         // WHEN
@@ -263,7 +266,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         // WHEN
@@ -288,7 +291,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         // WHEN
@@ -319,7 +322,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         // WHEN
@@ -347,7 +350,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         // WHEN
@@ -374,7 +377,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         // WHEN
@@ -402,7 +405,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         // WHEN
@@ -445,7 +448,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         LookupTableRowType row = new LookupTableRowType();
@@ -493,7 +496,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         LookupTableRowType row = new LookupTableRowType();
@@ -541,7 +544,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         LookupTableRowType row = new LookupTableRowType();
@@ -590,7 +593,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         LookupTableRowType row = new LookupTableRowType();
@@ -608,14 +611,14 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         } catch (ObjectAlreadyExistsException ex) {
             exception = true;
         }
-        AssertJUnit.assertTrue(exception);
+        AssertJUnit.assertFalse(exception);     // as per description in https://wiki.evolveum.com/display/midPoint/Development+with+LookupTable
 		
 		// THEN
 		TestUtil.displayThen(TEST_NAME);
 		result.computeStatus();
-		TestUtil.assertFailure(result);
+		TestUtil.assertSuccess(result);
 
-        task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         result = task.getResult();
 		PrismObject<LookupTableType> lookup = getLookupTableAll(LOOKUP_LANGUAGES_OID, task, result);
 		
@@ -637,24 +640,21 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 		assertLookupRow(tableContainer, "gi_GI", "gi", "Gibberish");
 		assertLookupRow(tableContainer, "gi_GO", null, "Gobbledygook");
 		
-		assertLookupRow(tableContainer, "gi_HU", "gi", null);
+		assertLookupRow(tableContainer, "gi_HU", "gi", "Humbug");
 		
         assertSteadyResources();
     }
 
     /**
-     * disabled because we can't delete container based on it's properties. It's against prism containers
-     * identification concepts - prism container is identified by object OID and container ID attribute.
-     *
      * @throws Exception
      */
-    @Test(enabled = false)
+    @Test
     public void test162LookupLanguagesDeleteRowFullNoId() throws Exception {
 		final String TEST_NAME="test162LookupLanguagesDeleteRowFullNoId";
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         LookupTableRowType row = new LookupTableRowType();
@@ -702,7 +702,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         LookupTableRowType row = new LookupTableRowType();
@@ -733,15 +733,14 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 		
 		PrismContainer<LookupTableRowType> tableContainer = lookup.findContainer(LookupTableType.F_ROW);
 		assertNotNull("Table container missing", tableContainer);
-		assertEquals("Unexpected table container size", 6, tableContainer.size());
+		assertEquals("Unexpected table container size", 5, tableContainer.size());
 
 		assertLookupRow(tableContainer, "en_PR", "en", "English (pirate)");
 		assertLookupRow(tableContainer, "tr_TR", "tr", "Turkish");
 		assertLookupRow(tableContainer, "gi_GI", "gi", "Gibberish");
 		assertLookupRow(tableContainer, "gi_GO", null, "Gobbledygook");
-		assertLookupRow(tableContainer, "gi_HU", "gi", null);
-        assertLookupRow(tableContainer, "sk_SK", "sk", "Slovak");
-		
+		assertLookupRow(tableContainer, "gi_HU", "gi", "Humbug");
+
         assertSteadyResources();
     }
     
@@ -751,11 +750,11 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         LookupTableRowType row = new LookupTableRowType();
-        row.setId(3L);
+        row.setId(2L);
         ObjectDelta<LookupTableType> delta = ObjectDelta.createModificationDeleteContainer(LookupTableType.class,
         		LOOKUP_LANGUAGES_OID, LookupTableType.F_ROW, prismContext, row);
         
@@ -779,30 +778,23 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 		
 		PrismContainer<LookupTableRowType> tableContainer = lookup.findContainer(LookupTableType.F_ROW);
 		assertNotNull("Table container missing", tableContainer);
-		assertEquals("Unexpected table container size", 5, tableContainer.size());
+		assertEquals("Unexpected table container size", 4, tableContainer.size());
 
-		assertLookupRow(tableContainer, "en_PR", "en", "English (pirate)");
 		assertLookupRow(tableContainer, "gi_GI", "gi", "Gibberish");
 		assertLookupRow(tableContainer, "gi_GO", null, "Gobbledygook");
-		assertLookupRow(tableContainer, "gi_HU", "gi", null);
+		assertLookupRow(tableContainer, "gi_HU", "gi", "Humbug");
         assertLookupRow(tableContainer, "tr_TR", "tr", "Turkish");
 		
         assertSteadyResources();
     }
 
-    /**
-     * disabled because we can't delete container based on it's properties. It's against prism containers
-     * identification concepts - prism container is identified by object OID and container ID attribute.
-     *
-     * @throws Exception
-     */
-    @Test(enabled = false)
+    @Test
     public void test168LookupLanguagesDeleteRowByKey() throws Exception {
 		final String TEST_NAME="test168LookupLanguagesDeleteRowByKey";
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         LookupTableRowType row = new LookupTableRowType();
@@ -832,10 +824,10 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 		assertNotNull("Table container missing", tableContainer);
 		assertEquals("Unexpected table container size", 3, tableContainer.size());
 
-		assertLookupRow(tableContainer, "en_PR", "en", "English (pirate)");
-		assertLookupRow(tableContainer, "gi_GO", null, "Gobbledygook");
-		assertLookupRow(tableContainer, "gi_HU", "gi", "Humbug");
-		
+        assertLookupRow(tableContainer, "gi_GO", null, "Gobbledygook");
+        assertLookupRow(tableContainer, "gi_HU", "gi", "Humbug");
+        assertLookupRow(tableContainer, "tr_TR", "tr", "Turkish");
+
         assertSteadyResources();
     }
 
@@ -845,7 +837,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         LookupTableRowType row1 = new LookupTableRowType();
@@ -901,7 +893,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         PrismObject<LookupTableType> replacement = PrismTestUtil.parseObject(LOOKUP_LANGUAGES_REPLACEMENT_FILE);
@@ -941,7 +933,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
 
         ImportOptionsType options = new ImportOptionsType();
@@ -992,7 +984,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 		AssertJUnit.fail("Row with key '"+key+"' was not found in lookup table");
 	}
 
-	private PrismObject<LookupTableType> getLookupTableAll(String oid, Task task, OperationResult result) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException {
+	private PrismObject<LookupTableType> getLookupTableAll(String oid, Task task, OperationResult result) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException {
     	Collection<SelectorOptions<GetOperationOptions>> options = SelectorOptions.createCollection(LookupTableType.F_ROW,
     			GetOperationOptions.createRetrieve(RetrieveOption.INCLUDE));
 		return modelService.getObject(LookupTableType.class, oid, options, task, result);
@@ -1004,7 +996,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         PrismObjectDefinition<UserType> userDef = prismContext.getSchemaRegistry().findObjectDefinitionByCompileTimeClass(UserType.class);
@@ -1017,16 +1009,26 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 		// THEN
 		TestUtil.displayThen(TEST_NAME);
         
+		
+		PrismAsserts.assertEmphasized(editDef, UserType.F_NAME, true);
+		PrismAsserts.assertEmphasized(editDef, UserType.F_GIVEN_NAME, false);
+		PrismAsserts.assertEmphasized(editDef, UserType.F_FAMILY_NAME, true);
+		PrismAsserts.assertEmphasized(editDef, UserType.F_FULL_NAME, true);
+		PrismAsserts.assertEmphasized(editDef, UserType.F_DESCRIPTION, false);
+		
 		PrismPropertyDefinition<PolyString> additionalNameDef = editDef.findPropertyDefinition(UserType.F_ADDITIONAL_NAME);
 		assertNotNull("No definition for additionalName in user", additionalNameDef);
 		assertEquals("Wrong additionalName displayName", "Middle Name", additionalNameDef.getDisplayName());
 		assertTrue("additionalName not readable", additionalNameDef.canRead());
+		PrismAsserts.assertEmphasized(additionalNameDef, false);
 		
 		PrismPropertyDefinition<String> costCenterDef = editDef.findPropertyDefinition(UserType.F_COST_CENTER);
 		assertNotNull("No definition for costCenter in user", costCenterDef);
 		assertEquals("Wrong costCenter displayOrder", (Integer)123, costCenterDef.getDisplayOrder());
 		assertTrue("costCenter not readable", costCenterDef.canRead());
+		PrismAsserts.assertEmphasized(costCenterDef, true);
 		
+		// This has overridden lookup def in object template
 		PrismPropertyDefinition<String> preferredLanguageDef = editDef.findPropertyDefinition(UserType.F_PREFERRED_LANGUAGE);
 		assertNotNull("No definition for preferredLanguage in user", preferredLanguageDef);
 		assertEquals("Wrong preferredLanguage displayName", "Language", preferredLanguageDef.getDisplayName());
@@ -1035,6 +1037,15 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 		assertNotNull("No valueEnumerationRef for preferredLanguage", valueEnumerationRef);
 		assertEquals("Wrong valueEnumerationRef OID for preferredLanguage", LOOKUP_LANGUAGES_OID, valueEnumerationRef.getOid());
 
+		// This has default lookup def in schema
+		PrismPropertyDefinition<String> timezoneDef = editDef.findPropertyDefinition(UserType.F_TIMEZONE);
+		assertNotNull("No definition for timezone in user", timezoneDef);
+		assertEquals("Wrong timezone displayName", "UserType.timezone", timezoneDef.getDisplayName());
+		assertTrue("timezone not readable", timezoneDef.canRead());
+		valueEnumerationRef = timezoneDef.getValueEnumerationRef();
+		assertNotNull("No valueEnumerationRef for timezone", valueEnumerationRef);
+		assertEquals("Wrong valueEnumerationRef OID for timezone", SystemObjectsType.LOOKUP_TIMEZONES.value(), valueEnumerationRef.getOid());
+		
 		PrismContainerDefinition<CredentialsType> credentialsDef = editDef.findContainerDefinition(UserType.F_CREDENTIALS);
 		assertNotNull("No definition for credentials in user", credentialsDef);
 		assertTrue("Credentials not readable", credentialsDef.canRead());
@@ -1053,7 +1064,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
                 
 		// WHEN
@@ -1139,7 +1150,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         modifyObjectReplaceProperty(UserType.class, USER_JACK_OID, UserType.F_PREFERRED_LANGUAGE, task, result, "en_PR");
@@ -1213,7 +1224,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         PrismObjectDefinition<RoleType> roleDef = prismContext.getSchemaRegistry().findObjectDefinitionByCompileTimeClass(RoleType.class);
@@ -1233,6 +1244,135 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 
         assertSteadyResources();
     }
+	
+    @Test
+    public void test260EditShadowSchemaKindIntent() throws Exception {
+		final String TEST_NAME="test260EditShadowSchemaKindIntent";
+        TestUtil.displayTestTile(this, TEST_NAME);
+
+        // GIVEN
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
+        OperationResult result = task.getResult();
+        
+        ResourceShadowDiscriminator discr = new ResourceShadowDiscriminator(RESOURCE_DUMMY_OID, ShadowKindType.ACCOUNT, null);
+        
+		// WHEN
+        TestUtil.displayWhen(TEST_NAME);
+		PrismObjectDefinition<ShadowType> editDef = modelInteractionService.getEditShadowDefinition(discr, AuthorizationPhaseType.REQUEST, task, result);
+		
+		// THEN
+		TestUtil.displayThen(TEST_NAME);
+        result.computeStatus();
+        TestUtil.assertSuccess(result);
+		
+		PrismPropertyDefinition<PolyString> nameDef = editDef.findPropertyDefinition(ShadowType.F_NAME);
+		assertNotNull("No definition for name in shadow", nameDef);
+		assertEquals("Wrong shadow name displayName", "ObjectType.name", nameDef.getDisplayName());
+		assertTrue("additionalName not readable", nameDef.canRead());
+		
+		PrismPropertyDefinition<Object> attrFullNameDef = editDef.findPropertyDefinition(dummyResourceCtl.getAttributeFullnamePath());
+		assertNotNull("No definition for fullname attribute in shadow", attrFullNameDef);
+		assertEquals("Wrong shadow fullname attribute displayName", "Full Name", attrFullNameDef.getDisplayName());
+		assertTrue("additionalName not readable", attrFullNameDef.canRead());
+				
+        assertSteadyResources();
+    }
+
+    @Test
+    public void test261EditShadowSchemaObjectclass() throws Exception {
+		final String TEST_NAME="test261EditShadowSchemaObjectclass";
+        TestUtil.displayTestTile(this, TEST_NAME);
+
+        // GIVEN
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
+        OperationResult result = task.getResult();
+        
+        ResourceShadowDiscriminator discr = new ResourceShadowDiscriminator(RESOURCE_DUMMY_OID, dummyResourceCtl.getAccountObjectClassQName());
+        IntegrationTestTools.display("Discr", discr);
+        
+		// WHEN
+        TestUtil.displayWhen(TEST_NAME);
+		PrismObjectDefinition<ShadowType> editDef = modelInteractionService.getEditShadowDefinition(discr, AuthorizationPhaseType.REQUEST, task, result);
+		
+		// THEN
+		TestUtil.displayThen(TEST_NAME);
+        result.computeStatus();
+        TestUtil.assertSuccess(result);
+		
+		PrismPropertyDefinition<PolyString> nameDef = editDef.findPropertyDefinition(ShadowType.F_NAME);
+		assertNotNull("No definition for name in shadow", nameDef);
+		assertEquals("Wrong shadow name displayName", "ObjectType.name", nameDef.getDisplayName());
+		assertTrue("additionalName not readable", nameDef.canRead());
+		
+		PrismPropertyDefinition<Object> attrFullNameDef = editDef.findPropertyDefinition(dummyResourceCtl.getAttributeFullnamePath());
+		assertNotNull("No definition for fullname attribute in shadow", attrFullNameDef);
+		assertEquals("Wrong shadow fullname attribute displayName", "Full Name", attrFullNameDef.getDisplayName());
+		assertTrue("additionalName not readable", attrFullNameDef.canRead());
+				
+        assertSteadyResources();
+    }
+
+    @Test
+    public void test263EditShadowSchemaEmpty() throws Exception {
+		final String TEST_NAME="test263EditShadowSchemaEmpty";
+        TestUtil.displayTestTile(this, TEST_NAME);
+
+        // GIVEN
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
+        OperationResult result = task.getResult();
+        
+        ResourceShadowDiscriminator discr = new ResourceShadowDiscriminator(null, null);
+        IntegrationTestTools.display("Discr", discr);
+        
+		// WHEN
+        TestUtil.displayWhen(TEST_NAME);
+		PrismObjectDefinition<ShadowType> editDef = modelInteractionService.getEditShadowDefinition(discr, AuthorizationPhaseType.REQUEST, task, result);
+		
+		// THEN
+		TestUtil.displayThen(TEST_NAME);
+        result.computeStatus();
+        TestUtil.assertSuccess(result);
+		
+		PrismPropertyDefinition<PolyString> nameDef = editDef.findPropertyDefinition(ShadowType.F_NAME);
+		assertNotNull("No definition for name in shadow", nameDef);
+		assertEquals("Wrong shadow name displayName", "ObjectType.name", nameDef.getDisplayName());
+		assertTrue("additionalName not readable", nameDef.canRead());
+		
+		PrismPropertyDefinition<Object> attrFullNameDef = editDef.findPropertyDefinition(dummyResourceCtl.getAttributeFullnamePath());
+		assertNull("Unexpected definition for fullname attribute in shadow", attrFullNameDef);
+				
+        assertSteadyResources();
+    }
+
+    @Test
+    public void test265EditShadowSchemaNull() throws Exception {
+		final String TEST_NAME="test265EditShadowSchemaNull";
+        TestUtil.displayTestTile(this, TEST_NAME);
+
+        // GIVEN
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
+        OperationResult result = task.getResult();
+        
+		// WHEN
+        TestUtil.displayWhen(TEST_NAME);
+		PrismObjectDefinition<ShadowType> editDef = modelInteractionService.getEditShadowDefinition(null, AuthorizationPhaseType.REQUEST, task, result);
+		
+		// THEN
+		TestUtil.displayThen(TEST_NAME);
+        result.computeStatus();
+        TestUtil.assertSuccess(result);
+		
+		PrismPropertyDefinition<PolyString> nameDef = editDef.findPropertyDefinition(ShadowType.F_NAME);
+		assertNotNull("No definition for name in shadow", nameDef);
+		assertEquals("Wrong shadow name displayName", "ObjectType.name", nameDef.getDisplayName());
+		assertTrue("additionalName not readable", nameDef.canRead());
+		
+		PrismPropertyDefinition<Object> attrFullNameDef = editDef.findPropertyDefinition(dummyResourceCtl.getAttributeFullnamePath());
+		assertNull("Unexpected definition for fullname attribute in shadow", attrFullNameDef);
+				
+        assertSteadyResources();
+    }
+
 
     @Test
     public void test300RoleTypes() throws Exception {
@@ -1254,7 +1394,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         // GIVEN
         login(USER_OTIS_USERNAME);
         
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
         PrismObjectDefinition<UserType> userDef = prismContext.getSchemaRegistry().findObjectDefinitionByCompileTimeClass(UserType.class);
@@ -1270,7 +1410,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         
 		PrismPropertyDefinition<PolyString> nameDef = editDef.findPropertyDefinition(UserType.F_NAME);
 		assertNotNull("No definition for name in user", nameDef);
-		assertEquals("Wrong name displayName", "Name", nameDef.getDisplayName());
+		assertEquals("Wrong name displayName", "ObjectType.name", nameDef.getDisplayName());
 		assertTrue("name not readable", nameDef.canRead());
 		assertTrue("name is creatable", !nameDef.canAdd());
 		assertTrue("name is modifiable", !nameDef.canModify());
@@ -1324,7 +1464,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         // GIVEN
         login(USER_OTIS_USERNAME);
         
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
 		// WHEN
@@ -1340,7 +1480,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 			@Override
 			public void validate(PrismPropertyDefinition<PolyString> propDef, String name) throws Exception {
 				assertNotNull("No definition for name in user", propDef);
-				assertEquals("Wrong name displayName", "Name", propDef.getDisplayName());
+				assertEquals("Wrong name displayName", "ObjectType.name", propDef.getDisplayName());
 				assertTrue(name+" not readable", propDef.canRead());
 				assertTrue(name+" is creatable", !propDef.canAdd());
 				assertTrue(name+" is modifiable", !propDef.canModify());
@@ -1408,7 +1548,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         // GIVEN
         login(USER_OTIS_USERNAME);
         
-        Task task = taskManager.createTaskInstance(TestModelServiceContract.class.getName() + "." + TEST_NAME);
+        Task task = taskManager.createTaskInstance(TestEditSchema.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
         
 		// WHEN
@@ -1427,7 +1567,7 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 				@Override
 				public void validate(PrismPropertyDefinition<PolyString> propDef, String name) throws Exception {
 					assertNotNull("No definition for name in user", propDef);
-					assertEquals("Wrong name displayName", "Name", propDef.getDisplayName());
+					assertEquals("Wrong name displayName", "ObjectType.name", propDef.getDisplayName());
 					assertTrue(name+" of "+user+" not readable", propDef.canRead());
 					assertTrue(name+" of "+user+" is creatable", !propDef.canAdd());
 					assertTrue(name+" of "+user+" is modifiable", !propDef.canModify());
@@ -1557,14 +1697,14 @@ public class TestEditSchema extends AbstractGenericSyncTest {
         
         PrismPropertyDefinition<PolyString> descriptionDef = userDefinition.findPropertyDefinition(UserType.F_DESCRIPTION);
 		assertNotNull("No definition for description in user", descriptionDef);
-		assertEquals("Wrong description displayName", "Description", descriptionDef.getDisplayName());
+		assertEquals("Wrong description displayName", "ObjectType.description", descriptionDef.getDisplayName());
 		assertTrue("description not readable", descriptionDef.canRead());
 		assertTrue("description not creatable", descriptionDef.canAdd());
 		assertTrue("description not modifiable", descriptionDef.canModify());
         
         PrismPropertyDefinition<PolyString> additionalNameDef = userDefinition.findPropertyDefinition(UserType.F_ADDITIONAL_NAME);
 		assertNotNull("No definition for additionalName in user", additionalNameDef);
-		assertEquals("Wrong additionalName displayName", "Additional Name", additionalNameDef.getDisplayName());
+		assertEquals("Wrong additionalName displayName", "UserType.additionalName", additionalNameDef.getDisplayName());
 		assertTrue("additionalName not readable", additionalNameDef.canRead());
 		assertTrue("additionalName not creatable", additionalNameDef.canAdd());
 		assertTrue("additionalName not modifiable", additionalNameDef.canModify());
@@ -1575,15 +1715,19 @@ public class TestEditSchema extends AbstractGenericSyncTest {
 		assertTrue("costCenter not readable", costCenterDef.canRead());
 		assertTrue("costCenter not creatable", costCenterDef.canAdd());
 		assertTrue("costCenter not modifiable", costCenterDef.canModify());
+		PrismReferenceValue valueEnumerationRef = costCenterDef.getValueEnumerationRef();
+		assertNull("valueEnumerationRef for costCente sneaked in", valueEnumerationRef);
 		
 		PrismPropertyDefinition<String> preferredLanguageDef = userDefinition.findPropertyDefinition(UserType.F_PREFERRED_LANGUAGE);
 		assertNotNull("No definition for preferredLanguage in user", preferredLanguageDef);
-		assertEquals("Wrong preferredLanguage displayName", "Preferred Language", preferredLanguageDef.getDisplayName());
+		assertEquals("Wrong preferredLanguage displayName", "UserType.preferredLanguage", preferredLanguageDef.getDisplayName());
 		assertTrue("preferredLanguage not readable", preferredLanguageDef.canRead());
 		assertTrue("preferredLanguage not creatable", preferredLanguageDef.canAdd());
 		assertTrue("preferredLanguage not modifiable", preferredLanguageDef.canModify());
-		PrismReferenceValue valueEnumerationRef = preferredLanguageDef.getValueEnumerationRef();
-		assertNull("valueEnumerationRef for preferredLanguage sneaked in", valueEnumerationRef);
+		valueEnumerationRef = preferredLanguageDef.getValueEnumerationRef();
+		assertNotNull("valueEnumerationRef for preferredLanguage missing", valueEnumerationRef);
+		assertEquals("wrong OID in valueEnumerationRef for preferredLanguage missing", 
+				SystemObjectsType.LOOKUP_LANGUAGES.value(), valueEnumerationRef.getOid());
 
 		PrismContainerDefinition<CredentialsType> credentialsDef = userDefinition.findContainerDefinition(UserType.F_CREDENTIALS);
 		assertNotNull("No definition for credentials in user", credentialsDef);

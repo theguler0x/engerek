@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,33 +15,28 @@
  */
 package com.evolveum.midpoint.model.api;
 
-import java.util.Collection;
-
 import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
 import com.evolveum.midpoint.model.api.context.ModelContext;
+import com.evolveum.midpoint.model.api.util.MergeDeltas;
+import com.evolveum.midpoint.model.api.visualizer.Scene;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.PrismObjectDefinition;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
+import com.evolveum.midpoint.prism.query.ObjectQuery;
+import com.evolveum.midpoint.schema.ResourceShadowDiscriminator;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.statistics.ConnectorOperationalStatus;
+import com.evolveum.midpoint.security.api.ItemSecurityDecisions;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.DisplayableValue;
-import com.evolveum.midpoint.util.exception.CommunicationException;
-import com.evolveum.midpoint.util.exception.ConfigurationException;
-import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
-import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
-import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.exception.SecurityViolationException;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AdminGuiConfigurationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationPhaseType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.CredentialsPolicyType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
-import com.evolveum.midpoint.xml.ns._public.model.model_context_3.LensContextType;
+import com.evolveum.midpoint.util.exception.*;
+import com.evolveum.midpoint.xml.ns._public.common.api_types_3.PolicyItemsDefinitionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Collection;
+import java.util.List;
 
 /**
  * A service provided by the IDM Model that allows to improve the (user) interaction with the model.
@@ -60,9 +55,19 @@ public interface ModelInteractionService {
 	static final String CLASS_NAME_WITH_DOT = ModelInteractionService.class.getName() + ".";
 	static final String PREVIEW_CHANGES = CLASS_NAME_WITH_DOT + "previewChanges";
 	static final String GET_EDIT_OBJECT_DEFINITION = CLASS_NAME_WITH_DOT + "getEditObjectDefinition";
+	static final String GET_EDIT_SHADOW_DEFINITION = CLASS_NAME_WITH_DOT + "getEditShadowDefinition";
+	static final String GET_ALLOWED_REQUEST_ASSIGNMENT_ITEMS = CLASS_NAME_WITH_DOT + "getAllowedRequestAssignmentItems";
 	static final String GET_ASSIGNABLE_ROLE_SPECIFICATION = CLASS_NAME_WITH_DOT + "getAssignableRoleSpecification";
 	static final String GET_CREDENTIALS_POLICY = CLASS_NAME_WITH_DOT + "getCredentialsPolicy";
+	static final String GET_AUTHENTICATIONS_POLICY = CLASS_NAME_WITH_DOT + "getAuthenticationsPolicy";
+	static final String GET_REGISTRATIONS_POLICY = CLASS_NAME_WITH_DOT + "getRegistrationsPolicy";
+	static final String GET_SECURITY_POLICY = CLASS_NAME_WITH_DOT + "resolveSecurityPolicy";
 	static final String CHECK_PASSWORD = CLASS_NAME_WITH_DOT + "checkPassword";
+	static final String GET_CONNECTOR_OPERATIONAL_STATUS = CLASS_NAME_WITH_DOT + "getConnectorOperationalStatus";
+	static final String MERGE_OBJECTS_PREVIEW_DELTA = CLASS_NAME_WITH_DOT + "mergeObjectsPreviewDelta";
+	static final String MERGE_OBJECTS_PREVIEW_OBJECT = CLASS_NAME_WITH_DOT + "mergeObjectsPreviewObject";
+	
+	
 	
 	/**
 	 * Computes the most likely changes triggered by the provided delta. The delta may be any change of any object, e.g.
@@ -81,7 +86,11 @@ public interface ModelInteractionService {
 			Collection<ObjectDelta<? extends ObjectType>> deltas, ModelExecuteOptions options, Task task, OperationResult result) 
 			throws SchemaException, PolicyViolationException, ExpressionEvaluationException, ObjectNotFoundException, ObjectAlreadyExistsException, CommunicationException, ConfigurationException, SecurityViolationException;
 
-    <F extends ObjectType> ModelContext<F> unwrapModelContext(LensContextType wrappedContext, OperationResult result) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException;
+	<F extends ObjectType> ModelContext<F> previewChanges(
+			Collection<ObjectDelta<? extends ObjectType>> deltas, ModelExecuteOptions options, Task task, Collection<ProgressListener> listeners, OperationResult result)
+			throws SchemaException, PolicyViolationException, ExpressionEvaluationException, ObjectNotFoundException, ObjectAlreadyExistsException, CommunicationException, ConfigurationException, SecurityViolationException;
+
+	<F extends ObjectType> ModelContext<F> unwrapModelContext(LensContextType wrappedContext, Task task, OperationResult result) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException;
 
     /**
      * <p>
@@ -108,8 +117,10 @@ public interface ModelInteractionService {
      * @return schema with correctly set constraint parts or null
      * @throws SchemaException 
      */
-    <O extends ObjectType> PrismObjectDefinition<O> getEditObjectDefinition(PrismObject<O> object, AuthorizationPhaseType phase, OperationResult result) throws SchemaException, ConfigurationException, ObjectNotFoundException;
+    <O extends ObjectType> PrismObjectDefinition<O> getEditObjectDefinition(PrismObject<O> object, AuthorizationPhaseType phase, Task task, OperationResult result) throws SchemaException, ConfigurationException, ObjectNotFoundException;
 
+    PrismObjectDefinition<ShadowType> getEditShadowDefinition(ResourceShadowDiscriminator discr, AuthorizationPhaseType phase, Task task, OperationResult result) throws SchemaException, ConfigurationException, ObjectNotFoundException;
+    
     RefinedObjectClassDefinition getEditObjectClassDefinition(PrismObject<ShadowType> shadow, PrismObject<ResourceType> resource, AuthorizationPhaseType phase) throws SchemaException;
 
     /**
@@ -132,6 +143,50 @@ public interface ModelInteractionService {
      * @param focus Object of the operation. The object (usually user) to whom the roles should be assigned.
      */
     <F extends FocusType> RoleSelectionSpecification getAssignableRoleSpecification(PrismObject<F> focus, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, ConfigurationException;
+
+    /**
+     * TODO
+     * 
+     * @param includeSpecial include special authorizations, such as "self". If set to false those authorizations
+     *                       will be ignored. This is a good way to avoid interference of "self" when checking for
+     *                       authorizations such as ability to display role members.
+     */
+    <T extends ObjectType, O extends ObjectType> boolean canSearch(Class<T> resultType, Class<O> objectType, String objectOid, boolean includeSpecial, ObjectQuery query, Task task, OperationResult result)  throws ObjectNotFoundException, CommunicationException, SchemaException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException ;
+    
+    /**
+     * Returns decisions for individual items for "assign" authorization. This is usually applicable to assignment parameters.
+     * The decisions are evaluated using the security context of a currently logged-in user.
+     * 
+     * @param object object of the operation (user)
+     * @param target target of the operation (role, org, service that is being assigned)
+     */
+    <O extends ObjectType,R extends AbstractRoleType> ItemSecurityDecisions getAllowedRequestAssignmentItems(PrismObject<O> object, PrismObject<R> target) throws SchemaException, SecurityViolationException;
+    
+    SecurityPolicyType getSecurityPolicy(PrismObject<UserType> user, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
+    
+    /**
+     * Returns an authentications policies as defined in the system configuration security policy. This method is designed to be used
+	 * during registration process or reset password process. 
+     * security questions, etc).
+     * 
+     * 
+     * @param task
+     *@param parentResult  @return applicable credentials policy or null
+     * @throws ObjectNotFoundException No system configuration or other major system inconsistency
+     * @throws SchemaException Wrong schema or content of security policy
+     */
+    AuthenticationsPolicyType getAuthenticationPolicy(PrismObject<UserType> user, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
+    
+    /**
+     * Returns a policy for registration, e.g. type of the supported registrations (self, social,...)
+     * 
+     * @param user user for who the policy should apply
+     * @param task
+     *@param parentResult  @return applicable credentials policy or null
+     * @throws ObjectNotFoundException No system configuration or other major system inconsistency
+     * @throws SchemaException Wrong schema or content of security policy
+     */
+    RegistrationsPolicyType getRegistrationPolicy(PrismObject<UserType> user, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
     
     /**
      * Returns a credential policy that applies to the specified user. This method is designed to be used
@@ -154,6 +209,13 @@ public interface ModelInteractionService {
      * values applicable for current user, therefore the authorization might be considered to be implicit in this case.
      */
     AdminGuiConfigurationType getAdminGuiConfiguration(Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
+
+    SystemConfigurationType getSystemConfiguration(OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
+
+	DeploymentInformationType getDeploymentInformationConfiguration(OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
+
+	AccessCertificationConfigurationType getCertificationConfiguration(OperationResult parentResult)
+			throws ObjectNotFoundException, SchemaException;
     
     /**
      * Checks if the supplied password matches with current user password. This method is NOT subject to any
@@ -168,4 +230,43 @@ public interface ModelInteractionService {
      * @return true if the password matches, false otherwise
      */
     boolean checkPassword(String userOid, ProtectedStringType password, Task task, OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
+	
+	// TEMPORARY
+	List<? extends Scene> visualizeDeltas(List<ObjectDelta<? extends ObjectType>> deltas, Task task, OperationResult result) throws SchemaException, ExpressionEvaluationException;
+
+	@NotNull
+	Scene visualizeDelta(ObjectDelta<? extends ObjectType> delta, Task task, OperationResult result) throws SchemaException, ExpressionEvaluationException;
+	
+	List<ConnectorOperationalStatus> getConnectorOperationalStatus(String resourceOid, Task task, OperationResult parentResult)
+			throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, ExpressionEvaluationException;
+	
+	<O extends ObjectType> MergeDeltas<O> mergeObjectsPreviewDeltas(Class<O> type, 
+			String leftOid, String rightOid, String mergeConfigurationName, Task task, OperationResult result) 
+					throws ObjectNotFoundException, SchemaException, ConfigurationException, ExpressionEvaluationException, CommunicationException, SecurityViolationException ;
+	
+	<O extends ObjectType> PrismObject<O> mergeObjectsPreviewObject(Class<O> type, 
+			String leftOid, String rightOid, String mergeConfigurationName, Task task, OperationResult result)
+					throws ObjectNotFoundException, SchemaException, ConfigurationException, ExpressionEvaluationException, CommunicationException, SecurityViolationException ;
+
+	/**
+	 * TEMPORARY. Need to find out better way how to deal with generated values
+	 * 
+	 * @param policy
+	 * @param defaultLength
+	 * @param generateMinimalSize
+	 * @param object object for which we generate the value (e.g. user or shadow)
+	 * @param inputResult
+	 * @return
+	 * @throws ExpressionEvaluationException
+	 */
+	<O extends ObjectType> String generateValue(StringPolicyType policy, int defaultLength, boolean generateMinimalSize,
+			PrismObject<O> object, String shortDesc, Task task, OperationResult inputResult) throws ExpressionEvaluationException, SchemaException, ObjectNotFoundException;
+
+	<O extends ObjectType> void generateValue(
+			PrismObject<O> object, PolicyItemsDefinitionType policyItemsDefinition, Task task, OperationResult parentResult) throws ObjectNotFoundException,
+			SchemaException, CommunicationException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException, ObjectAlreadyExistsException, PolicyViolationException;
+
+	<O extends ObjectType> void validateValue(PrismObject<O> object, PolicyItemsDefinitionType policyItemsDefinition, Task task,
+			OperationResult parentResult) throws ExpressionEvaluationException, SchemaException, ObjectNotFoundException,
+			CommunicationException, ConfigurationException, SecurityViolationException, PolicyViolationException;
 }

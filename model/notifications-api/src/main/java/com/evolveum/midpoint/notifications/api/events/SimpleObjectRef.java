@@ -17,15 +17,17 @@
 package com.evolveum.midpoint.notifications.api.events;
 
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.util.DebugDumpable;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 
 /**
  * @author mederly
  */
-public interface SimpleObjectRef {
+public interface SimpleObjectRef extends DebugDumpable {
     public String getOid();
     public void setOid(String oid);
     public ObjectType getObjectType();
     public void setObjectType(ObjectType objectType);
-    ObjectType resolveObjectType(OperationResult result);
+    ObjectType resolveObjectType(OperationResult result, boolean allowNotFound);
+    ObjectType resolveObjectType();
 }

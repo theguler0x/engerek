@@ -16,30 +16,28 @@
 
 package com.evolveum.midpoint.repo.sql;
 
-import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
+import com.evolveum.midpoint.common.refinery.RefinedResourceSchemaImpl;
 import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.ReferenceDelta;
 import com.evolveum.midpoint.prism.util.PrismTestUtil;
-import com.evolveum.midpoint.prism.util.ValueSerializationUtil;
 import com.evolveum.midpoint.repo.sql.type.XMLGregorianCalendarType;
-import com.evolveum.midpoint.repo.sql.util.RUtil;
-import com.evolveum.midpoint.schema.*;
+import com.evolveum.midpoint.schema.GetOperationOptions;
+import com.evolveum.midpoint.schema.ResultHandler;
+import com.evolveum.midpoint.schema.RetrieveOption;
+import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.processor.ResourceSchema;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.ShadowUtil;
 import com.evolveum.midpoint.test.util.TestUtil;
-import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-import com.evolveum.prism.xml.ns._public.types_3.ObjectDeltaType;
 import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
-
 import org.hibernate.Query;
 import org.hibernate.Session;
 import org.hibernate.stat.Statistics;
@@ -48,9 +46,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.testng.AssertJUnit;
 import org.testng.annotations.Test;
 
-import javax.xml.bind.JAXBException;
 import javax.xml.namespace.QName;
-
 import java.io.File;
 import java.util.*;
 
@@ -69,8 +65,7 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
         stats.setStatisticsEnabled(true);
 
         final File OBJECTS_FILE = new File("./src/test/resources/10k-users.xml");
-        List<PrismObject<? extends Objectable>> elements = prismContext.parseObjects(
-                OBJECTS_FILE);
+        List<PrismObject<? extends Objectable>> elements = prismContext.parserFor(OBJECTS_FILE).parseObjects();
 
         long previousCycle = 0;
         long time = System.currentTimeMillis();
@@ -131,7 +126,7 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
     }
 
     private void addGetCompare(File file) throws Exception {
-        List<PrismObject<? extends Objectable>> elements = prismContext.parseObjects(file);
+        List<PrismObject<? extends Objectable>> elements = prismContext.parserFor(file).parseObjects();
         List<String> oids = new ArrayList<String>();
 
         OperationResult result = new OperationResult("Simple Add Get Test");
@@ -146,7 +141,7 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
                 (System.currentTimeMillis() - time),});
 
         int count = 0;
-        elements = prismContext.parseObjects(file);
+        elements = prismContext.parserFor(file).parseObjects();
         for (int i = 0; i < elements.size(); i++) {
             try {
                 PrismObject object = elements.get(i);
@@ -166,10 +161,6 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
                             GetOperationOptions.createRetrieve(RetrieveOption.INCLUDE));
                 }
                 PrismObject<? extends ObjectType> newObject = repositoryService.getObject(clazz, oids.get(i), o, result);
-
-                if (AccessCertificationCampaignType.class.equals(clazz)) {
-                    removeCampaignRef((AccessCertificationCampaignType) (newObject.asObjectable()));
-                }
 
                 LOGGER.info("Old\n{}\nnew\n{}", new Object[]{object.debugDump(3), newObject.debugDump(3)});
                 checkContainersSize(newObject, object);
@@ -206,12 +197,6 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
         }
 
         AssertJUnit.assertEquals("Found changes during add/get test " + count, 0, count);
-    }
-
-    private void removeCampaignRef(AccessCertificationCampaignType campaign) {
-        for (AccessCertificationCaseType aCase : campaign.getCase()) {
-            aCase.asPrismContainerValue().removeReference(AccessCertificationCaseType.F_CAMPAIGN_REF);
-        }
     }
 
     private Integer size(PrismContainerValue value) {
@@ -254,8 +239,7 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
 
     private void checkContainersSize(PrismContainer newContainer, PrismContainer oldContainer) {
         LOGGER.info("checkContainersSize {} new {}  old {}",
-
-                new Object[]{newContainer.getElementName(), newContainer.size(), oldContainer.size()});
+                newContainer.getElementName(), newContainer.size(), oldContainer.size());
         AssertJUnit.assertEquals(newContainer.size(), oldContainer.size());
 
         List<Long> checked = new ArrayList<Long>();
@@ -282,13 +266,12 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
     public void addUserWithAssignmentExtension() throws Exception {
         LOGGER.info("===[ addUserWithAssignmentExtension ]===");
         File file = new File(FOLDER_BASIC, "user-assignment-extension.xml");
-        List<PrismObject<? extends Objectable>> elements = prismContext.parseObjects(file);
+        List<PrismObject<? extends Objectable>> elements = prismContext.parserFor(file).parseObjects();
 
         OperationResult result = new OperationResult("ADD");
         String oid = repositoryService.addObject((PrismObject) elements.get(0), null, result);
 
-        PrismObject<UserType> fileUser = (PrismObject<UserType>) prismContext.parseObjects(file)
-                .get(0);
+        PrismObject<UserType> fileUser = (PrismObject<UserType>) prismContext.parserFor(file).parseObjects().get(0);
         long id = 1;
         for (AssignmentType assignment : fileUser.asObjectable().getAssignment()) {
             assignment.setId(id);
@@ -299,7 +282,7 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
 
         ObjectDelta<UserType> delta = fileUser.diff(repoUser);
         AssertJUnit.assertNotNull(delta);
-        LOGGER.info("delta\n{}", new Object[]{delta.debugDump(3)});
+        LOGGER.info("delta\n{}", delta.debugDump(3));
         AssertJUnit.assertTrue(delta.isEmpty());
     }
 
@@ -316,7 +299,7 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
 
         // apply appropriate schema
         PrismObject<ResourceType> resource = prismContext.parseObject(new File(FOLDER_BASIC, "resource-opendj.xml"));
-        ResourceSchema resourceSchema = RefinedResourceSchema.getResourceSchema(resource, prismContext);
+        ResourceSchema resourceSchema = RefinedResourceSchemaImpl.getResourceSchema(resource, prismContext);
         ShadowUtil.applyResourceSchema(fileAccount, resourceSchema);
 
         OperationResult result = new OperationResult("ADD");
@@ -400,6 +383,24 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
         desc = shadowType.getSynchronizationSituationDescription().get(0);
         AssertJUnit.assertEquals("Times don't match", TIME, XMLGregorianCalendarType.asDate(desc.getTimestamp()));
     }
+    
+    @Test
+    public void addGetRoleWithResourceRefFilter() throws Exception{
+    	PrismObject<RoleType> role = prismContext.parseObject(new File("src/test/resources/basic/role-resource-filter.xml"));
+
+    	System.out.println("role: " + role.debugDump());
+    	System.out.println("role: " + role.asObjectable().getInducement().get(0).getConstruction().getResourceRef().getFilter());
+    	
+        OperationResult result = new OperationResult("sync desc test");
+        String oid = repositoryService.addObject(role, null, result);
+
+        role = repositoryService.getObject(RoleType.class, oid, null, result);
+        RoleType roleType = role.asObjectable();
+        System.out.println("role: " + role.debugDump());
+        System.out.println("role: " + role.asObjectable().getInducement().get(0).getConstruction().getResourceRef().getFilter());
+//        desc = roleType.getSynchronizationSituationDescription().get(0);
+//        AssertJUnit.assertEquals("Times don't match", TIME, XMLGregorianCalendarType.asDate(desc.getTimestamp()));
+    }
 
     /**
      * creates <iterationToken/> element in shadow
@@ -451,60 +452,36 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
         return token;
     }
 
-    @Test(enabled = false)
-    public void deltaOperationSerializationPerformanceTest() throws Exception {
-        List<PrismObject<? extends Objectable>> elements =
-                prismContext.parseObjects(new File(FOLDER_BASIC, "objects.xml"));
+//    @Test(enabled = false)
+//    public void deltaOperationSerializationPerformanceTest() throws Exception {
+//        List<PrismObject<? extends Objectable>> elements =
+//                prismContext.processorFor(new File(FOLDER_BASIC, "objects.xml")).parseObjects();
+//
+//        //get user from objects.xml
+//        ObjectDelta delta = ObjectDelta.createAddDelta(elements.get(0));
+//
+//        final int COUNT = 10000;
+//        //first conversion option
+//        System.out.println(DeltaConvertor.toObjectDeltaTypeXml(delta));
+//        //second conversion option
+//        //System.out.println("\n" + toRepo(DeltaConvertor.toObjectDeltaType(delta), prismContext));
+//
+//        long time = System.currentTimeMillis();
+//        for (int i = 0; i < COUNT; i++) {
+//            String xml = DeltaConvertor.toObjectDeltaTypeXml(delta);
+//        }
+//        time = System.currentTimeMillis() - time;
+//        System.out.println(">>> " + time);
+//
+//        time = System.currentTimeMillis();
+//        for (int i = 0; i < COUNT; i++) {
+//            ObjectDeltaType type = DeltaConvertor.toObjectDeltaType(delta);
+//            String xml = toRepo(type, prismContext);
+//        }
+//        time = System.currentTimeMillis() - time;
+//        System.out.println(">>> " + time);
+//    }
 
-        //get user from objects.xml
-        ObjectDelta delta = ObjectDelta.createAddDelta(elements.get(0));
-
-        final int COUNT = 10000;
-        //first conversion option
-        System.out.println(DeltaConvertor.toObjectDeltaTypeXml(delta));
-        //second conversion option
-        System.out.println("\n" + toRepo(DeltaConvertor.toObjectDeltaType(delta), prismContext));
-
-        long time = System.currentTimeMillis();
-        for (int i = 0; i < COUNT; i++) {
-            String xml = DeltaConvertor.toObjectDeltaTypeXml(delta);
-        }
-        time = System.currentTimeMillis() - time;
-        System.out.println(">>> " + time);
-
-        time = System.currentTimeMillis();
-        for (int i = 0; i < COUNT; i++) {
-            ObjectDeltaType type = DeltaConvertor.toObjectDeltaType(delta);
-            String xml = toRepo(type, prismContext);
-        }
-        time = System.currentTimeMillis() - time;
-        System.out.println(">>> " + time);
-    }
-
-    private <T> String toRepo(T value, PrismContext prismContext)
-            throws SchemaException, JAXBException {
-        if (value == null) {
-            return null;
-        }
-
-        // PrismDomProcessor domProcessor = prismContext.getPrismDomProcessor();
-        if (value instanceof Objectable) {
-            return prismContext.serializeObjectToString(((Objectable) value).asPrismObject(),
-                    PrismContext.LANG_XML);
-        }
-
-        if (value instanceof Containerable) {
-            // TODO: createFakeParentElement??? why we don't use the real
-            // name???
-            return prismContext.serializeContainerValueToString(
-                    ((Containerable) value).asPrismContainerValue(),
-                    QNameUtil.getNodeQName(RUtil.createFakeParentElement()), prismContext.LANG_XML);
-        }
-
-
-        return ValueSerializationUtil.serializeValue(value, new QName("fake"), prismContext, PrismContext.LANG_XML);
-
-    }
 
     @Test
     public void test() throws Exception {
@@ -533,7 +510,7 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
 
             // apply appropriate schema
             PrismObject<ResourceType> resource = prismContext.parseObject(new File(FOLDER_BASIC, "resource-opendj.xml"));
-            ResourceSchema resourceSchema = RefinedResourceSchema.getResourceSchema(resource, prismContext);
+            ResourceSchema resourceSchema = RefinedResourceSchemaImpl.getResourceSchema(resource, prismContext);
             ShadowUtil.applyResourceSchema(account, resourceSchema);
 
             repositoryService.addObject(account, null, result);
@@ -636,5 +613,13 @@ public class AddGetObjectTest extends BaseSQLRepoTest {
         AssertJUnit.assertEquals(prismResource, fetchedResource);
     }
 
+    /**
+     * MID-3999
+     */
+    @Test(expectedExceptions = SchemaException.class)
+    public void test950AddBinary() throws Exception {
+        final File user = new File(FOLDER_BASE, "./get/user-binary.xml");
+        addGetCompare(user);
+    }
 }
 

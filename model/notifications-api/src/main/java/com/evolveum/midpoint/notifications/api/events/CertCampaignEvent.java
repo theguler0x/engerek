@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,11 @@
 
 package com.evolveum.midpoint.notifications.api.events;
 
-import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.task.api.LightweightIdentifierGenerator;
+import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.EventCategoryType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.EventOperationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.EventStatusType;
 
 /**
  * Event related to certification campaign.
@@ -43,4 +42,10 @@ public class CertCampaignEvent extends AccessCertificationEvent {
                 EventCategoryType.CERT_CAMPAIGN_EVENT.equals(eventCategoryType);
     }
 
+    @Override
+	public String debugDump(int indent) {
+		StringBuilder sb = DebugUtil.createTitleStringBuilderLn(this.getClass(), indent);
+		debugDumpCommon(sb, indent);
+		return sb.toString();
+	}
 }

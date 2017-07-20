@@ -29,12 +29,14 @@ import org.apache.commons.lang.builder.ReflectionToStringBuilder;
 import org.apache.commons.lang.builder.ToStringStyle;
 
 import javax.persistence.Embeddable;
+import javax.persistence.Enumerated;
 
 @Embeddable
 public class ROperationalState {
 
     RAvailabilityStatus lastAvailabilityStatus;
 
+	@Enumerated
     public RAvailabilityStatus getLastAvailabilityStatus() {
         return lastAvailabilityStatus;
     }
@@ -81,7 +83,7 @@ public class ROperationalState {
         }
     }
 
-    public static void copyFromJAXB(OperationalStateType jaxb, ROperationalState repo, PrismContext prismContext) throws
+    public static void copyFromJAXB(OperationalStateType jaxb, ROperationalState repo) throws
             DtoTranslationException {
         Validate.notNull(repo, "Repo object must not be null.");
         Validate.notNull(jaxb, "JAXB object must not be null.");

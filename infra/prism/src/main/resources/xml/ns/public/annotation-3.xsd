@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-  ~ Copyright (c) 2010-2015 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -19,17 +19,21 @@
 <xsd:schema targetNamespace="http://prism.evolveum.com/xml/ns/public/annotation-3"
             xmlns:tns="http://prism.evolveum.com/xml/ns/public/annotation-3"
             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-            elementFormDefault="qualified">
+            xmlns:jaxb="http://java.sun.com/xml/ns/jaxb"
+            xmlns:xjc="http://java.sun.com/xml/ns/jaxb/xjc"
+            elementFormDefault="qualified"
+            jaxb:extensionBindingPrefixes="xjc"
+            jaxb:version="2.0">
 
     <xsd:annotation>
         <xsd:documentation>
             Common Prism annotations used in various XSD schemas.
 
-			Version: 3.2
+			Version: 3.4
             Default prefix: a
         </xsd:documentation>
     </xsd:annotation>
- 
+
     <xsd:element name="container">
         <xsd:annotation>
             <xsd:documentation>
@@ -126,6 +130,55 @@
         </xsd:annotation>
     </xsd:element>
     
+    <xsd:element name="index" type="tns:IndexType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Item annotation: Specifies type of index that is maintained for this
+                item. The data store maintains this type of index for the item.
+                This annotation may appear several times (maxOccurs=unbounded).
+                This annotation implies indexed=true.
+                WARNING: Presence of this annotation may impose some restriction on the
+                property, usually a length restriction. E.g. database systems usually
+                restrict the length of a datatype that can be efficiently indexed.
+            </xsd:documentation>
+        </xsd:annotation>
+    </xsd:element>
+    
+        <xsd:simpleType name="IndexType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Type of index maintained by the data store.
+            </xsd:documentation>
+            <xsd:appinfo>
+                <jaxb:typesafeEnumClass/>
+            </xsd:appinfo>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:enumeration value="equality">
+                <xsd:annotation>
+                    <xsd:appinfo>
+                        <jaxb:typesafeEnumMember name="EQUALITY"/>
+                    </xsd:appinfo>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="substring">
+                <xsd:annotation>
+                    <xsd:appinfo>
+                        <jaxb:typesafeEnumMember name="SUBSTRING"/>
+                    </xsd:appinfo>
+                </xsd:annotation>
+            </xsd:enumeration>
+            <xsd:enumeration value="presence">
+                <xsd:annotation>
+                    <xsd:appinfo>
+                        <jaxb:typesafeEnumMember name="PRESENCE"/>
+                    </xsd:appinfo>
+                </xsd:annotation>
+            </xsd:enumeration>
+        </xsd:restriction>
+    </xsd:simpleType>
+    
+    
     <xsd:element name="ignore" type="xsd:boolean">
         <xsd:annotation>
             <xsd:documentation>
@@ -167,6 +220,16 @@
         <xsd:annotation>
             <xsd:documentation>
                 Marks deprecated parts of the schema.
+            </xsd:documentation>
+        </xsd:annotation>
+    </xsd:element>
+    
+    <xsd:element name="emphasized" type="xsd:boolean">
+        <xsd:annotation>
+            <xsd:documentation>
+     			Set true for definitions that are more important than others and that should be emphasized
+     			during presentation. E.g. the emphasized definitions will always be displayed in the user
+     			interfaces (even if they are empty), they will always be included in the dumps, etc.
             </xsd:documentation>
         </xsd:annotation>
     </xsd:element>
@@ -243,21 +306,121 @@
         </xsd:annotation>    
     </xsd:attribute>
     
-    <xsd:attribute name="since" type="xsd:string">
+    <xsd:element name="since" type="xsd:string">
         <xsd:annotation>
             <xsd:documentation>
                 Version of data model in which was the item introduced.
             </xsd:documentation>
         </xsd:annotation>    
-    </xsd:attribute>
-    
-    <xsd:attribute name="label" type="xsd:string">
+    </xsd:element>
+
+    <xsd:element name="deprecatedSince" type="xsd:string">
+        <xsd:annotation>
+            <xsd:documentation>
+                Version of data model in which was the item marked as deprecated.
+            </xsd:documentation>
+        </xsd:annotation>
+    </xsd:element>
+
+    <xsd:element name="label" type="xsd:string">
         <xsd:annotation>
             <xsd:documentation>
                 Displayable label of enumeration item.
             </xsd:documentation>
         </xsd:annotation>    
-    </xsd:attribute>
+    </xsd:element>
+
+    <xsd:element name="matchingRule" type="xsd:QName">
+        <xsd:annotation>
+            <xsd:documentation>
+                Matching rules are algorithms that specify
+	 			how to compare, normalize and/or order the values. E.g. there are matching
+				rules for case insensitive string comparison, for LDAP DNs, etc.
+            </xsd:documentation>
+        </xsd:annotation>    
+    </xsd:element>
+    
+    <xsd:element name="valueEnumerationRef" type="tns:ObjectReferenceType">
+        <xsd:annotation>
+            <xsd:documentation>
+                Reference to an object that directly or indirectly represents possible values for
+				this item. We do not define here what exactly the object has to be. It can be a lookup
+				table, script that dynamically produces the values or anything similar. 
+				The object must produce the values of the correct type for this item otherwise an
+				error occurs.
+            </xsd:documentation>
+        </xsd:annotation>    
+    </xsd:element>
+    
+    <xsd:complexType name="ObjectReferenceType">
+        <xsd:annotation>
+            <xsd:documentation>
+            	<p>
+	                Reference to an object. It contains OID of the object that it
+	                refers to.
+	                This is simplified version of the "real" object reference used
+	                in the main schemas. This has to be a duplicate to avoid circular
+	                dependencies.
+                </p>
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:attribute name="oid" type="xsd:string">
+            <xsd:annotation>
+                <xsd:documentation>
+                	<p>
+	                    Target of the reference.
+                    </p>
+					<p>
+	                    Optional only during imports. The objects stored in the repository must have the OID
+	                    value filled in.
+                    </p>
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+        <xsd:attribute name="type" type="xsd:QName" use="optional">
+            <xsd:annotation>
+                <xsd:documentation>
+                	<p>
+                    	Type of the reference target object.
+                    </p>
+					<p>
+	                    It has to be provided unless the schema explicitly defines
+	                    a non-polymorphic type for the reference target type. 
+                    </p>
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:complexType>
+
+    <xsd:element name="defaultNamespace" type="xsd:string">
+        <xsd:annotation>
+            <xsd:documentation>
+                When resolving unqualified elements, what should be the default namespace to look into at first.
+                Applies to a container, currently at the topmost level.
+            </xsd:documentation>
+        </xsd:annotation>
+    </xsd:element>
+
+    <xsd:element name="ignoredNamespace" type="xsd:string">
+        <xsd:annotation>
+            <xsd:documentation>
+                When resolving unqualified elements, what namespace(s) should be ignored.
+                String entered here is interpreted as a namespace prefix.
+                Applies to a container, currently at the topmost level.
+            </xsd:documentation>
+        </xsd:annotation>
+    </xsd:element>
+
+    <xsd:element name="heterogeneousListItem" type="xsd:string">
+        <xsd:annotation>
+            <xsd:documentation>
+                This substitutable element can be used in "heterogeneous list" items, i.e. items that can have
+				several values with different types. (All having a common declared supertype.) This annotation is necessary
+				to minimize "guesswork" that XML parser has to do when processing substitutable elements - in order to lower
+				the risk of accidentally merging two unrelated subsequent elements into one.
+            </xsd:documentation>
+        </xsd:annotation>
+    </xsd:element>
 
 </xsd:schema>
 

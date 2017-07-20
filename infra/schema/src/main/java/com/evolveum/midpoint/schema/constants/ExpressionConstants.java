@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,14 +23,16 @@ import javax.xml.namespace.QName;
  */
 public class ExpressionConstants {
 
+	// Generic variables
 	public static final QName VAR_INPUT = new QName(SchemaConstants.NS_C, "input");
-	public static final QName VAR_FOCUS = new QName(SchemaConstants.NS_C, "focus");
-	public static final QName VAR_USER = new QName(SchemaConstants.NS_C, "user");
-	public static final QName VAR_ACCOUNT = new QName(SchemaConstants.NS_C, "account");
+	public static final QName VAR_OBJECT = new QName(SchemaConstants.NS_C, "object");
+	
+	// Variables used in various mappings
+	public static final QName VAR_FOCUS = new QName(SchemaConstants.NS_C, "focus");	
 	public static final QName VAR_PROJECTION = new QName(SchemaConstants.NS_C, "projection");
-	public static final QName VAR_SHADOW = new QName(SchemaConstants.NS_C, "shadow");
 	public static final QName VAR_SOURCE = new QName(SchemaConstants.NS_C, "source");
 	public static final QName VAR_ASSIGNMENT = new QName(SchemaConstants.NS_C, "assignment");
+	public static final QName VAR_ASSIGNMENT_PATH = new QName(SchemaConstants.NS_C, "assignmentPath");
 	public static final QName VAR_IMMEDIATE_ASSIGNMENT = new QName(SchemaConstants.NS_C, "immediateAssignment");
 	public static final QName VAR_THIS_ASSIGNMENT = new QName(SchemaConstants.NS_C, "thisAssignment");
 	public static final QName VAR_FOCUS_ASSIGNMENT = new QName(SchemaConstants.NS_C, "focusAssignment");
@@ -43,7 +45,16 @@ public class ExpressionConstants {
 	public static final QName VAR_PRISM_CONTEXT = new QName(SchemaConstants.NS_C, "prismContext");
 	public static final QName VAR_CONFIGURATION = new QName(SchemaConstants.NS_C, "configuration");
     public static final QName VAR_ACTOR = new QName(SchemaConstants.NS_C, "actor");
+	public static final QName VAR_VALUE = new QName(SchemaConstants.NS_C, "value");
 
+	public static final QName VAR_TARGET = new QName(SchemaConstants.NS_C, "target");
+
+	// DEPRECATED variables, just for compatibility
+	public static final QName VAR_USER = new QName(SchemaConstants.NS_C, "user");
+	public static final QName VAR_ACCOUNT = new QName(SchemaConstants.NS_C, "account");
+	public static final QName VAR_SHADOW = new QName(SchemaConstants.NS_C, "shadow");
+
+	// existence mapping variables
 	public static final QName VAR_LEGAL = new QName(SchemaConstants.NS_C, "legal");
     public static final QName VAR_ASSIGNED = new QName(SchemaConstants.NS_C, "assigned");
 	public static final QName VAR_FOCUS_EXISTS = new QName(SchemaConstants.NS_C, "focusExists");
@@ -64,6 +75,17 @@ public class ExpressionConstants {
 	 */
 	public static final QName VAR_ITERATION_TOKEN = new QName(SchemaConstants.NS_C, "iterationToken");
 	
-	public static final QName OUTPUT_ELMENT_NAME = new QName(SchemaConstants.NS_C, "output");
+	// Variables used in object merging expressions
+	public static final QName VAR_SIDE = new QName(SchemaConstants.NS_C, "side");
+	public static final QName VAR_OBJECT_LEFT = new QName(SchemaConstants.NS_C, "objectLeft");
+	public static final QName VAR_OBJECT_RIGHT = new QName(SchemaConstants.NS_C, "objectRight");
 	
+	public static final QName OUTPUT_ELEMENT_NAME = new QName(SchemaConstants.NS_C, "output");
+
+	// "case" would collide with java keyword
+	public static final QName VAR_WORK_ITEM = new QName(SchemaConstants.NS_C, "workItem");
+	public static final QName VAR_CERTIFICATION_CASE = new QName(SchemaConstants.NS_C, "certificationCase");
+	public static final QName VAR_CAMPAIGN = new QName(SchemaConstants.NS_C, "campaign");
+	public static final QName VAR_REVIEWER_SPECIFICATION = new QName(SchemaConstants.NS_C, "reviewerSpecification");
+
 }

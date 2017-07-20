@@ -20,19 +20,12 @@ import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import org.w3c.dom.Element;
 
-import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.schema.PrismSchema;
-import com.evolveum.midpoint.schema.processor.ResourceSchema;
-import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
-import com.evolveum.midpoint.schema.util.ResourceTypeUtil;
+import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.CachingMetadataType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.XmlSchemaType;
 
 /**
  * Class for caching ResourceType instances with a parsed schemas.
@@ -44,11 +37,9 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.XmlSchemaType;
 public class ResourceCache {
 
 	private Map<String,PrismObject<ResourceType>> cache;
-    @Autowired(required = true)
-	private PrismContext prismContext;
 
     ResourceCache() {
-        cache = new HashMap<String, PrismObject<ResourceType>>();
+        cache = new HashMap<>();
     }
 	
 	public synchronized void put(PrismObject<ResourceType> resource) throws SchemaException {
@@ -64,17 +55,16 @@ public class ResourceCache {
 		
 		PrismObject<ResourceType> cachedResource = cache.get(oid);
 		if (cachedResource == null) {
-			cache.put(oid, resource.clone());
+			cache.put(oid, resource.createImmutableClone());
 		} else {
 			if (compareVersion(resource.getVersion(), cachedResource.getVersion())) {
 				// We already have equivalent resource, nothing to do
-				return;
 			} else {
-				cache.put(oid, resource.clone());
+				cache.put(oid, resource.createImmutableClone());
 			}
 		}
 	}
-	
+
 	private boolean compareVersion(String version1, String version2) {
 		if (version1 == null && version2 == null) {
 			return true;
@@ -85,11 +75,11 @@ public class ResourceCache {
 		return version1.equals(version2);
 	}
 
-	public synchronized PrismObject<ResourceType> get(PrismObject<ResourceType> resource) throws SchemaException {
-		return get(resource.getOid(), resource.getVersion());
+	public synchronized PrismObject<ResourceType> get(PrismObject<ResourceType> resource, GetOperationOptions options) throws SchemaException {
+		return get(resource.getOid(), resource.getVersion(), options);
 	}
 	
-	public synchronized PrismObject<ResourceType> get(String oid, String version) throws SchemaException {
+	public synchronized PrismObject<ResourceType> get(String oid, String version, GetOperationOptions options) throws SchemaException {
 		if (oid == null) {
 			return null;
 		}
@@ -103,13 +93,18 @@ public class ResourceCache {
 			return null;
 		}
 		
-		return cachedResource.clone();
+		if (GetOperationOptions.isReadOnly(options)) {
+			cachedResource.checkImmutability();
+			return cachedResource;
+		} else {
+			return cachedResource.clone();
+		}
 	}
 	
 	/**
 	 * Returns currently cached version. FOR DIAGNOSTICS ONLY. 
 	 */
-	public String getVersion(String oid) {
+	public synchronized String getVersion(String oid) {
 		if (oid == null) {
 			return null;
 		}
@@ -120,7 +115,7 @@ public class ResourceCache {
 		return cachedResource.getVersion();
 	}
 
-	public void remove(String oid) {
+	public synchronized void remove(String oid) {
 		cache.remove(oid);
 	}
 

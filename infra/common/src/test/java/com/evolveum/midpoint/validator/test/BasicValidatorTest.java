@@ -49,11 +49,9 @@ import com.evolveum.midpoint.prism.util.PrismTestUtil;
 import com.evolveum.midpoint.schema.MidPointPrismContextFactory;
 import com.evolveum.midpoint.schema.constants.MidPointConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.util.DOMUtil;
 import com.evolveum.midpoint.util.PrettyPrinter;
 import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 
 /**
  * Test few basic cases of validation.
@@ -98,7 +96,7 @@ public class BasicValidatorTest {
 				PrismContainer<?> extensionContainer = object.getExtension();
 				PrismProperty<Integer> menProp = extensionContainer.findProperty(new QName("http://myself.me/schemas/whatever","menOnChest"));
 				assertNotNull("No men on a dead man chest!", menProp);
-				assertEquals("Wrong number of men on a dead man chest", (Integer)15, menProp.getValue().getValue());
+				assertEquals("Wrong number of men on a dead man chest", (Integer)15, menProp.getAnyRealValue());
 				PrismPropertyDefinition menPropDef = menProp.getDefinition();
 				assertNotNull("Men on a dead man chest NOT defined", menPropDef);
 				assertEquals("Wrong type for men on a dead man chest definition", DOMUtil.XSD_INT, menPropDef.getTypeName());

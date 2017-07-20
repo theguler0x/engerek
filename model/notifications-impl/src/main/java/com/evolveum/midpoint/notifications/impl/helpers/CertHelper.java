@@ -18,15 +18,9 @@ package com.evolveum.midpoint.notifications.impl.helpers;
 
 import com.evolveum.midpoint.certification.api.CertificationManager;
 import com.evolveum.midpoint.notifications.api.events.AccessCertificationEvent;
-import com.evolveum.midpoint.notifications.api.events.CertCampaignEvent;
-import com.evolveum.midpoint.notifications.api.events.CertCampaignStageEvent;
-import com.evolveum.midpoint.notifications.impl.notifiers.SimpleCampaignNotifier;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.CertCampaignTypeUtil;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.task.api.TaskManager;
-import com.evolveum.midpoint.util.exception.CommunicationException;
-import com.evolveum.midpoint.util.exception.ConfigurationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
@@ -104,13 +98,13 @@ public class CertHelper {
         AccessCertificationCasesStatisticsType stat;
         try {
             stat = certificationManager.getCampaignStatistics(campaign.getOid(), false, task, result);
-        } catch (ObjectNotFoundException|SchemaException|SecurityViolationException|ConfigurationException|CommunicationException|ObjectAlreadyExistsException|RuntimeException e) {
+        } catch (ObjectNotFoundException|SchemaException|SecurityViolationException|ObjectAlreadyExistsException|RuntimeException e) {
             LoggingUtils.logUnexpectedException(LOGGER, "Couldn't get campaign statistics", e);
             sb.append("Couldn't get campaign statistics because of ").append(e);
             return;
         }
         int all = stat.getMarkedAsAccept() + stat.getMarkedAsRevoke() + stat.getMarkedAsReduce() + stat.getMarkedAsNotDecide() +
-                stat.getMarkedAsDelegate() + stat.getWithoutResponse();
+                stat.getWithoutResponse();
         sb.append("Number of cases:\t").append(all);
         sb.append("\nMarked as ACCEPT:\t").append(stat.getMarkedAsAccept());
         sb.append("\nMarked as REVOKE:\t").append(stat.getMarkedAsRevoke())
@@ -118,7 +112,6 @@ public class CertHelper {
         sb.append("\nMarked as REDUCE:\t").append(stat.getMarkedAsReduce())
                 .append(" (remedied: ").append(stat.getMarkedAsReduceAndRemedied()).append(")");
         sb.append("\nMarked as NOT DECIDED:\t").append(stat.getMarkedAsNotDecide());
-        sb.append("\nMarked as DELEGATE:\t").append(stat.getMarkedAsDelegate());
         sb.append("\nNo response:\t\t").append(stat.getWithoutResponse());
     }
 }

@@ -16,10 +16,14 @@
 
 package com.evolveum.midpoint.web.page.admin.reports;
 
+import com.evolveum.midpoint.gui.api.model.LoadableModel;
 import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.match.PolyStringNormMatchingRule;
 import com.evolveum.midpoint.prism.polystring.PolyStringNormalizer;
 import com.evolveum.midpoint.prism.query.*;
+import com.evolveum.midpoint.prism.query.builder.QueryBuilder;
+import com.evolveum.midpoint.prism.query.builder.S_AtomicFilterEntry;
+import com.evolveum.midpoint.prism.query.builder.S_FilterEntryOrEmpty;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.security.api.AuthorizationConstants;
 import com.evolveum.midpoint.task.api.Task;
@@ -27,14 +31,13 @@ import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.application.AuthorizationAction;
 import com.evolveum.midpoint.web.application.PageDescriptor;
+import com.evolveum.midpoint.web.application.Url;
 import com.evolveum.midpoint.web.component.BasicSearchPanel;
 import com.evolveum.midpoint.web.component.data.BoxedTablePanel;
 import com.evolveum.midpoint.web.component.data.ObjectDataProvider;
 import com.evolveum.midpoint.web.component.data.Table;
-import com.evolveum.midpoint.web.component.data.TablePanel;
 import com.evolveum.midpoint.web.component.data.column.DoubleButtonColumn;
 import com.evolveum.midpoint.web.component.data.column.LinkColumn;
-import com.evolveum.midpoint.web.component.util.LoadableModel;
 import com.evolveum.midpoint.web.component.util.SelectableBean;
 import com.evolveum.midpoint.web.page.admin.configuration.PageAdminConfiguration;
 import com.evolveum.midpoint.web.page.admin.reports.component.RunReportPopupPanel;
@@ -44,12 +47,12 @@ import com.evolveum.midpoint.web.session.UserProfileStorage;
 import com.evolveum.midpoint.web.util.OnePageParameterEncoder;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportParameterType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportType;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.wicket.Component;
 import org.apache.wicket.MarkupContainer;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.form.AjaxFormComponentUpdatingBehavior;
-import org.apache.wicket.extensions.ajax.markup.html.modal.ModalWindow;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.DataTable;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.IColumn;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.PropertyColumn;
@@ -70,7 +73,11 @@ import java.util.List;
 /**
  * @author lazyman
  */
-@PageDescriptor(url = "/admin/reports", action = {
+@PageDescriptor(
+        urls = {
+            @Url(mountUrl = "/admin/reports", matchUrlForSecurity = "/admin/reports")
+        },
+        action = {
         @AuthorizationAction(actionUri = PageAdminReports.AUTH_REPORTS_ALL,
                 label = PageAdminConfiguration.AUTH_CONFIGURATION_ALL_LABEL,
                 description = PageAdminConfiguration.AUTH_CONFIGURATION_ALL_DESCRIPTION),
@@ -91,8 +98,6 @@ public class PageReports extends PageAdminReports {
     private static final String ID_BASIC_SEARCH = "basicSearch";
     private static final String ID_SUBREPORTS = "subReportCheckbox";
     private static final String ID_TABLE_HEADER = "tableHeader";
-
-    public static final String MODAL_ID_RUN_REPORT = "runReportPopup";
 
     private IModel<ReportSearchDto> searchModel;
 
@@ -135,7 +140,6 @@ public class PageReports extends PageAdminReports {
         table.setOutputMarkupId(true);
         mainForm.add(table);
 
-        initRunReportModal();
     }
 
     private List<IColumn<ReportType, String>> initColumns() {
@@ -148,16 +152,14 @@ public class PageReports extends PageAdminReports {
             @Override
             public void onClick(AjaxRequestTarget target, IModel<SelectableBean<ReportType>> rowModel) {
                 ReportType report = rowModel.getObject().getValue();
-                reportTypeFilterPerformed(target, report.getOid());
+                if (report != null) {
+                    reportTypeFilterPerformed(target, report.getOid());
+                }
             }
 
             @Override
             public boolean isEnabled(IModel<SelectableBean<ReportType>> rowModel) {
-                if (rowModel.getObject().getValue().isParent()) {
-                    return true;
-                } else {
-                    return false;
-                }
+				return rowModel.getObject().getValue() != null && rowModel.getObject().getValue().isParent();
             }
         };
         columns.add(column);
@@ -179,7 +181,7 @@ public class PageReports extends PageAdminReports {
 
             @Override
             public String getFirstColorCssClass() {
-                if (getRowModel().getObject().getValue().isParent()) {
+                if (getRowModel().getObject().getValue() != null && getRowModel().getObject().getValue().isParent()) {
                     return BUTTON_COLOR_CLASS.PRIMARY.toString();
                 } else {
                     return BUTTON_COLOR_CLASS.PRIMARY.toString() + " " + BUTTON_DISABLED;
@@ -188,7 +190,7 @@ public class PageReports extends PageAdminReports {
 
             @Override
             public void firstClicked(AjaxRequestTarget target, IModel<SelectableBean<ReportType>> model) {
-                showRunReportPopup(target, model.getObject().getValue());
+                runReportPerformed(target, model.getObject().getValue());
             }
 
             @Override
@@ -198,7 +200,7 @@ public class PageReports extends PageAdminReports {
 
             @Override
             public boolean isFirstButtonEnabled(IModel<SelectableBean<ReportType>> rowModel) {
-                return rowModel.getObject().getValue().isParent();
+                return getRowModel().getObject().getValue() != null && rowModel.getObject().getValue().isParent();
             }
         };
         columns.add(column);
@@ -209,36 +211,42 @@ public class PageReports extends PageAdminReports {
     private void reportTypeFilterPerformed(AjaxRequestTarget target, String oid) {
         PageParameters params = new PageParameters();
         params.add(OnePageParameterEncoder.PARAMETER, oid);
-        setResponsePage(new PageCreatedReports(params, PageReports.this));
+        navigateToNext(PageCreatedReports.class, params);
     }
 
-    //    @Override
-    protected void runReportPerformed(AjaxRequestTarget target, ReportType report, PrismContainer<ReportParameterType> paramContainer) {
+    protected void runReportPerformed(AjaxRequestTarget target, ReportType report) {
+    	
+    	RunReportPopupPanel runReportPopupPanel = new RunReportPopupPanel(getMainPopupBodyId(), report) {
+    		
+    		private static final long serialVersionUID = 1L;
 
-        ModalWindow window = (ModalWindow) get(MODAL_ID_RUN_REPORT);
-        window.close(target);
-        LOGGER.debug("Run report performed for {}", new Object[]{report.asPrismObject()});
+			protected void runConfirmPerformed(AjaxRequestTarget target, ReportType reportType, PrismContainer<ReportParameterType> reportParam) {
+    			OperationResult result = new OperationResult(OPERATION_RUN_REPORT);
+    	        try {
 
-        OperationResult result = new OperationResult(OPERATION_RUN_REPORT);
-        try {
+    	            Task task = createSimpleTask(OPERATION_RUN_REPORT);
 
-            Task task = createSimpleTask(OPERATION_RUN_REPORT);
+    	            getReportManager().runReport(reportType.asPrismObject(), reportParam, task, result);
+    	        } catch (Exception ex) {
+    	            result.recordFatalError(ex);
+    	        } finally {
+    	            result.computeStatusIfUnknown();
+    	        }
 
-            getReportManager().runReport(report.asPrismObject(), paramContainer, task, result);
-        } catch (Exception ex) {
-            result.recordFatalError(ex);
-        } finally {
-            result.computeStatusIfUnknown();
-        }
-
-        showResult(result);
-        target.add(getFeedbackPanel(), get(createComponentPath(ID_MAIN_FORM)));
+    	        showResult(result);
+    	        target.add(getFeedbackPanel(), get(createComponentPath(ID_MAIN_FORM)));
+    	        hideMainPopup(target);
+    	        
+    		};
+    	};
+    	showMainPopup(runReportPopupPanel, target);
+        
     }
 
     private void configurePerformed(AjaxRequestTarget target, ReportType report) {
         PageParameters params = new PageParameters();
         params.add(OnePageParameterEncoder.PARAMETER, report.getOid());
-        setResponsePage(PageReport.class, params);
+        navigateToNext(PageReport.class, params);
     }
 
     private ObjectDataProvider getDataProvider() {
@@ -257,7 +265,7 @@ public class PageReports extends PageAdminReports {
 
         ReportsStorage storage = getSessionStorage().getReports();
         storage.setReportSearch(searchModel.getObject());
-        storage.setReportsPaging(null);
+        storage.setPaging(null);
 
         Table table = getReportTable();
         table.setCurrentPage(null);
@@ -269,32 +277,17 @@ public class PageReports extends PageAdminReports {
         ReportSearchDto dto = searchModel.getObject();
         String text = dto.getText();
         Boolean parent = !dto.isParent();
-        ObjectQuery query = new ObjectQuery();
-        List<ObjectFilter> filters = new ArrayList<>();
 
+        S_AtomicFilterEntry q = QueryBuilder.queryFor(ReportType.class, getPrismContext());
         if (StringUtils.isNotEmpty(text)) {
             PolyStringNormalizer normalizer = getPrismContext().getDefaultPolyStringNormalizer();
             String normalizedText = normalizer.normalize(text);
-
-            ObjectFilter substring = SubstringFilter.createSubstring(ReportType.F_NAME, ReportType.class,
-                    getPrismContext(), PolyStringNormMatchingRule.NAME, normalizedText);
-
-            filters.add(substring);
+            q = q.item(ReportType.F_NAME).eqPoly(normalizedText).matchingNorm().and();
         }
-
-        if (parent == true) {
-            EqualFilter parentFilter = EqualFilter.createEqual(ReportType.F_PARENT, ReportType.class,
-                    getPrismContext(), null, parent);
-            filters.add(parentFilter);
+        if (parent) {
+            q = q.item(ReportType.F_PARENT).eq(true).and();
         }
-
-        if (!filters.isEmpty()) {
-            query.setFilter(AndFilter.createAnd(filters));
-        } else {
-            query = null;
-        }
-
-        return query;
+        return q.all().build();
     }
 
     private void clearSearchPerformed(AjaxRequestTarget target) {
@@ -307,43 +300,43 @@ public class PageReports extends PageAdminReports {
 
         ReportsStorage storage = getSessionStorage().getReports();
         storage.setReportSearch(searchModel.getObject());
-        storage.setReportsPaging(null);
+        storage.setPaging(null);
         panel.setCurrentPage(null);
 
         target.add((Component) panel);
     }
 
-    private void initRunReportModal() {
-        ModalWindow window = createModalWindow(MODAL_ID_RUN_REPORT,
-                createStringResource("Run report"), 1100, 560);
-        window.setContent(new RunReportPopupPanel(window.getContentId()) {
+//    private void initRunReportModal() {
+//        ModalWindow window = createModalWindow(MODAL_ID_RUN_REPORT,
+//                createStringResource("Run report"), 1100, 560);
+//        window.setContent(new RunReportPopupPanel(window.getContentId()) {
+//
+//            @Override
+//            protected void runConfirmPerformed(AjaxRequestTarget target, ReportType reportType, PrismContainer<ReportParameterType> params) {
+//                runReportPerformed(target, reportType, params);
+//            }
+//        });
+//        add(window);
+//        window.setWindowClosedCallback(new ModalWindow.WindowClosedCallback() {
+//
+//            @Override
+//            public void onClose(AjaxRequestTarget target) {
+//                target.appendJavaScript("$('.wicket-aa-container').remove();");
+//            }
+//        });
+//    }
 
-            @Override
-            protected void runConfirmPerformed(AjaxRequestTarget target, ReportType reportType, PrismContainer<ReportParameterType> params) {
-                runReportPerformed(target, reportType, params);
-            }
-        });
-        add(window);
-        window.setWindowClosedCallback(new ModalWindow.WindowClosedCallback() {
-
-            @Override
-            public void onClose(AjaxRequestTarget target) {
-                target.appendJavaScript("$('.wicket-aa-container').remove();");
-            }
-        });
-    }
-
-    private void showRunReportPopup(AjaxRequestTarget target, ReportType reportType) {
-        ModalWindow modal = (ModalWindow) get(MODAL_ID_RUN_REPORT);
-        RunReportPopupPanel content = (RunReportPopupPanel) modal.get(modal.getContentId());
-//        ReportDto reportDto = new ReportDto()
-        content.setReportType(reportType);
-//        ModalWindow window = (ModalWindow) get(MODAL_ID_RUN_REPORT);
-        modal.show(target);
-        target.add(getFeedbackPanel());
-//        showModalWindow(MODAL_ID_RUN_REPORT, target);
+//    private void showRunReportPopup(AjaxRequestTarget target, ReportType reportType) {
+//        ModalWindow modal = (ModalWindow) get(MODAL_ID_RUN_REPORT);
+//        RunReportPopupPanel content = (RunReportPopupPanel) modal.get(modal.getContentId());
+////        ReportDto reportDto = new ReportDto()
+//        content.setReportType(reportType);
+////        ModalWindow window = (ModalWindow) get(MODAL_ID_RUN_REPORT);
+//        modal.show(target);
 //        target.add(getFeedbackPanel());
-    }
+////        showModalWindow(MODAL_ID_RUN_REPORT, target);
+////        target.add(getFeedbackPanel());
+//    }
 
 
     private static class SearchFragment extends Fragment {
@@ -390,7 +383,7 @@ public class PageReports extends PageAdminReports {
         }
 
         private AjaxFormComponentUpdatingBehavior createFilterAjaxBehaviour() {
-            return new AjaxFormComponentUpdatingBehavior("onchange") {
+            return new AjaxFormComponentUpdatingBehavior("change") {
 
                 @Override
                 protected void onUpdate(AjaxRequestTarget target) {

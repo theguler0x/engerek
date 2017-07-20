@@ -16,26 +16,21 @@
 
 package com.evolveum.midpoint.repo.sql.helpers;
 
-import com.evolveum.midpoint.prism.Containerable;
-import com.evolveum.midpoint.prism.PrismContainerValue;
-import com.evolveum.midpoint.prism.PrismReferenceValue;
-import com.evolveum.midpoint.prism.Visitable;
-import com.evolveum.midpoint.prism.Visitor;
+import com.evolveum.midpoint.prism.*;
+import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.RPolyString;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
-import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
+import org.apache.commons.collections4.CollectionUtils;
 import org.hibernate.Query;
 import org.hibernate.Session;
 import org.hibernate.transform.Transformers;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * @author lazyman, katkav, mederly
@@ -43,62 +38,83 @@ import java.util.Map;
 @Component
 public class NameResolutionHelper {
 
-    // TODO keep names between invocations (e.g. when called from searchObjects/searchContainers)
-    public <C extends Containerable> void resolveNamesIfRequested(Session session, PrismContainerValue<C> containerValue, Collection<SelectorOptions<GetOperationOptions>> options) {
-        GetOperationOptions rootOptions = SelectorOptions.findRootOptions(options);
-        if (GetOperationOptions.isResolveNames(rootOptions)) {
-            final List<String> oidsToResolve = new ArrayList<>();
-            Visitor oidExtractor = new Visitor() {
-                @Override
-                public void visit(Visitable visitable) {
-                    if (visitable instanceof PrismReferenceValue) {
-                        PrismReferenceValue value = (PrismReferenceValue) visitable;
-                        if (value.getTargetName() != null) {    // just for sure
-                            return;
-                        }
-                        if (value.getObject() != null) {        // improbable but possible
-                            value.setTargetName(value.getObject().getName());
-                            return;
-                        }
-                        if (value.getOid() == null) {           // shouldn't occur as well
-                            return;
-                        }
-                        oidsToResolve.add(value.getOid());
-                    }
-                }
-            };
-            containerValue.accept(oidExtractor);
+	private static final int MAX_OIDS_TO_RESOLVE_AT_ONCE = 200;
 
-			if (!oidsToResolve.isEmpty()) {
+	// TODO keep names between invocations (e.g. when called from searchObjects/searchContainers)
+    public void resolveNamesIfRequested(Session session, PrismContainerValue<?> containerValue, Collection<SelectorOptions<GetOperationOptions>> options) {
+    	resolveNamesIfRequested(session, Collections.singletonList(containerValue), options);
+	}
+
+    public void resolveNamesIfRequested(Session session, List<? extends PrismContainerValue> containerValues, Collection<SelectorOptions<GetOperationOptions>> options) {
+
+    	List<ItemPath> pathsToResolve = getPathsToResolve(options);
+		if (pathsToResolve.isEmpty()) {
+			return;
+		}
+
+		final Set<String> oidsToResolve = new HashSet<>();
+		Visitor oidExtractor = visitable -> {
+			if (visitable instanceof PrismReferenceValue) {
+				PrismReferenceValue value = (PrismReferenceValue) visitable;
+				if (!ItemPath.containsSubpathOrEquivalent(pathsToResolve, value.getPath())) {
+					return;
+				}
+				if (value.getTargetName() != null) {    // just for sure
+					return;
+				}
+				if (value.getObject() != null) {        // improbable but possible
+					value.setTargetName(value.getObject().getName());
+					return;
+				}
+				if (value.getOid() == null) {           // shouldn't occur as well
+					return;
+				}
+				oidsToResolve.add(value.getOid());
+			}
+		};
+		Set<PrismContainerValue> roots = containerValues.stream().map(pcv -> pcv.getRootValue()).collect(Collectors.toSet());
+		roots.forEach(root -> root.accept(oidExtractor));
+
+		Map<String, PolyString> oidNameMap = new HashMap<>();
+		List<String> batch = new ArrayList<>();
+		for (Iterator<String> iterator = oidsToResolve.iterator(); iterator.hasNext(); ) {
+			batch.add(iterator.next());
+			if (batch.size() >= MAX_OIDS_TO_RESOLVE_AT_ONCE || !iterator.hasNext()) {
 				Query query = session.getNamedQuery("resolveReferences");
-				query.setParameterList("oid", oidsToResolve);
+				query.setParameterList("oid", batch);
 				query.setResultTransformer(Transformers.ALIAS_TO_ENTITY_MAP);
 
-				List<Map<String, Object>> results = query.list();
-				final Map<String, PolyString> oidNameMap = consolidateResults(results);
-
-                Visitor nameSetter = new Visitor() {
-                    @Override
-                    public void visit(Visitable visitable) {
-                        if (visitable instanceof PrismReferenceValue) {
-                            PrismReferenceValue value = (PrismReferenceValue) visitable;
-                            if (value.getTargetName() == null && value.getOid() != null) {
-                                value.setTargetName(oidNameMap.get(value.getOid()));
-                            }
-                        }
-                    }
-                };
-                containerValue.accept(nameSetter);
+				@SuppressWarnings({ "unchecked", "raw" })
+				List<Map<String, Object>> results = query.list();			// returns oid + name
+				for (Map<String, Object> result : results) {
+					String oid = (String) result.get("0");
+					RPolyString name = (RPolyString) result.get("1");
+					oidNameMap.put(oid, new PolyString(name.getOrig(), name.getNorm()));
+				}
+				batch.clear();
 			}
-        }
-    }
+		}
+		if (!oidNameMap.isEmpty()) {
+			Visitor nameSetter = visitable -> {
+				if (visitable instanceof PrismReferenceValue) {
+					PrismReferenceValue value = (PrismReferenceValue) visitable;
+					if (value.getTargetName() == null && value.getOid() != null) {
+						value.setTargetName(oidNameMap.get(value.getOid()));
+					}
+				}
+			};
+			roots.forEach(root -> root.accept(nameSetter));
+		}
+	}
 
-    private Map<String, PolyString> consolidateResults(List<Map<String, Object>> results){
-    	Map<String, PolyString> oidNameMap = new HashMap<String, PolyString>();
-    	for (Map<String, Object> map : results){
-    		PolyStringType name = RPolyString.copyToJAXB((RPolyString) map.get("1"));
-    		oidNameMap.put((String)map.get("0"), new PolyString(name.getOrig(), name.getNorm()));
-    	}
-    	return oidNameMap;
-    }
+	@NotNull
+	private List<ItemPath> getPathsToResolve(Collection<SelectorOptions<GetOperationOptions>> options) {
+    	List<ItemPath> rv = new ArrayList<>();
+		for (SelectorOptions<GetOperationOptions> option : CollectionUtils.emptyIfNull(options)) {
+			if (GetOperationOptions.isResolveNames(option.getOptions())) {
+				rv.add(option.getItemPath());
+			}
+		}
+		return rv;
+	}
 }

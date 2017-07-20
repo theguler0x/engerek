@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,52 +15,32 @@
  */
 package com.evolveum.midpoint.model.common.expression.evaluator;
 
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
 
-import javax.xml.bind.JAXBElement;
 import javax.xml.namespace.QName;
 
-import org.w3c.dom.Element;
-
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluationContext;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluator;
-import com.evolveum.midpoint.model.common.expression.ExpressionUtil;
-import com.evolveum.midpoint.model.common.expression.ItemDeltaItem;
-import com.evolveum.midpoint.model.common.expression.ObjectDeltaObject;
-import com.evolveum.midpoint.model.common.expression.Source;
 import com.evolveum.midpoint.prism.Item;
 import com.evolveum.midpoint.prism.ItemDefinition;
-import com.evolveum.midpoint.prism.PrismContainer;
-import com.evolveum.midpoint.prism.PrismContainerValue;
 import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismProperty;
 import com.evolveum.midpoint.prism.PrismPropertyDefinition;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.crypto.Protector;
-import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
-import com.evolveum.midpoint.prism.parser.XPathHolder;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.path.ItemPathSegment;
 import com.evolveum.midpoint.prism.path.NameItemPathSegment;
-import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
-import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluationContext;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluator;
+import com.evolveum.midpoint.repo.common.expression.ExpressionUtil;
+import com.evolveum.midpoint.repo.common.expression.ItemDeltaItem;
+import com.evolveum.midpoint.repo.common.expression.Source;
 import com.evolveum.midpoint.schema.util.ObjectResolver;
-import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 
 /**
  * @author Radovan Semancik
@@ -86,13 +66,13 @@ public class PathExpressionEvaluator<V extends PrismValue, D extends ItemDefinit
 	 * @see com.evolveum.midpoint.common.expression.ExpressionEvaluator#evaluate(java.util.Collection, java.util.Map, boolean, java.lang.String, com.evolveum.midpoint.schema.result.OperationResult)
 	 */
 	@Override
-	public PrismValueDeltaSetTriple<V> evaluate(ExpressionEvaluationContext params) throws SchemaException,
+	public PrismValueDeltaSetTriple<V> evaluate(ExpressionEvaluationContext context) throws SchemaException,
 			ExpressionEvaluationException, ObjectNotFoundException {
 
 		ItemDeltaItem<?,?> resolveContext = null;
 		
-		if (params.getSources() != null && params.getSources().size() == 1) {
-			Source<?,?> source = params.getSources().iterator().next();
+		if (context.getSources() != null && context.getSources().size() == 1) {
+			Source<?,?> source = context.getSources().iterator().next();
 			if (path.isEmpty()) {
 				PrismValueDeltaSetTriple<V> outputTriple = (PrismValueDeltaSetTriple<V>) source.toDeltaSetTriple();
 				return outputTriple.clone();
@@ -100,20 +80,20 @@ public class PathExpressionEvaluator<V extends PrismValue, D extends ItemDefinit
 			resolveContext = source;
 		}
 		        
-        Map<QName, Object> variablesAndSources = ExpressionUtil.compileVariablesAndSources(params);
+        Map<QName, Object> variablesAndSources = ExpressionUtil.compileVariablesAndSources(context);
 
         ItemPath resolvePath = path;
         ItemPathSegment first = path.first();
-        if (first instanceof NameItemPathSegment && ((NameItemPathSegment)first).isVariable()) {
+        if (first instanceof NameItemPathSegment && first.isVariable()) {
 			QName variableName = ((NameItemPathSegment)first).getName();
-			Object variableValue = null;
+			Object variableValue;
         	if (variablesAndSources.containsKey(variableName)) {
         		variableValue = variablesAndSources.get(variableName);
         	} else if (QNameUtil.matchAny(variableName, variablesAndSources.keySet())){
 				QName fullVariableName = QNameUtil.resolveNs(variableName, variablesAndSources.keySet());
 				variableValue = variablesAndSources.get(fullVariableName);
 			} else {
-				throw new ExpressionEvaluationException("No variable with name "+variableName+" in "+params.getContextDescription());
+				throw new ExpressionEvaluationException("No variable with name "+variableName+" in "+ context.getContextDescription());
 			}
         	
         	if (variableValue == null) {
@@ -121,11 +101,11 @@ public class PathExpressionEvaluator<V extends PrismValue, D extends ItemDefinit
     		}
     		if (variableValue instanceof Item || variableValue instanceof ItemDeltaItem<?,?>) {
         		resolveContext = ExpressionUtil.toItemDeltaItem(variableValue, objectResolver, 
-        				"path expression in "+params.getContextDescription(), params.getResult());
+        				"path expression in "+ context.getContextDescription(), context.getResult());
     		} else if (variableValue instanceof PrismPropertyValue<?>){
     			PrismValueDeltaSetTriple<V> outputTriple = new PrismValueDeltaSetTriple<>();
     			outputTriple.addToZeroSet((V) variableValue);
-    			return ExpressionUtil.toOutputTriple(outputTriple, outputDefinition, null, protector, prismContext);
+    			return ExpressionUtil.toOutputTriple(outputTriple, outputDefinition, context.getAdditionalConvertor(), null, protector, prismContext);
     		} else {
     			throw new ExpressionEvaluationException("Unexpected variable value "+variableValue+" ("+variableValue.getClass()+")");
     		}
@@ -142,18 +122,18 @@ public class PathExpressionEvaluator<V extends PrismValue, D extends ItemDefinit
         		resolveContext = resolveContext.findIdi(resolvePath.head());
         		resolvePath = resolvePath.tail();
         		if (resolveContext == null) {
-        			throw new ExpressionEvaluationException("Cannot find item using path "+path+" in "+params.getContextDescription());
+        			throw new ExpressionEvaluationException("Cannot find item using path "+path+" in "+ context.getContextDescription());
         		}
         	} else if (resolveContext.isStructuredProperty()) {
         		// The output path does not really matter. The delta will be converted to triple anyway
                 // But the path cannot be null, oherwise the code will die
         		resolveContext = resolveContext.resolveStructuredProperty(resolvePath, (PrismPropertyDefinition) outputDefinition,
-                        new ItemPath());
+                        ItemPath.EMPTY_PATH);
         		break;
         	} else if (resolveContext.isNull()){
         		break;
         	} else {
-        		throw new ExpressionEvaluationException("Cannot resolve path "+resolvePath+" on "+resolveContext+" in "+params.getContextDescription());
+        		throw new ExpressionEvaluationException("Cannot resolve path "+resolvePath+" on "+resolveContext+" in "+ context.getContextDescription());
         	}
         }
                 
@@ -164,7 +144,7 @@ public class PathExpressionEvaluator<V extends PrismValue, D extends ItemDefinit
         	return null;
         }
         
-        return ExpressionUtil.toOutputTriple(outputTriple, outputDefinition, null, protector, prismContext);
+        return ExpressionUtil.toOutputTriple(outputTriple, outputDefinition, context.getAdditionalConvertor(), null, protector, prismContext);
     }
 
 	/* (non-Javadoc)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,16 @@
 
 package com.evolveum.midpoint.web.component.assignment;
 
+import com.evolveum.midpoint.gui.api.component.BasePanel;
+import com.evolveum.midpoint.gui.api.component.password.PasswordPanel;
 import com.evolveum.midpoint.prism.PrismPropertyDefinition;
 import com.evolveum.midpoint.prism.xml.XsdTypeMapper;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.util.DOMUtil;
 import com.evolveum.midpoint.web.component.input.DatePanel;
-import com.evolveum.midpoint.web.component.input.PasswordPanel;
 import com.evolveum.midpoint.web.component.input.TextPanel;
 import com.evolveum.midpoint.web.component.input.TriStateComboPanel;
 import com.evolveum.midpoint.web.component.prism.InputPanel;
-import com.evolveum.midpoint.web.component.util.SimplePanel;
 import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
@@ -33,7 +33,6 @@ import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
 import org.apache.commons.lang.ClassUtils;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.form.AjaxFormComponentUpdatingBehavior;
-import org.apache.wicket.ajax.form.AjaxFormValidatingBehavior;
 import org.apache.wicket.ajax.markup.html.AjaxLink;
 import org.apache.wicket.markup.html.form.Form;
 import org.apache.wicket.markup.html.form.FormComponent;
@@ -48,29 +47,31 @@ import java.util.List;
 /**
  * @author lazyman
  */
-public class ACAttributeValuePanel extends SimplePanel<ACValueConstructionDto> {
+public class ACAttributeValuePanel extends BasePanel<ACValueConstructionDto> {
 
     private static final String ID_INPUT = "input";
     private static final String ID_ADD = "add";
     private static final String ID_REMOVE = "remove";
 
-    public ACAttributeValuePanel(String id, IModel<ACValueConstructionDto> iModel, Form form) {
+    public ACAttributeValuePanel(String id, IModel<ACValueConstructionDto> iModel,
+                                 boolean ignoreMandatoryAttributes, Form form) {
         super(id, iModel);
 
-        initPanel(form);
+        initLayout(form, ignoreMandatoryAttributes);
     }
 
-    private void initPanel(Form form) {
+    private void initLayout(Form form, boolean ignoreMandatoryAttributes) {
         ACValueConstructionDto dto = getModel().getObject();
         PrismPropertyDefinition definition = dto.getAttribute().getDefinition();
-        boolean required = definition.getMinOccurs() > 0;
 
         InputPanel input = createTypedInputComponent(ID_INPUT, definition);
         for (FormComponent comp : input.getFormComponents()) {
             comp.setLabel(new PropertyModel(dto.getAttribute(), ACAttributeDto.F_NAME));
-            comp.setRequired(required);
+            if (!ignoreMandatoryAttributes){
+                comp.setRequired(definition.getMinOccurs() > 0);
+            }
 
-            comp.add(new AjaxFormComponentUpdatingBehavior("onBlur") {
+            comp.add(new AjaxFormComponentUpdatingBehavior("blur") {
                 @Override
                 protected void onUpdate(AjaxRequestTarget target) {}
             });

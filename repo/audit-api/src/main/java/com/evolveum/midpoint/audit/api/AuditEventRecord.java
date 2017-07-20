@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +15,13 @@
  */
 package com.evolveum.midpoint.audit.api;
 
+import java.beans.Transient;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Collection;
+import java.util.*;
 
-import javax.xml.datatype.XMLGregorianCalendar;
-
+import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismReference;
 import com.evolveum.midpoint.prism.PrismReferenceValue;
-import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.schema.DeltaConversionOptions;
 import com.evolveum.midpoint.schema.DeltaConvertor;
 import com.evolveum.midpoint.schema.ObjectDeltaOperation;
@@ -37,15 +34,19 @@ import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.MiscUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SystemException;
-import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ObjectListType;
+import com.evolveum.midpoint.xml.ns._public.common.audit_3.AuditEventRecordPropertyType;
+import com.evolveum.midpoint.xml.ns._public.common.audit_3.AuditEventRecordReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.audit_3.AuditEventRecordType;
-import com.evolveum.midpoint.xml.ns._public.common.audit_3.AuditEventStageType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectDeltaOperationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
+import com.evolveum.prism.xml.ns._public.types_3.ItemDeltaType;
 import com.evolveum.prism.xml.ns._public.types_3.ObjectDeltaType;
+import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
+import com.evolveum.prism.xml.ns._public.types_3.RawType;
+import org.apache.commons.lang3.Validate;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Audit event record describes a single event (usually data change) in a format suitable for audit.
@@ -54,7 +55,9 @@ import com.evolveum.prism.xml.ns._public.types_3.ObjectDeltaType;
  *
  */
 public class AuditEventRecord implements DebugDumpable {
-	
+
+
+	private Long repoId;
 	/**
 	 * Timestamp when the event occured.
 	 * Timestamp in millis.
@@ -77,15 +80,22 @@ public class AuditEventRecord implements DebugDumpable {
 	private String taskIdentifier;
 	private String taskOID;
 	
-	// host ID
-	private String hostIdentifier;
-	
+	private String hostIdentifier;		// local node name as obtained from the networking stack
+	private String nodeIdentifier;		// midPoint cluster node identifier (NodeType.nodeIdentifier)
+	private String remoteHostAddress;	// remote host address as obtained from the networking stack
+
 	// initiator (subject, event "owner"): store OID, type(implicit?), name
 	private PrismObject<UserType> initiator;
 
-	// (primary) target (object, the thing acted on): store OID, type, name
-	// OPTIONAL
-	private PrismObject<? extends ObjectType> target;
+	/**
+	 *  (primary) target (object, the thing acted on): store OID, type, name.
+	 *  This is reference instead of full object, because sometimes we have just
+	 *  the OID of the object and reading full object would be too expensive.
+	 *  The reference can store OID but it can also store whole object if
+	 *  that is available.
+	 *  OPTIONAL
+	 */
+	private PrismReferenceValue target;
 	
 	// user that the target "belongs to"????: store OID, name
 	private PrismObject<UserType> targetOwner;
@@ -97,7 +107,7 @@ public class AuditEventRecord implements DebugDumpable {
 	private AuditEventStage eventStage;
 	
 	// delta
-	private Collection<ObjectDeltaOperation<? extends ObjectType>> deltas;
+	private final Collection<ObjectDeltaOperation<? extends ObjectType>> deltas = new ArrayList<>();
 	
 	// delta order (primary, secondary)
 	
@@ -114,18 +124,19 @@ public class AuditEventRecord implements DebugDumpable {
     private String message;
 
 	private static final SimpleDateFormat TIMESTAMP_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
-	
+
+	private final Map<String, Set<String>> properties = new HashMap<>();
+
+	private final Map<String, Set<AuditReferenceValue>> references = new HashMap<>();
+
 	public AuditEventRecord() {
-		this.deltas = new ArrayList<ObjectDeltaOperation<? extends ObjectType>>();
 	}
 	
 	public AuditEventRecord(AuditEventType eventType) {
-		this.deltas = new ArrayList<ObjectDeltaOperation<? extends ObjectType>>();
 		this.eventType = eventType;
 	}
 
 	public AuditEventRecord(AuditEventType eventType, AuditEventStage eventStage) {
-		this.deltas = new ArrayList<ObjectDeltaOperation<? extends ObjectType>>();
 		this.eventType = eventType;
 		this.eventStage = eventStage;
 	}
@@ -182,6 +193,22 @@ public class AuditEventRecord implements DebugDumpable {
 		this.hostIdentifier = hostIdentifier;
 	}
 
+	public String getNodeIdentifier() {
+		return nodeIdentifier;
+	}
+
+	public void setNodeIdentifier(String nodeIdentifier) {
+		this.nodeIdentifier = nodeIdentifier;
+	}
+
+	public String getRemoteHostAddress() {
+		return remoteHostAddress;
+	}
+
+	public void setRemoteHostAddress(String remoteHostAddress) {
+		this.remoteHostAddress = remoteHostAddress;
+	}
+
 	public PrismObject<UserType> getInitiator() {
 		return initiator;
 	}
@@ -190,12 +217,21 @@ public class AuditEventRecord implements DebugDumpable {
 		this.initiator = initiator;
 	}
 
-	public PrismObject<? extends ObjectType> getTarget() {
+	public PrismReferenceValue getTarget() {
 		return target;
 	}
 
-	public void setTarget(PrismObject<? extends ObjectType> target) {
+	public void setTarget(PrismReferenceValue target) {
 		this.target = target;
+	}
+	
+	// Compatibility and convenience
+	public void setTarget(PrismObject<?> targetObject) {
+		if (targetObject != null) {
+			this.target = ObjectTypeUtil.createObjectRef((ObjectType) targetObject.asObjectable()).asReferenceValue();
+		} else {
+			this.target = null;
+		}
 	}
 
 	public PrismObject<UserType> getTargetOwner() {
@@ -277,21 +313,74 @@ public class AuditEventRecord implements DebugDumpable {
     public void setParameter(String parameter) {
         this.parameter = parameter;
     }
+    
+    @Transient
+    public Long getRepoId() {
+		return repoId;
+	}
+    
+    public void setRepoId(Long repoId) {
+		this.repoId = repoId;
+	}
 
-    public void checkConsistence() {
+	public Map<String, Set<String>> getProperties() {
+		return properties;
+	}
+
+	public Set<String> getPropertyValues(String name) {
+		return properties.get(name);
+	}
+
+	public Map<String, Set<AuditReferenceValue>> getReferences() {
+		return references;
+	}
+
+	public Set<AuditReferenceValue> getReferenceValues(String name) {
+		return references.get(name);
+	}
+
+	public void addPropertyValue(String key, String value) {
+		properties.computeIfAbsent(key, k -> new HashSet<>()).add(value);
+	}
+
+	public void addPropertyValueIgnoreNull(String key, Object value) {
+		if (value != null) {
+			addPropertyValue(key, String.valueOf(value));
+		}
+	}
+
+	public void addReferenceValueIgnoreNull(String key, ObjectReferenceType value) {
+		if (value != null) {
+			addReferenceValue(key, value.asReferenceValue());
+		}
+	}
+
+	public void addReferenceValue(String key, @NotNull AuditReferenceValue value) {
+		Validate.notNull(value, "Reference value must not be null");
+		references.computeIfAbsent(key, k -> new HashSet<>()).add(value);
+	}
+
+	public void addReferenceValue(String key, @NotNull PrismReferenceValue prv) {
+		Validate.notNull(prv, "Reference value must not be null");
+		addReferenceValue(key, new AuditReferenceValue(prv));
+	}
+
+	public void addReferenceValues(String key, @NotNull List<ObjectReferenceType> values) {
+		values.forEach(v -> addReferenceValue(key, v.asReferenceValue()));
+	}
+
+	public void checkConsistence() {
 		if (initiator != null) {
 			initiator.checkConsistence();
 		}
-		if (target != null) {
-			target.checkConsistence();
+		if (target != null && target.getObject() != null) {
+			target.getObject().checkConsistence();
 		}
 		if (targetOwner != null) {
 			targetOwner.checkConsistence();
 		}
-		if (deltas != null) {
-			ObjectDeltaOperation.checkConsistence(deltas);
-		}
-//        //TODO: should this be here?
+		ObjectDeltaOperation.checkConsistence(deltas);
+		//        //TODO: should this be here?
 //        if (result != null && result.getStatus() != null) {
 //            if (result.getStatus() != outcome) {
 //                throw new IllegalStateException("Status in result (" + result.getStatus() + ") differs from outcome (" + outcome + ")");
@@ -303,13 +392,15 @@ public class AuditEventRecord implements DebugDumpable {
     	return createAuditEventRecordType(false);
 	}
     
-    public AuditEventRecordType createAuditEventRecordType(boolean tolerateInconsistencies){
+    public AuditEventRecordType createAuditEventRecordType(boolean tolerateInconsistencies) {
     	AuditEventRecordType auditRecordType = new AuditEventRecordType();
     	auditRecordType.setChannel(channel);
     	auditRecordType.setEventIdentifier(eventIdentifier);
     	auditRecordType.setEventStage(AuditEventStage.fromAuditEventStage(eventStage));
     	auditRecordType.setEventType(AuditEventType.fromAuditEventType(eventType));
     	auditRecordType.setHostIdentifier(hostIdentifier);
+    	auditRecordType.setRemoteHostAddress(remoteHostAddress);
+		auditRecordType.setNodeIdentifier(nodeIdentifier);
     	auditRecordType.setInitiatorRef(ObjectTypeUtil.createObjectRef(initiator, true));
     	auditRecordType.setMessage(message);
     	auditRecordType.setOutcome(OperationResultStatus.createStatusType(outcome));
@@ -321,7 +412,7 @@ public class AuditEventRecord implements DebugDumpable {
     	auditRecordType.setTaskIdentifier(taskIdentifier);
     	auditRecordType.setTaskOID(taskOID);
     	auditRecordType.setTimestamp(MiscUtil.asXMLGregorianCalendar(timestamp));
-    	for (ObjectDeltaOperation delta : deltas){
+    	for (ObjectDeltaOperation delta : deltas) {
     		ObjectDeltaOperationType odo = new ObjectDeltaOperationType();
     		try {
 				DeltaConvertor.toObjectDeltaOperationType(delta, odo, DeltaConversionOptions.createSerializeReferenceNames());
@@ -340,35 +431,63 @@ public class AuditEventRecord implements DebugDumpable {
 				} else {
 					throw new SystemException(e.getMessage(), e);
 				}
-				
 			}
     	}
-    	
-    	return auditRecordType;
+		for (Map.Entry<String, Set<String>> propertyEntry : properties.entrySet()) {
+			AuditEventRecordPropertyType propertyType = new AuditEventRecordPropertyType();
+			propertyType.setName(propertyEntry.getKey());
+			propertyType.getValue().addAll(propertyEntry.getValue());
+			auditRecordType.getProperty().add(propertyType);
+		}
+		for (Map.Entry<String, Set<AuditReferenceValue>> referenceEntry : references.entrySet()) {
+			AuditEventRecordReferenceType referenceType = new AuditEventRecordReferenceType();
+			referenceType.setName(referenceEntry.getKey());
+			referenceEntry.getValue().forEach(v -> referenceType.getValue().add(v.toXml()));
+			auditRecordType.getReference().add(referenceType);
+		}
+		return auditRecordType;
 	}
     
-    public static AuditEventRecord createAuditEventRecord(AuditEventRecordType auditEventRecordType){
+    public static AuditEventRecord createAuditEventRecord(AuditEventRecordType auditEventRecordType) {
     	AuditEventRecord auditRecord = new AuditEventRecord();
     	auditRecord.setChannel(auditEventRecordType.getChannel());
     	auditRecord.setEventIdentifier(auditEventRecordType.getEventIdentifier());
     	auditRecord.setEventStage(AuditEventStage.toAuditEventStage(auditEventRecordType.getEventStage()));
     	auditRecord.setEventType(AuditEventType.toAuditEventType(auditEventRecordType.getEventType()));
     	auditRecord.setHostIdentifier(auditEventRecordType.getHostIdentifier());
+    	auditRecord.setRemoteHostAddress(auditEventRecordType.getRemoteHostAddress());
+		auditRecord.setNodeIdentifier(auditEventRecordType.getNodeIdentifier());
     	auditRecord.setInitiator(getObjectFromObjectReferenceType(auditEventRecordType.getInitiatorRef()));
     	auditRecord.setMessage(auditEventRecordType.getMessage());
     	auditRecord.setOutcome(OperationResultStatus.parseStatusType(auditEventRecordType.getOutcome()));
     	auditRecord.setParameter(auditEventRecordType.getParameter());
     	auditRecord.setResult(auditEventRecordType.getResult());
     	auditRecord.setSessionIdentifier(auditEventRecordType.getSessionIdentifier());
-    	auditRecord.setTarget(getObjectFromObjectReferenceType(auditEventRecordType.getTargetRef()));
+    	auditRecord.setTarget(getReferenceValueFromObjectReferenceType(auditEventRecordType.getTargetRef()));
     	auditRecord.setTargetOwner(getObjectFromObjectReferenceType(auditEventRecordType.getTargetOwnerRef()));
     	auditRecord.setTaskIdentifier(auditEventRecordType.getTaskIdentifier());
     	auditRecord.setTaskOID(auditEventRecordType.getTaskOID());
     	auditRecord.setTimestamp(MiscUtil.asLong(auditEventRecordType.getTimestamp()));
-    	return auditRecord;
+		for (AuditEventRecordPropertyType propertyType : auditEventRecordType.getProperty()) {
+			propertyType.getValue().forEach(v -> auditRecord.addPropertyValue(propertyType.getName(), v));
+		}
+		for (AuditEventRecordReferenceType referenceType : auditEventRecordType.getReference()) {
+			referenceType.getValue().forEach(v -> auditRecord.addReferenceValue(referenceType.getName(), AuditReferenceValue.fromXml(v)));
+		}
+		return auditRecord;
     }
     
-    private static PrismObject getObjectFromObjectReferenceType(ObjectReferenceType ref){
+    private static PrismReferenceValue getReferenceValueFromObjectReferenceType(ObjectReferenceType refType) {
+    	if (refType == null) {
+    		return null;
+    	}
+    	PrismReferenceValue refVal = new PrismReferenceValue(refType.getOid());
+    	refVal.setTargetType(refType.getType());
+    	refVal.setTargetName(refType.getTargetName());
+		return refVal;
+	}
+
+	private static PrismObject getObjectFromObjectReferenceType(ObjectReferenceType ref){
     	if (ref == null){
     		return null;
     	}
@@ -380,11 +499,13 @@ public class AuditEventRecord implements DebugDumpable {
 	public AuditEventRecord clone() {
 		AuditEventRecord clone = new AuditEventRecord();
 		clone.channel = this.channel;
-		clone.deltas = MiscSchemaUtil.cloneObjectDeltaOperationCollection(this.deltas);
+		clone.deltas.addAll(MiscSchemaUtil.cloneObjectDeltaOperationCollection(this.deltas));
 		clone.eventIdentifier = this.eventIdentifier;
 		clone.eventStage = this.eventStage;
 		clone.eventType = this.eventType;
 		clone.hostIdentifier = this.hostIdentifier;
+		clone.remoteHostAddress = this.remoteHostAddress;
+		clone.nodeIdentifier = this.nodeIdentifier;
 		clone.initiator = this.initiator;
 		clone.outcome = this.outcome;
 		clone.sessionIdentifier = this.sessionIdentifier;
@@ -396,6 +517,8 @@ public class AuditEventRecord implements DebugDumpable {
         clone.result = this.result;
         clone.parameter = this.parameter;
         clone.message = this.message;
+        clone.properties.putAll(properties);		// TODO deep clone?
+        clone.references.putAll(references);		// TODO deep clone?
 		return clone;
 	}
 
@@ -403,13 +526,16 @@ public class AuditEventRecord implements DebugDumpable {
 	public String toString() {
 		return "AUDIT[" + formatTimestamp(timestamp) + " eid=" + eventIdentifier
 				+ " sid=" + sessionIdentifier + ", tid=" + taskIdentifier
-				+ " toid=" + taskOID + ", hid=" + hostIdentifier + ", I=" + formatObject(initiator)
-				+ ", T=" + formatObject(target) + ", TO=" + formatObject(targetOwner) + ", et=" + eventType
+				+ " toid=" + taskOID + ", hid=" + hostIdentifier + ", nid=" + nodeIdentifier + ", raddr=" + remoteHostAddress
+				+ ", I=" + formatObject(initiator)
+				+ ", T=" + formatReference(target) + ", TO=" + formatObject(targetOwner) + ", et=" + eventType
 				+ ", es=" + eventStage + ", D=" + deltas + ", ch="+ channel +", o=" + outcome + ", r=" + result + ", p=" + parameter
-                + ", m=" + message + "]";
+                + ", m=" + message
+                + ", prop=" + properties
+                + ", ref=" + references + "]";
 	}
 
-    private String formatResult(OperationResult result) {
+	private String formatResult(OperationResult result) {
         if (result == null || result.getReturns() == null || result.getReturns().isEmpty()) {
             return "nothing";
         }
@@ -438,6 +564,17 @@ public class AuditEventRecord implements DebugDumpable {
 		}
 		return object.toString();
 	}
+	
+    private String formatReference(PrismReferenceValue refVal) {
+    	if (refVal == null) {
+    		return "null";
+    	}
+		if (refVal.getObject() != null) {
+			return formatObject(refVal.getObject());
+		}
+		return refVal.toString();
+	}
+
 
 	@Override
 	public String debugDump() {
@@ -456,8 +593,10 @@ public class AuditEventRecord implements DebugDumpable {
 		DebugUtil.debugDumpWithLabelToStringLn(sb, "Task Identifier", taskIdentifier, indent + 1);
 		DebugUtil.debugDumpWithLabelToStringLn(sb, "Task OID", taskOID, indent + 1);
 		DebugUtil.debugDumpWithLabelToStringLn(sb, "Host Identifier", hostIdentifier, indent + 1);
+		DebugUtil.debugDumpWithLabelToStringLn(sb, "Node Identifier", nodeIdentifier, indent + 1);
+		DebugUtil.debugDumpWithLabelToStringLn(sb, "Remote Host Address", remoteHostAddress, indent + 1);
 		DebugUtil.debugDumpWithLabelToStringLn(sb, "Initiator", formatObject(initiator), indent + 1);
-		DebugUtil.debugDumpWithLabelToStringLn(sb, "Target", formatObject(target), indent + 1);
+		DebugUtil.debugDumpWithLabelToStringLn(sb, "Target", formatReference(target), indent + 1);
 		DebugUtil.debugDumpWithLabelToStringLn(sb, "Target Owner", formatObject(targetOwner), indent + 1);
 		DebugUtil.debugDumpWithLabelToStringLn(sb, "Event Type", eventType, indent + 1);
 		DebugUtil.debugDumpWithLabelToStringLn(sb, "Event Stage", eventStage, indent + 1);
@@ -466,13 +605,59 @@ public class AuditEventRecord implements DebugDumpable {
         DebugUtil.debugDumpWithLabelToStringLn(sb, "Result", result, indent + 1);
         DebugUtil.debugDumpWithLabelToStringLn(sb, "Parameter", parameter, indent + 1);
         DebugUtil.debugDumpWithLabelToStringLn(sb, "Message", message, indent + 1);
+        DebugUtil.debugDumpWithLabelToStringLn(sb, "Properties", properties, indent + 1);
+        DebugUtil.debugDumpWithLabelToStringLn(sb, "References", references, indent + 1);
 		DebugUtil.debugDumpLabel(sb, "Deltas", indent + 1);
-		if (deltas == null || deltas.isEmpty()) {
+		if (deltas.isEmpty()) {
 			sb.append(" none");
 		} else {
 			sb.append(" ").append(deltas.size()).append(" deltas\n");
 			DebugUtil.debugDump(sb, deltas, indent + 2, false);
 		}
 		return sb.toString();
+	}
+
+	// a bit of hack - TODO place appropriately
+	public static void adopt(AuditEventRecordType record, PrismContext prismContext) throws SchemaException {
+		for (ObjectDeltaOperationType odo : record.getDelta()) {
+			adopt(odo.getObjectDelta(), prismContext);
+		}
+	}
+
+	public static void adopt(ObjectDeltaType delta, PrismContext prismContext) throws SchemaException {
+		if (delta == null) {
+			return;
+		}
+		if (delta.getObjectToAdd() != null) {
+			prismContext.adopt(delta.getObjectToAdd().asPrismObject());
+		}
+		for (ItemDeltaType itemDelta : delta.getItemDelta()) {
+			adopt(itemDelta, prismContext);
+		}
+	}
+
+	private static void adopt(ItemDeltaType itemDelta, PrismContext prismContext) throws SchemaException {
+		for (RawType value : itemDelta.getValue()) {
+			if (value != null) {
+				value.revive(prismContext);
+			}
+		}
+		for (RawType value : itemDelta.getEstimatedOldValue()) {
+			if (value != null) {
+				value.revive(prismContext);
+			}
+		}
+	}
+
+	public void setInitiatorAndLoginParameter(PrismObject<UserType> initiator) {
+		setInitiator(initiator);
+		String parameter = null;
+		if (initiator != null) {
+			PolyStringType name = initiator.asObjectable().getName();
+			if (name != null) {
+				parameter = name.getOrig();
+			}
+		}
+		setParameter(parameter);
 	}
 }

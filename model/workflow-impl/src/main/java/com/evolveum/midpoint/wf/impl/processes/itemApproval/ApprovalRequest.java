@@ -17,6 +17,7 @@
 package com.evolveum.midpoint.wf.impl.processes.itemApproval;
 
 import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ApprovalSchemaType;
 
 import java.io.Serializable;
 
@@ -26,15 +27,12 @@ import java.io.Serializable;
  *
  * @param <I>
  */
+@Deprecated
 public interface ApprovalRequest<I extends Serializable> extends Serializable {
 
-    static final long serialVersionUID = 5111362449970050179L;
+    long serialVersionUID = 5111362449970050179L;
 
-    public ApprovalSchema getApprovalSchema();
+    ApprovalSchemaType getApprovalSchemaType();
 
-    public I getItemToApprove();
-
-    public void setPrismContext(PrismContext prismContext);
-
-    public PrismContext getPrismContext();
+    I getItemToApprove();
 }

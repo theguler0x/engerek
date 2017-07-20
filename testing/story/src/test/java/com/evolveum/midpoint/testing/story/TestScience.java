@@ -44,16 +44,10 @@ import com.evolveum.midpoint.test.DummyResourceContoller;
 import com.evolveum.midpoint.test.IntegrationTestTools;
 import com.evolveum.midpoint.test.util.TestUtil;
 import com.evolveum.midpoint.util.MiscUtil;
-import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
-import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnforcementType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
-import com.sleepycat.je.rep.impl.RepGroupProtocol.Fail;
 
 /**
  * 
@@ -130,7 +124,7 @@ public class TestScience  extends AbstractStoryTest {
 		super.initSystem(initTask, initResult);
 		
 		// Roles
-		repoAddObjectFromFile(ROLE_STATISTICS_FILE, RoleType.class, initResult);
+		repoAddObjectFromFile(ROLE_STATISTICS_FILE, initResult);
 //		repoAddObjectFromFile(ROLE_MATH_FILE, RoleType.class, initResult);
 		
 		resourceOpenDj = importAndGetObjectFromFile(ResourceType.class, RESOURCE_OPENDJ_AD_SIMULATION_FILE, RESOURCE_OPENDJ_AD_SIMULATION_OID, initTask, initResult);
@@ -219,7 +213,9 @@ public class TestScience  extends AbstractStoryTest {
 		
 		//internalId on unix dummy resource and title on openDJ simulation must be the same
 		PrismProperty unixId = shadowUnix.findProperty(new ItemPath(ShadowType.F_ATTRIBUTES, UNIX_INTERNAL_ID));
+		assertNotNull("No "+UNIX_INTERNAL_ID+" in "+shadowUnix, unixId);
 		PrismProperty openDjSyncedId = shadowOpenDj.findProperty(new ItemPath(ShadowType.F_ATTRIBUTES, new QName(NS_RESOURCE_INSTANCE, "title")));
+		assertNotNull("No 'title' in "+shadowOpenDj, openDjSyncedId);
 		PrismAsserts.assertEquals("Unix id was not synced to the opendj properly.", String.valueOf(unixId.getAnyRealValue()), openDjSyncedId.getAnyRealValue());
 		
 		PrismProperty<Integer> generatedValue = userJack.findExtensionItem(SCIENCE_EXTENSION_UID_QNAME);

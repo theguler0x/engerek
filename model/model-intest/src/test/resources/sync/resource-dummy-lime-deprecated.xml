@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2014 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@
 		<icfc:configurationProperties>
 			<icfi:instanceId>lime</icfi:instanceId> <!-- Default instance. -->
 			<icfi:supportValidity>true</icfi:supportValidity>
-			<icfi:readablePassword>true</icfi:readablePassword>
+			<icfi:passwordReadabilityMode>readable</icfi:passwordReadabilityMode>
 		</icfc:configurationProperties>
 
 	</connectorConfiguration>
@@ -146,14 +146,8 @@
 				<displayName>Location</displayName>
 				<inbound>
 					<strength>strong</strength>
-					<channel>http://midpoint.evolveum.com/xml/ns/public/provisioning/channels-3#import</channel>
-					<expression>
-						<script>
-							<code>'Came from ' + input</code>
-						</script>
-					</expression>
 					<target>
-						<path>description</path>
+						<path>organization</path>
 					</target>
 				</inbound>
 			</attribute>
@@ -183,7 +177,7 @@
 			<attribute>
 				<ref>ri:drink</ref>
 				<displayName>Drink</displayName>
-				<tolerant>false</tolerant>
+				<tolerant>true</tolerant>		<!-- This could not be non-tolerant. There are (almost) no mappings for this attribute, so it gets erased very soon. -->
 				<inbound>
 					<authoritative>true</authoritative>
 					<strength>strong</strength>
@@ -259,6 +253,7 @@
 					</expression>
 				</q:equal>
 			</correlation>
+			<objectTemplateRef oid="3cf43520-241d-11e6-afa5-a377b674950d"/> <!-- MID-2427 -->
 			<reaction>
 	            <situation>linked</situation>
 	            <action ref="http://midpoint.evolveum.com/xml/ns/public/model/action-3#modifyUser"/>

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,13 +21,11 @@ import java.util.Map;
 
 import javax.xml.namespace.QName;
 
+import com.evolveum.midpoint.common.refinery.*;
+import com.evolveum.midpoint.prism.query.builder.QueryBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import com.evolveum.midpoint.common.refinery.RefinedAssociationDefinition;
-import com.evolveum.midpoint.common.refinery.RefinedAttributeDefinition;
-import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
-import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
 import com.evolveum.midpoint.prism.ModificationType;
 import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismContainerDefinition;
@@ -41,8 +39,6 @@ import com.evolveum.midpoint.prism.delta.PropertyDelta;
 import com.evolveum.midpoint.prism.match.MatchingRule;
 import com.evolveum.midpoint.prism.match.MatchingRuleRegistry;
 import com.evolveum.midpoint.prism.path.ItemPath;
-import com.evolveum.midpoint.prism.query.EqualFilter;
-import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.prism.util.PrismUtil;
 import com.evolveum.midpoint.provisioning.api.GenericConnectorException;
@@ -51,7 +47,7 @@ import com.evolveum.midpoint.provisioning.ucf.api.ConnectorInstance;
 import com.evolveum.midpoint.provisioning.ucf.api.GenericFrameworkException;
 import com.evolveum.midpoint.provisioning.ucf.api.Operation;
 import com.evolveum.midpoint.provisioning.ucf.api.PropertyModificationOperation;
-import com.evolveum.midpoint.provisioning.ucf.api.ResultHandler;
+import com.evolveum.midpoint.provisioning.ucf.api.ShadowResultHandler;
 import com.evolveum.midpoint.provisioning.util.ProvisioningUtil;
 import com.evolveum.midpoint.schema.processor.ResourceAttribute;
 import com.evolveum.midpoint.schema.processor.ResourceAttributeContainer;
@@ -62,6 +58,7 @@ import com.evolveum.midpoint.schema.util.ResourceTypeUtil;
 import com.evolveum.midpoint.schema.util.ShadowUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
@@ -74,6 +71,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowAssociationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
+import com.evolveum.midpoint.xml.ns._public.resource.capabilities_3.ReadCapabilityType;
 
 /**
  * Class that collects the entitlement-related methods used by ResourceObjectConverter
@@ -102,20 +100,25 @@ class EntitlementConverter {
 	/////////
 	
 	public void postProcessEntitlementsRead(ProvisioningContext subjectCtx,
-			PrismObject<ShadowType> resourceObject, OperationResult parentResult) throws SchemaException, CommunicationException, ObjectNotFoundException, ConfigurationException, SecurityViolationException {
+			PrismObject<ShadowType> resourceObject, OperationResult parentResult) throws SchemaException, CommunicationException, ObjectNotFoundException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
 		ResourceType resourceType = subjectCtx.getResource();
+		LOGGER.trace("Starting postProcessEntitlementRead");
 		RefinedObjectClassDefinition objectClassDefinition = subjectCtx.getObjectClassDefinition();
-		Collection<RefinedAssociationDefinition> entitlementAssociationDefs = objectClassDefinition.getEntitlementAssociations();
+		Collection<RefinedAssociationDefinition> entitlementAssociationDefs = objectClassDefinition.getAssociationDefinitions();
 		if (entitlementAssociationDefs != null) {
 			ResourceAttributeContainer attributesContainer = ShadowUtil.getAttributesContainer(resourceObject);
-			RefinedResourceSchema refinedSchema = RefinedResourceSchema.getRefinedSchema(resourceType);
 			
 			PrismContainerDefinition<ShadowAssociationType> associationDef = resourceObject.getDefinition().findContainerDefinition(ShadowType.F_ASSOCIATION);
 			PrismContainer<ShadowAssociationType> associationContainer = associationDef.instantiate();
 			
 			for (RefinedAssociationDefinition assocDefType: entitlementAssociationDefs) {
-				for (String intent: assocDefType.getIntents()) {
-					ProvisioningContext entitlementCtx = subjectCtx.spawn(ShadowKindType.ENTITLEMENT, intent);
+				ShadowKindType entitlementKind = assocDefType.getKind();
+				if (entitlementKind == null) {
+					entitlementKind = ShadowKindType.ENTITLEMENT;
+				}
+				for (String entitlementIntent: assocDefType.getIntents()) {
+					LOGGER.trace("Resolving association {} for kind {} and intent {}", assocDefType.getName(), entitlementKind, entitlementIntent);
+					ProvisioningContext entitlementCtx = subjectCtx.spawn(entitlementKind, entitlementIntent);
 					RefinedObjectClassDefinition entitlementDef = entitlementCtx.getObjectClassDefinition();
 					if (entitlementDef == null) {
 						throw new SchemaException("No definition for entitlement intent(s) '"+assocDefType.getIntents()+"' in "+resourceType);
@@ -178,12 +181,14 @@ class EntitlementConverter {
 		ResourceAttribute<T> assocAttr = attributesContainer.findAttribute(assocAttrName);
 		if (assocAttr == null || assocAttr.isEmpty()) {
 			// Nothing to do. No attribute to base the association on.
+			LOGGER.trace("Association attribute {} is empty, skipping association {}", assocAttrName, associationName);
 			return;
 		}
 
 		if (valueAttrName == null) {
 			throw new SchemaException("No value attribute defined in entitlement association '"+associationName+"' in "+resourceType);
 		}
+		
 		RefinedAttributeDefinition valueAttrDef = entitlementDef.findAttributeDefinition(valueAttrName);
 
         for (PrismPropertyValue<T> assocAttrPVal : assocAttr.getValues()) {
@@ -197,13 +202,14 @@ class EntitlementConverter {
                     ShadowAssociationType.F_IDENTIFIERS, entitlementDef.toResourceAttributeContainerDefinition(), prismContext);
             associationCVal.add(identifiersContainer);
             identifiersContainer.add(valueAttribute);
+            LOGGER.trace("Assocciation attribute value resolved to valueAtrribute {}  and identifiers container {}", valueAttribute, identifiersContainer);
         }
     }
 	
 	private <S extends ShadowType,T> void postProcessEntitlementEntitlementToSubject(ProvisioningContext subjectCtx, final PrismObject<S> resourceObject, 
 			RefinedAssociationDefinition assocDefType, final ProvisioningContext entitlementCtx,
 			ResourceAttributeContainer attributesContainer, final PrismContainer<ShadowAssociationType> associationContainer,
-			OperationResult parentResult) throws SchemaException, CommunicationException, ObjectNotFoundException, ConfigurationException, SecurityViolationException {
+			OperationResult parentResult) throws SchemaException, CommunicationException, ObjectNotFoundException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
 		ResourceType resourceType = subjectCtx.getResource();
 		final QName associationName = assocDefType.getName();
 		final RefinedObjectClassDefinition entitlementDef = entitlementCtx.getObjectClassDefinition();
@@ -212,8 +218,14 @@ class EntitlementConverter {
 		}
 		
 		QName associationAuxiliaryObjectClass = assocDefType.getAuxiliaryObjectClass();
+		if (associationAuxiliaryObjectClass != null && associationAuxiliaryObjectClass.getNamespaceURI() != null && 
+				!associationAuxiliaryObjectClass.getNamespaceURI().equals(ResourceTypeUtil.getResourceNamespace(resourceType))) {
+			LOGGER.warn("Auxiliary object class {} in association {} does not have namespace that matches {}", 
+					associationAuxiliaryObjectClass, assocDefType.getName(), resourceType);
+		}
 		if (associationAuxiliaryObjectClass != null && !subjectCtx.getObjectClassDefinition().hasAuxiliaryObjectClass(associationAuxiliaryObjectClass)) {
-			LOGGER.trace("Ignoring association {} because subject does not have auxiliary object class {}", associationName, associationAuxiliaryObjectClass);
+			LOGGER.trace("Ignoring association {} because subject does not have auxiliary object class {}, it has {}", 
+					associationName, associationAuxiliaryObjectClass, subjectCtx.getObjectClassDefinition().getAuxiliaryObjectClassDefinitions());
 			return;
 		}
 		
@@ -232,7 +244,8 @@ class EntitlementConverter {
 		}
 		ResourceAttribute<T> valueAttr = attributesContainer.findAttribute(valueAttrName);
 		if (valueAttr == null || valueAttr.isEmpty()) {
-			throw new SchemaException("Value attribute "+valueAttrName+" has no value; attribute defined in entitlement association '"+associationName+"' in "+resourceType);
+			LOGGER.trace("Ignoring association {} because subject does not have any value in attribute {}", associationName, valueAttrName);
+			return;
 		}
 		if (valueAttr.size() > 1) {
 			throw new SchemaException("Value attribute "+valueAttrName+" has no more than one value; attribute defined in entitlement association '"+associationName+"' in "+resourceType);
@@ -247,18 +260,19 @@ class EntitlementConverter {
 		if (baseContextRef != null) {
 			// TODO: this should be done once per search. Not in every run of postProcessEntitlementEntitlementToSubject
 			// this has to go outside of this method
-			PrismObject<ShadowType> baseContextShadow = resourceObjectReferenceResolver.resolve(baseContextRef, "base context specification in "+entitlementDef, parentResult);
+			PrismObject<ShadowType> baseContextShadow = resourceObjectReferenceResolver.resolve(subjectCtx, baseContextRef, 
+					null, "base context specification in "+entitlementDef, parentResult);
 			RefinedObjectClassDefinition baseContextObjectClassDefinition = subjectCtx.getRefinedSchema().determineCompositeObjectClassDefinition(baseContextShadow);
-			ResourceObjectIdentification baseContextIdentification = new ResourceObjectIdentification(baseContextObjectClassDefinition, ShadowUtil.getIdentifiers(baseContextShadow));
+			ResourceObjectIdentification baseContextIdentification =  ShadowUtil.getResourceObjectIdentification(baseContextShadow, baseContextObjectClassDefinition);
 			searchHierarchyConstraints = new SearchHierarchyConstraints(baseContextIdentification, null);
 		}
 		
-		ResultHandler<ShadowType> handler = new ResultHandler<ShadowType>() {
+		ShadowResultHandler handler = new ShadowResultHandler() {
 			@Override
 			public boolean handle(PrismObject<ShadowType> entitlementShadow) {
 				PrismContainerValue<ShadowAssociationType> associationCVal = associationContainer.createNewValue();
 				associationCVal.asContainerable().setName(associationName);
-				Collection<ResourceAttribute<?>> entitlementIdentifiers = ShadowUtil.getIdentifiers(entitlementShadow);
+				Collection<ResourceAttribute<?>> entitlementIdentifiers = ShadowUtil.getAllIdentifiers(entitlementShadow);
 				try {
 					ResourceAttributeContainer identifiersContainer = new ResourceAttributeContainer(
 							ShadowAssociationType.F_IDENTIFIERS, entitlementDef.toResourceAttributeContainerDefinition(), prismContext);
@@ -278,7 +292,7 @@ class EntitlementConverter {
 			}
 		};
 		
-		ConnectorInstance connector = subjectCtx.getConnector(parentResult);
+		ConnectorInstance connector = subjectCtx.getConnector(ReadCapabilityType.class, parentResult);
 		try {
 			if (LOGGER.isTraceEnabled()) {
 				LOGGER.trace("Processed entitlement-to-subject association for account {}: query {}",
@@ -301,15 +315,12 @@ class EntitlementConverter {
 		MatchingRule<TA> matchingRule = matchingRuleRegistry.getMatchingRule(assocDefType.getResourceObjectAssociationType().getMatchingRule(),
 				assocAttrDef.getTypeName());
 		PrismPropertyValue<TA> converted = PrismUtil.convertPropertyValue(valueAttr.getValue(0), valueAttr.getDefinition(), assocAttrDef);
-		PrismPropertyValue<TA> normalized = converted;
-		if (matchingRule != null) {
-			TA normalizedRealValue = matchingRule.normalize(converted.getValue());
-			normalized = new PrismPropertyValue<TA>(normalizedRealValue);
-		}
-		LOGGER.trace("Converted entitlement filter: {} ({}) def={}", 
-				new Object[]{normalized, normalized.getValue().getClass(), assocAttrDef});
-		ObjectFilter filter = EqualFilter.createEqual(new ItemPath(ShadowType.F_ATTRIBUTES, assocAttrDef.getName()), assocAttrDef, normalized);
-		ObjectQuery query = ObjectQuery.createObjectQuery(filter);
+		TA normalizedRealValue = matchingRule.normalize(converted.getValue());
+		PrismPropertyValue<TA> normalized = new PrismPropertyValue<TA>(normalizedRealValue);
+		LOGGER.trace("Converted entitlement filter value: {} ({}) def={}", normalized, normalized.getValue().getClass(), assocAttrDef);
+		ObjectQuery query = QueryBuilder.queryFor(ShadowType.class, prismContext)
+				.item(new ItemPath(ShadowType.F_ATTRIBUTES, assocAttrDef.getName()), assocAttrDef).eq(normalized)
+				.build();
 		query.setAllowPartialResults(true);
 		return query;
 	}
@@ -318,7 +329,7 @@ class EntitlementConverter {
 	// ADD
 	/////////
 	
-	public void processEntitlementsAdd(ProvisioningContext ctx, PrismObject<ShadowType> shadow) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException {
+	public void processEntitlementsAdd(ProvisioningContext ctx, PrismObject<ShadowType> shadow) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException {
 		PrismContainer<ShadowAssociationType> associationContainer = shadow.findContainer(ShadowType.F_ASSOCIATION);
 		if (associationContainer == null || associationContainer.isEmpty()) {
 			return;
@@ -332,7 +343,7 @@ class EntitlementConverter {
 	
 	public <T> PrismObject<ShadowType> collectEntitlementsAsObjectOperationInShadowAdd(ProvisioningContext ctx, Map<ResourceObjectDiscriminator, ResourceObjectOperations> roMap,
 			PrismObject<ShadowType> shadow, OperationResult result) 
-					throws SchemaException, ObjectNotFoundException, CommunicationException, SecurityViolationException, ConfigurationException {
+					throws SchemaException, ObjectNotFoundException, CommunicationException, SecurityViolationException, ConfigurationException, ExpressionEvaluationException {
 		PrismContainer<ShadowAssociationType> associationContainer = shadow.findContainer(ShadowType.F_ASSOCIATION);
 		if (associationContainer == null || associationContainer.isEmpty()) {
 			return shadow;
@@ -351,7 +362,7 @@ class EntitlementConverter {
 	 * NOTE: only collects  SUBJECT_TO_ENTITLEMENT entitlement direction.
 	 */
 	public void collectEntitlementChange(ProvisioningContext ctx, ContainerDelta<ShadowAssociationType> itemDelta, 
-			Collection<Operation> operations) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException {
+			Collection<Operation> operations) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException {
 		Map<QName, PropertyModificationOperation> operationsMap = new HashMap<QName, PropertyModificationOperation>();
 		
 		collectEntitlementToAttrsDelta(ctx, operationsMap, itemDelta.getValuesToAdd(), ModificationType.ADD);
@@ -365,7 +376,7 @@ class EntitlementConverter {
 			ContainerDelta<ShadowAssociationType> containerDelta,
 			PrismObject<ShadowType> subjectShadowBefore, PrismObject<ShadowType> subjectShadowAfter, 
 			OperationResult result)
-					throws SchemaException, ObjectNotFoundException, CommunicationException, SecurityViolationException, ConfigurationException {
+					throws SchemaException, ObjectNotFoundException, CommunicationException, SecurityViolationException, ConfigurationException, ExpressionEvaluationException {
 		subjectShadowAfter = collectEntitlementsAsObjectOperation(ctx, roMap, containerDelta.getValuesToAdd(), 
 				subjectShadowBefore, subjectShadowAfter, ModificationType.ADD, result);
 		subjectShadowAfter = collectEntitlementsAsObjectOperation(ctx, roMap, containerDelta.getValuesToDelete(),
@@ -385,17 +396,17 @@ class EntitlementConverter {
 	 * any more, but we still want to clean up entitlement membership based on the information from the shadow.  
 	 */
 	public <T> void collectEntitlementsAsObjectOperationDelete(ProvisioningContext subjectCtx, final Map<ResourceObjectDiscriminator, ResourceObjectOperations> roMap,
-			PrismObject<ShadowType> shadow, OperationResult parentResult) 
-					throws SchemaException, CommunicationException, ObjectNotFoundException, ConfigurationException, SecurityViolationException {
+			PrismObject<ShadowType> subjectShadow, OperationResult parentResult) 
+					throws SchemaException, CommunicationException, ObjectNotFoundException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
 
-		Collection<RefinedAssociationDefinition> entitlementAssociationDefs = subjectCtx.getObjectClassDefinition().getEntitlementAssociations();
+		Collection<RefinedAssociationDefinition> entitlementAssociationDefs = subjectCtx.getObjectClassDefinition().getAssociationDefinitions();
 		if (entitlementAssociationDefs == null || entitlementAssociationDefs.isEmpty()) {
 			// Nothing to do
 			LOGGER.trace("No associations in deleted shadow");
 			return;
 		}
-		ResourceAttributeContainer attributesContainer = ShadowUtil.getAttributesContainer(shadow);
-		for (final RefinedAssociationDefinition assocDefType: subjectCtx.getObjectClassDefinition().getEntitlementAssociations()) {
+		ResourceAttributeContainer subjectAttributesContainer = ShadowUtil.getAttributesContainer(subjectShadow);
+		for (final RefinedAssociationDefinition assocDefType: subjectCtx.getObjectClassDefinition().getAssociationDefinitions()) {
 			if (assocDefType.getResourceObjectAssociationType().getDirection() != ResourceObjectAssociationDirectionType.OBJECT_TO_SUBJECT) {
 				// We can ignore these. They will die together with the object. No need to explicitly delete them.
 				LOGGER.trace("Ignoring subject-to-object association in deleted shadow");
@@ -415,8 +426,12 @@ class EntitlementConverter {
 			if (associationName == null) {
 				throw new SchemaException("No name in entitlement association "+assocDefType+" in "+subjectCtx.getResource());
 			}
-			for (String intent: assocDefType.getIntents()) {
-				final ProvisioningContext entitlementCtx = subjectCtx.spawn(ShadowKindType.ENTITLEMENT, intent);
+			ShadowKindType entitlementKind = assocDefType.getKind();
+			if (entitlementKind == null) {
+				entitlementKind = ShadowKindType.ENTITLEMENT;
+			}
+			for (String entitlementIntent: assocDefType.getIntents()) {
+				final ProvisioningContext entitlementCtx = subjectCtx.spawn(entitlementKind, entitlementIntent);
 				final RefinedObjectClassDefinition entitlementOcDef = entitlementCtx.getObjectClassDefinition();
 				if (entitlementOcDef == null) {
 					throw new SchemaException("No definition for entitlement intent(s) '"+assocDefType.getIntents()+"' defined in entitlement association "+associationName+" in "+subjectCtx.getResource());
@@ -435,8 +450,11 @@ class EntitlementConverter {
 				if (valueAttrName == null) {
 					throw new SchemaException("No value attribute defined in entitlement association '"+associationName+"' in "+subjectCtx.getResource());
 				}
-				final ResourceAttribute<T> valueAttr = attributesContainer.findAttribute(valueAttrName);
+				final ResourceAttribute<T> valueAttr = subjectAttributesContainer.findAttribute(valueAttrName);
 				if (valueAttr == null || valueAttr.isEmpty()) {
+					// We really want to throw the exception here. We cannot ignore this. If we ignore it then there may be
+					// entitlement membership value left undeleted and this situation will go undetected.
+					// Although we cannot really remedy the situation now, we at least throw an error so the problem is detected.
 					throw new SchemaException("Value attribute "+valueAttrName+" has no value; attribute defined in entitlement association '"+associationName+"' in "+subjectCtx.getResource());
 				}
 				if (valueAttr.size() > 1) {
@@ -445,34 +463,30 @@ class EntitlementConverter {
 				
 				ObjectQuery query = createQuery(assocDefType, assocAttrDef, valueAttr);
 				
-	//			ObjectFilter filter = EqualsFilter.createEqual(new ItemPath(ShadowType.F_ATTRIBUTES), assocAttrDef, valueAttr.getValue());
-	//			ObjectFilter filter = InFilter.createIn(new ItemPath(ShadowType.F_ATTRIBUTES, assocAttrDef.getName()), assocAttrDef, valueAttr.getValue());
-	//			ObjectFilter filter = EqualsFilter.createEqual(new ItemPath(ShadowType.F_ATTRIBUTES, assocAttrDef.getName()), assocAttrDef, valueAttr.getValue());
-	//			ObjectQuery query = ObjectQuery.createObjectQuery(filter); 
-	//					new ObjectQuery();
-	//			query.setFilter(filter);
-				
 				AttributesToReturn attributesToReturn = ProvisioningUtil.createAttributesToReturn(entitlementCtx);
 				
 				SearchHierarchyConstraints searchHierarchyConstraints = null;
 				ResourceObjectReferenceType baseContextRef = entitlementOcDef.getBaseContext();
 				if (baseContextRef != null) {
-					PrismObject<ShadowType> baseContextShadow = resourceObjectReferenceResolver.resolve(baseContextRef, "base context specification in "+entitlementOcDef, parentResult);
+					PrismObject<ShadowType> baseContextShadow = resourceObjectReferenceResolver.resolve(subjectCtx, 
+							baseContextRef, null, "base context specification in "+entitlementOcDef, parentResult);
 					RefinedObjectClassDefinition baseContextObjectClassDefinition = subjectCtx.getRefinedSchema().determineCompositeObjectClassDefinition(baseContextShadow);
-					ResourceObjectIdentification baseContextIdentification = new ResourceObjectIdentification(baseContextObjectClassDefinition, ShadowUtil.getIdentifiers(baseContextShadow));
+					ResourceObjectIdentification baseContextIdentification =  ShadowUtil.getResourceObjectIdentification(baseContextShadow, baseContextObjectClassDefinition);
 					searchHierarchyConstraints = new SearchHierarchyConstraints(baseContextIdentification, null);
 				}
 				
-				ResultHandler<ShadowType> handler = new ResultHandler<ShadowType>() {
+				ShadowResultHandler handler = new ShadowResultHandler() {
 					@Override
 					public boolean handle(PrismObject<ShadowType> entitlementShadow) {
-						Collection<? extends ResourceAttribute<?>> identifiers = ShadowUtil.getIdentifiers(entitlementShadow);
-						ResourceObjectDiscriminator disc = new ResourceObjectDiscriminator(entitlementOcDef.getTypeName(), identifiers);
+						Collection<? extends ResourceAttribute<?>> primaryIdentifiers = ShadowUtil.getPrimaryIdentifiers(entitlementShadow);
+						ResourceObjectDiscriminator disc = new ResourceObjectDiscriminator(entitlementOcDef.getTypeName(), primaryIdentifiers);
 						ResourceObjectOperations operations = roMap.get(disc);
 						if (operations == null) {
 							operations = new ResourceObjectOperations();
 							roMap.put(disc, operations);
 							operations.setResourceObjectContext(entitlementCtx);
+							Collection<? extends ResourceAttribute<?>> allIdentifiers = ShadowUtil.getAllIdentifiers(entitlementShadow);
+							operations.setAllIdentifiers(allIdentifiers);
 						}
 						
 						PropertyDelta<T> attributeDelta = null;
@@ -488,18 +502,21 @@ class EntitlementConverter {
 							attributeDelta = assocAttrDef.createEmptyDelta(new ItemPath(ShadowType.F_ATTRIBUTES, assocAttrName));
 							PropertyModificationOperation attributeModification = new PropertyModificationOperation(attributeDelta);
 							attributeModification.setMatchingRuleQName(assocDefType.getMatchingRule());
-							operations.getOperations().add(attributeModification);
+							operations.add(attributeModification);
 						}
 						
 						attributeDelta.addValuesToDelete(valueAttr.getClonedValues());
-						LOGGER.trace("Association in deleted shadow delta: {}", attributeDelta);
+						if (LOGGER.isTraceEnabled()) {
+							LOGGER.trace("Association in deleted shadow delta:\n{}", attributeDelta.debugDump());
+						}
 	
 						return true;
 					}
 				};
 				try {
 					LOGGER.trace("Searching for associations in deleted shadow, query: {}", query);
-					subjectCtx.getConnector(parentResult).search(entitlementOcDef, query, handler, attributesToReturn, null, searchHierarchyConstraints, subjectCtx, parentResult);
+					ConnectorInstance connector = subjectCtx.getConnector(ReadCapabilityType.class, parentResult);
+					connector.search(entitlementOcDef, query, handler, attributesToReturn, null, searchHierarchyConstraints, subjectCtx, parentResult);
 				} catch (TunnelException e) {
 					throw (SchemaException)e.getCause();
 				} catch (GenericFrameworkException e) {
@@ -516,7 +533,7 @@ class EntitlementConverter {
 	/////////
 	
 	private <T> void collectEntitlementToAttrsDelta(ProvisioningContext subjectCtx, Map<QName, PropertyModificationOperation> operationMap,
-			Collection<PrismContainerValue<ShadowAssociationType>> set, ModificationType modificationType) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException {
+			Collection<PrismContainerValue<ShadowAssociationType>> set, ModificationType modificationType) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException {
 		if (set == null) {
 			return;
 		}
@@ -531,7 +548,7 @@ class EntitlementConverter {
 	 *  NOTE: only collects  SUBJECT_TO_ENTITLEMENT entitlement direction.
 	 */
 	private <T> void collectEntitlementToAttrDelta(ProvisioningContext ctx, Map<QName, PropertyModificationOperation> operationMap,
-			PrismContainerValue<ShadowAssociationType> associationCVal, ModificationType modificationType) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException {
+			PrismContainerValue<ShadowAssociationType> associationCVal, ModificationType modificationType) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException {
 		RefinedObjectClassDefinition objectClassDefinition = ctx.getObjectClassDefinition();
 		
 		ShadowAssociationType associationType = associationCVal.asContainerable();
@@ -539,9 +556,9 @@ class EntitlementConverter {
 		if (associationName == null) {
 			throw new SchemaException("No name in entitlement association "+associationCVal);
 		}
-		RefinedAssociationDefinition assocDefType = objectClassDefinition.findEntitlementAssociation(associationName);
+		RefinedAssociationDefinition assocDefType = objectClassDefinition.findAssociationDefinition(associationName);
 		if (assocDefType == null) {
-			throw new SchemaException("No entitlement association with name "+associationName+" in schema of "+ctx.getResource());
+			throw new SchemaException("No association with name " + associationName + " in " + objectClassDefinition + " in schema of " + ctx.getResource());
 		}
 		
 		ResourceObjectAssociationDirectionType direction = assocDefType.getResourceObjectAssociationType().getDirection();
@@ -587,11 +604,11 @@ class EntitlementConverter {
 		}
 	}
 	
-	private <T> PrismObject<ShadowType> collectEntitlementsAsObjectOperation(ProvisioningContext ctx, Map<ResourceObjectDiscriminator, ResourceObjectOperations> roMap,
-			Collection<PrismContainerValue<ShadowAssociationType>> set,
+	private <T> PrismObject<ShadowType> collectEntitlementsAsObjectOperation(ProvisioningContext ctx, Map<ResourceObjectDiscriminator, 
+			ResourceObjectOperations> roMap, Collection<PrismContainerValue<ShadowAssociationType>> set,
 			PrismObject<ShadowType> subjectShadowBefore, PrismObject<ShadowType> subjectShadowAfter, 
 			ModificationType modificationType, OperationResult result)
-					throws SchemaException, ObjectNotFoundException, CommunicationException, SecurityViolationException, ConfigurationException {
+					throws SchemaException, ObjectNotFoundException, CommunicationException, SecurityViolationException, ConfigurationException, ExpressionEvaluationException {
 		if (set == null) {
 			return subjectShadowAfter;
 		}
@@ -602,18 +619,18 @@ class EntitlementConverter {
 		return subjectShadowAfter;
 	}
 	
-	private <TV,TA> PrismObject<ShadowType> collectEntitlementAsObjectOperation(ProvisioningContext subjectCtx, Map<ResourceObjectDiscriminator, ResourceObjectOperations> roMap,
-			PrismContainerValue<ShadowAssociationType> associationCVal,
+	private <TV,TA> PrismObject<ShadowType> collectEntitlementAsObjectOperation(ProvisioningContext subjectCtx, Map<ResourceObjectDiscriminator, 
+			ResourceObjectOperations> roMap, PrismContainerValue<ShadowAssociationType> associationCVal,
 			PrismObject<ShadowType> subjectShadowBefore, PrismObject<ShadowType> subjectShadowAfter, 
 			ModificationType modificationType, OperationResult result)
-					throws SchemaException, ObjectNotFoundException, CommunicationException, SecurityViolationException, ConfigurationException {
+					throws SchemaException, ObjectNotFoundException, CommunicationException, SecurityViolationException, ConfigurationException, ExpressionEvaluationException {
 		ResourceType resource = subjectCtx.getResource();
 		ShadowAssociationType associationType = associationCVal.asContainerable();
 		QName associationName = associationType.getName();
 		if (associationName == null) {
 			throw new SchemaException("No name in entitlement association "+associationCVal);
 		}
-		RefinedAssociationDefinition assocDefType = subjectCtx.getObjectClassDefinition().findEntitlementAssociation(associationName);
+		RefinedAssociationDefinition assocDefType = subjectCtx.getObjectClassDefinition().findAssociationDefinition(associationName);
 		if (assocDefType == null) {
 			throw new SchemaException("No entitlement association with name "+assocDefType+" in schema of "+resource);
 		}
@@ -628,8 +645,12 @@ class EntitlementConverter {
 		if (entitlementIntents == null || entitlementIntents.isEmpty()) {
 			throw new SchemaException("No entitlement intent specified in association "+associationCVal+" in "+resource);
 		}
+		ShadowKindType entitlementKind = assocDefType.getKind();
+		if (entitlementKind == null) {
+			entitlementKind = ShadowKindType.ENTITLEMENT;
+		}
 		for (String entitlementIntent: entitlementIntents) {
-			ProvisioningContext entitlementCtx = subjectCtx.spawn(ShadowKindType.ENTITLEMENT, entitlementIntent);
+			ProvisioningContext entitlementCtx = subjectCtx.spawn(entitlementKind, entitlementIntent);
 			RefinedObjectClassDefinition entitlementOcDef = entitlementCtx.getObjectClassDefinition();
 			if (entitlementOcDef == null) {
 				throw new SchemaException("No definition of entitlement intent(s) '"+entitlementIntents+"' specified in association "+associationCVal+" in "+resource);
@@ -647,9 +668,9 @@ class EntitlementConverter {
 			
 			ResourceAttributeContainer identifiersContainer = 
 					ShadowUtil.getAttributesContainer(associationCVal, ShadowAssociationType.F_IDENTIFIERS);
-			Collection<ResourceAttribute<?>> entitlementIdentifiers = identifiersContainer.getAttributes();
+			Collection<ResourceAttribute<?>> entitlementIdentifiersFromAssociation = identifiersContainer.getAttributes();
 			
-			ResourceObjectDiscriminator disc = new ResourceObjectDiscriminator(entitlementOcDef.getTypeName(), entitlementIdentifiers);
+			ResourceObjectDiscriminator disc = new ResourceObjectDiscriminator(entitlementOcDef.getTypeName(), entitlementIdentifiersFromAssociation);
 			ResourceObjectOperations operations = roMap.get(disc);
 			if (operations == null) {
 				operations = new ResourceObjectOperations();
@@ -688,7 +709,7 @@ class EntitlementConverter {
 			ResourceAttribute<TV> valueAttr = ShadowUtil.getAttribute(subjectShadow, valueAttrName);
 			if (valueAttr == null) {
 				if (!ShadowUtil.isFullShadow(subjectShadow)) {
-					Collection<ResourceAttribute<?>> subjectIdentifiers = ShadowUtil.getIdentifiers(subjectShadow);
+					Collection<ResourceAttribute<?>> subjectIdentifiers = ShadowUtil.getAllIdentifiers(subjectShadow);
 					LOGGER.trace("Fetching {} ({})", subjectShadow, subjectIdentifiers);
 					subjectShadow = resourceObjectReferenceResolver.fetchResourceObject(subjectCtx, subjectIdentifiers, null, result);
 					subjectShadowAfter = subjectShadow;
@@ -728,19 +749,25 @@ class EntitlementConverter {
 			if (ResourceTypeUtil.isAvoidDuplicateValues(resource)) {
 				PrismObject<ShadowType> currentObjectShadow = operations.getCurrentShadow();
 				if (currentObjectShadow == null) {
-					LOGGER.trace("Fetching etitlement shadow {} to avoid value duplication (intent={})", entitlementIdentifiers, entitlementIntent);
-					currentObjectShadow = resourceObjectReferenceResolver.fetchResourceObject(entitlementCtx, entitlementIdentifiers, null, result);
+					LOGGER.trace("Fetching entitlement shadow {} to avoid value duplication (intent={})", entitlementIdentifiersFromAssociation, entitlementIntent);
+					currentObjectShadow = resourceObjectReferenceResolver.fetchResourceObject(entitlementCtx, entitlementIdentifiersFromAssociation, null, result);
 					operations.setCurrentShadow(currentObjectShadow);
 				}
 				// TODO it seems that duplicate values are checked twice: once here and the second time in ResourceObjectConverter.executeModify
 				// TODO check that and fix if necessary
-				attributeDelta = ProvisioningUtil.narrowPropertyDelta(attributeDelta, currentObjectShadow, assocDefType.getMatchingRule(), matchingRuleRegistry);
+				PropertyDelta<TA> attributeDeltaAfterNarrow = ProvisioningUtil.narrowPropertyDelta(attributeDelta, currentObjectShadow, assocDefType.getMatchingRule(), matchingRuleRegistry);
+				if (LOGGER.isTraceEnabled() && (attributeDeltaAfterNarrow == null || attributeDeltaAfterNarrow.isEmpty())) {
+					LOGGER.trace("Not collecting entitlement object operations ({}) association {}: attribute delta is empty after narrow, orig delta: {}",
+							modificationType, associationName.getLocalPart(), attributeDelta);
+				}
+				attributeDelta = attributeDeltaAfterNarrow;
 			}
 			
 			if (attributeDelta != null && !attributeDelta.isEmpty()) {
 				PropertyModificationOperation attributeModification = new PropertyModificationOperation(attributeDelta);
 				attributeModification.setMatchingRuleQName(assocDefType.getMatchingRule());
-				operations.getOperations().add(attributeModification);
+				LOGGER.trace("Collecting entitlement object operations ({}) association {}: {}", modificationType, associationName.getLocalPart(), attributeModification);
+				operations.add(attributeModification);
 			}
 			
 		}

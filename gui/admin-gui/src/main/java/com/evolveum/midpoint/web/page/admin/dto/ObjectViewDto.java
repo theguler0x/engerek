@@ -16,15 +16,18 @@
 
 package com.evolveum.midpoint.web.page.admin.dto;
 
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
 import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.web.component.util.Choiceable;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 
 import java.io.Serializable;
+import java.util.Arrays;
 
 /**
  * @author lazyman
  */
-public class ObjectViewDto<T extends ObjectType> implements Serializable {
+public class ObjectViewDto<T extends ObjectType> implements Serializable, Choiceable {
 
     public static final String BAD_OID = "==BAD_OID==";
 
@@ -41,6 +44,12 @@ public class ObjectViewDto<T extends ObjectType> implements Serializable {
     public ObjectViewDto() {
         this.name = null;
         this.oid = null;
+    }
+    
+    public ObjectViewDto(T object) {
+        this.name = WebComponentUtil.getName(object);
+        this.oid = object.getOid();
+        this.object = (PrismObject) object.asPrismObject().clone();
     }
 
     public ObjectViewDto(String oid){
@@ -62,7 +71,19 @@ public class ObjectViewDto<T extends ObjectType> implements Serializable {
     public PrismObject<T> getObject() {
         return object;
     }
+    
+    public void setObject(PrismObject<T> object) {
+		this.object = object;
+	}
+    
+    public T getObjectType() {
+    	if (object == null) {
+    		return null;
+    	}
+    	return object.asObjectable();
+    }
 
+    @Override
     public String getName() {
         return name;
     }
@@ -101,5 +122,24 @@ public class ObjectViewDto<T extends ObjectType> implements Serializable {
 
     public void setType(Class<T> type) {
         this.type = type;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        ObjectViewDto<?> that = (ObjectViewDto<?>) o;
+
+        if (oid != null ? !oid.equals(that.oid) : that.oid != null) return false;
+        if (name != null ? !name.equals(that.name) : that.name != null) return false;
+        if (xml != null ? !xml.equals(that.xml) : that.xml != null) return false;
+        if (object != null ? !object.equals(that.object) : that.object != null) return false;
+        return type != null ? type.equals(that.type) : that.type == null;
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(new Object[]{oid, name, xml, object, type});
     }
 }

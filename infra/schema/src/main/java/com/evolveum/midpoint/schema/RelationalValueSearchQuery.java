@@ -19,19 +19,24 @@ import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.prism.query.ObjectPaging;
 
+import java.io.Serializable;
+
 /**
  * @author semancik
  *
  */
-public class RelationalValueSearchQuery {
+public class RelationalValueSearchQuery implements Serializable {
 	private QName column;
 	private String searchValue;
 	private RelationalValueSearchType searchType;
 	private ObjectPaging paging;
-	
+
+	public RelationalValueSearchQuery(ObjectPaging paging) {
+		this.paging = paging;
+	}
+
 	public RelationalValueSearchQuery(QName column, String searchValue, RelationalValueSearchType searchType,
 			ObjectPaging paging) {
-		super();
 		this.column = column;
 		this.searchValue = searchValue;
 		this.searchType = searchType;
@@ -39,7 +44,6 @@ public class RelationalValueSearchQuery {
 	}
 
 	public RelationalValueSearchQuery(QName column, String searchValue, RelationalValueSearchType searchType) {
-		super();
 		this.column = column;
 		this.searchValue = searchValue;
 		this.searchType = searchType;

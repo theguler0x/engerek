@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package com.evolveum.midpoint.web.page.admin.certification.helpers;
 
 import com.evolveum.midpoint.common.SystemConfigurationHolder;
-import com.evolveum.midpoint.web.page.PageBase;
+import com.evolveum.midpoint.gui.api.page.PageBase;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType;
 import org.apache.wicket.Page;
@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.ACCEPT;
-import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.DELEGATE;
 import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.NOT_DECIDED;
 import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.NO_RESPONSE;
 import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationResponseType.REDUCE;
@@ -47,6 +46,7 @@ public class AvailableResponses implements Serializable {
     public AvailableResponses(Page page) {
         this.page = page;
 
+        // TODO: use ModelInteractionService.getCertificationConfiguration() instead
         AccessCertificationConfigurationType config = SystemConfigurationHolder.getCertificationConfiguration();
 
         responseKeys = new ArrayList<>(6);
@@ -56,8 +56,12 @@ public class AvailableResponses implements Serializable {
         addResponse(config, "PageCertDecisions.menu.revoke", REVOKE);
         /*addResponse(config, "PageCertDecisions.menu.reduce", REDUCE);
         addResponse(config, "PageCertDecisions.menu.notDecided", NOT_DECIDED);
+<<<<<<< HEAD
         addResponse(config, "PageCertDecisions.menu.delegate", DELEGATE);
         addResponse(config, "PageCertDecisions.menu.noResponse", NO_RESPONSE);*/
+=======
+        addResponse(config, "PageCertDecisions.menu.noResponse", NO_RESPONSE);
+>>>>>>> midpoint/master
     }
 
     public List<String> getResponseKeys() {

@@ -1,8 +1,22 @@
+/*
+ * Copyright (c) 2010-2017 Evolveum
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.evolveum.midpoint.model.api;
 
 import javax.xml.namespace.QName;
 
-import com.evolveum.midpoint.security.api.AuthorizationConstants;
 import com.evolveum.midpoint.util.DisplayableValue;
 import com.evolveum.midpoint.util.QNameUtil;
 
@@ -31,6 +45,7 @@ public enum ModelAuthorizationAction implements DisplayableValue<String> {
 	
 	ASSIGN("assign", "Assign", "ASSIGN_HELP"),
 	UNASSIGN("unassign", "Unassign", "UNASSIGN_HELP"),
+	DELEGATE("delegate", "Delegate", "DELEGATE_HELP"),
     EXECUTE_SCRIPT("executeScript", "Execute script", "EXECUTE_SCRIPT_HELP"),
     CHANGE_CREDENTIALS("changeCredentials", "Change credentials", "CHANGE_CREDENTIALS_HELP"),
 
@@ -40,8 +55,32 @@ public enum ModelAuthorizationAction implements DisplayableValue<String> {
 	STOP_SERVICE_THREADS("stopServiceThreads", "Stop service threads", "STOP_SERVICE_THREADS_HELP"),
 	START_SERVICE_THREADS("startServiceThreads", "Start service threads", "START_SERVICE_THREADS_HELP"),
 	SYNCHRONIZE_TASKS("synchronizeTasks", "Synchronize tasks", "SYNCHRONIZE_TASKS_HELP"),
+	SYNCHRONIZE_WORKFLOW_REQUESTS("synchronizeWorkflowRequests", "Synchronize workflow requests", "SYNCHRONIZE_WORKFLOW_REQUESTS_HELP"),
 	STOP_TASK_SCHEDULER("stopTaskScheduler", "Stop task scheduler", "STOP_TASK_SCHEDULER_HELP"),
-	START_TASK_SCHEDULER("startTaskScheduler", "Start task scheduler", "START_TASK_SCHEDULER_HELP");
+	START_TASK_SCHEDULER("startTaskScheduler", "Start task scheduler", "START_TASK_SCHEDULER_HELP"),
+
+	CREATE_CERTIFICATION_CAMPAIGN("createCertificationCampaign", "Create a certification campaign", "CREATE_CERTIFICATION_CAMPAIGN_HELP"),
+	OPEN_CERTIFICATION_CAMPAIGN_REVIEW_STAGE("openCertificationCampaignReviewStage", "Open access certification campaign review stage", "OPEN_CERTIFICATION_CAMPAIGN_REVIEW_STAGE_HELP"),
+	CLOSE_CERTIFICATION_CAMPAIGN_REVIEW_STAGE("closeCertificationCampaignReviewStage", "Close access certification campaign review stage", "CLOSE_CERTIFICATION_CAMPAIGN_REVIEW_STAGE_HELP"),
+	START_CERTIFICATION_REMEDIATION("startCertificationRemediation", "Start certification campaign results remediation", "START_CERTIFICATION_REMEDIATION_HELP"),
+	CLOSE_CERTIFICATION_CAMPAIGN("closeCertificationCampaign", "Close certification campaign", "CLOSE_CERTIFICATION_CAMPAIGN_HELP"),
+	READ_OWN_CERTIFICATION_DECISIONS("readOwnCertificationDecisions", "Read own access certification decisions", "READ_OWN_CERTIFICATION_DECISIONS_HELP"),
+	RECORD_CERTIFICATION_DECISION("recordCertificationDecision", "Record access certification decision", "RECORD_CERTIFICATION_DECISION_HELP"),
+
+	COMPLETE_ALL_WORK_ITEMS("completeAllWorkItems", "Complete all work items", "COMPLETE_ALL_WORK_ITEMS_HELP"),
+	DELEGATE_ALL_WORK_ITEMS("delegateAllWorkItems", "Delegate all work items", "DELEGATE_ALL_WORK_ITEMS_HELP"),
+	DELEGATE_OWN_WORK_ITEMS("delegateOwnWorkItems", "Delegate own work items", "DELEGATE_OWN_WORK_ITEMS_HELP"),
+	READ_ALL_WORK_ITEMS("readAllWorkItems", "Read all work items", "READ_ALL_WORK_ITEMS_HELP"),		// currently not implemented seriously
+	STOP_APPROVAL_PROCESS_INSTANCE("stopApprovalProcessInstance", "Stop approval process instance", "STOP_APPROVAL_PROCESS_INSTANCE_HELP"),
+	CLEANUP_PROCESS_INSTANCES("cleanupProcessInstances", "Cleanup process instances", "CLEANUP_PROCESS_INSTANCES_HELP"),
+
+	AUDIT_READ("auditRead", "Audit Read", "AUDIT_READ_HELP"),
+	// Authorization to create a user-level (custom) audit record. Does not apply to internal records that are created automatically by the model without
+	// any special authorization
+	AUDIT_RECORD("auditRecord", "Audit Record", "AUDIT_RECORD_HELP"),
+	// Ability to manage the audit log, e.g. to clean it up (exprunge old records).
+	AUDIT_MANAGE("auditManage", "Audit Manage", "AUDIT_MANAGE_HELP")
+	;
 	
 	private String url;
 	private String label;

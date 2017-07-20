@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2010-2017 Evolveum
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.evolveum.midpoint.web.page.admin.reports.component;
 
 import java.util.ArrayList;
@@ -8,46 +23,46 @@ import java.util.List;
 import javax.xml.datatype.XMLGregorianCalendar;
 import javax.xml.namespace.QName;
 
+import org.apache.commons.lang3.StringUtils;
+import org.apache.wicket.Application;
 import org.apache.wicket.Component;
-import org.apache.wicket.MarkupContainer;
+import org.apache.wicket.RestartResponseException;
+import org.apache.wicket.Session;
 import org.apache.wicket.ajax.AjaxRequestTarget;
-import org.apache.wicket.ajax.form.AjaxFormComponentUpdatingBehavior;
-import org.apache.wicket.extensions.markup.html.repeater.data.grid.ICellPopulator;
-import org.apache.wicket.extensions.markup.html.repeater.data.table.AbstractColumn;
-import org.apache.wicket.extensions.markup.html.repeater.data.table.IColumn;
-import org.apache.wicket.extensions.markup.html.repeater.data.table.ISortableDataProvider;
+import org.apache.wicket.ajax.markup.html.AjaxLink;
+import org.apache.wicket.core.util.lang.PropertyResolver;
+import org.apache.wicket.core.util.lang.PropertyResolverConverter;
+import org.apache.wicket.feedback.ComponentFeedbackMessageFilter;
+import org.apache.wicket.feedback.FeedbackMessage;
+import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.basic.Label;
-import org.apache.wicket.markup.html.form.ChoiceRenderer;
+import org.apache.wicket.markup.html.form.Form;
 import org.apache.wicket.markup.html.form.FormComponent;
-import org.apache.wicket.markup.repeater.Item;
-import org.apache.wicket.model.AbstractReadOnlyModel;
+import org.apache.wicket.markup.html.list.ListItem;
+import org.apache.wicket.markup.html.list.ListView;
+import org.apache.wicket.markup.html.panel.FeedbackPanel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.PropertyModel;
 import org.apache.wicket.model.StringResourceModel;
-import org.apache.wicket.spring.injection.annot.SpringBean;
 
 import com.evolveum.midpoint.audit.api.AuditEventStage;
 import com.evolveum.midpoint.audit.api.AuditEventType;
-import com.evolveum.midpoint.model.api.ModelService;
-import com.evolveum.midpoint.prism.ItemDefinition;
-import com.evolveum.midpoint.prism.PrismConstants;
+import com.evolveum.midpoint.gui.api.component.BasePanel;
+import com.evolveum.midpoint.gui.api.component.autocomplete.AutoCompleteTextPanel;
+import com.evolveum.midpoint.gui.api.model.LoadableModel;
+import com.evolveum.midpoint.gui.api.page.PageBase;
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
 import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismContainerDefinition;
 import com.evolveum.midpoint.prism.PrismContainerValue;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismObjectDefinition;
 import com.evolveum.midpoint.prism.PrismProperty;
-import com.evolveum.midpoint.prism.PrismPropertyDefinition;
-import com.evolveum.midpoint.prism.PrismValue;
-import com.evolveum.midpoint.prism.parser.QueryConvertor;
+import com.evolveum.midpoint.prism.PrismPropertyDefinitionImpl;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
-import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
-import com.evolveum.midpoint.prism.query.TypeFilter;
-import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
-import com.evolveum.midpoint.prism.xml.XsdTypeMapper;
+import com.evolveum.midpoint.prism.query.builder.QueryBuilder;
 import com.evolveum.midpoint.report.api.ReportConstants;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
@@ -55,31 +70,28 @@ import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.security.api.MidPointPrincipal;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.task.api.TaskManager;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.web.component.AjaxButton;
-import com.evolveum.midpoint.web.component.DateInput;
-import com.evolveum.midpoint.web.component.data.TablePanel;
-import com.evolveum.midpoint.web.component.data.column.EditablePropertyColumn;
-import com.evolveum.midpoint.web.component.input.AutoCompleteTextPanel;
+import com.evolveum.midpoint.web.component.AjaxSubmitButton;
+import com.evolveum.midpoint.web.component.dialog.Popupable;
 import com.evolveum.midpoint.web.component.input.DatePanel;
-import com.evolveum.midpoint.web.component.input.DropDownChoicePanel;
 import com.evolveum.midpoint.web.component.input.TextPanel;
+import com.evolveum.midpoint.web.component.message.FeedbackAlerts;
 import com.evolveum.midpoint.web.component.prism.InputPanel;
-import com.evolveum.midpoint.web.component.util.ListDataProvider;
-import com.evolveum.midpoint.web.component.util.LoadableModel;
-import com.evolveum.midpoint.web.component.util.LookupPropertyModel;
-import com.evolveum.midpoint.web.component.util.SimplePanel;
+import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
+import com.evolveum.midpoint.web.model.LookupPropertyModel;
+import com.evolveum.midpoint.web.page.admin.configuration.component.EmptyOnBlurAjaxFormUpdatingBehaviour;
 import com.evolveum.midpoint.web.page.admin.reports.dto.JasperReportParameterDto;
+import com.evolveum.midpoint.web.page.admin.reports.dto.JasperReportParameterPropertiesDto;
+import com.evolveum.midpoint.web.page.admin.reports.dto.JasperReportValueDto;
 import com.evolveum.midpoint.web.page.admin.reports.dto.ReportDto;
 import com.evolveum.midpoint.web.security.SecurityUtils;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
 import com.evolveum.midpoint.xml.ns._public.common.audit_3.AuditEventStageType;
 import com.evolveum.midpoint.xml.ns._public.common.audit_3.AuditEventTypeType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.LookupTableRowType;
@@ -87,245 +99,302 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.LookupTableType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportParameterType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
-import com.evolveum.prism.xml.ns._public.query_3.SearchFilterType;
 import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
 
-import net.sf.jasperreports.engine.JRPropertiesMap;
+public class RunReportPopupPanel extends BasePanel<ReportDto> implements Popupable {
 
-public class RunReportPopupPanel extends SimplePanel<ReportDto> {
+	private static final long serialVersionUID = 1L;
 
-    @SpringBean(name = "modelController")
-    private ModelService modelService;
-    @SpringBean(name = "taskManager")
-    private TaskManager taskManager;
-    private static final Trace LOGGER = TraceManager.getTrace(RunReportPopupPanel.class);
+	private static final Trace LOGGER = TraceManager.getTrace(RunReportPopupPanel.class);
 
     private static final String DOT_CLASS = RunReportPopupPanel.class.getName() + ".";
     private static final String OPERATION_LOAD_RESOURCES = DOT_CLASS + "createResourceList";
 
     private static final String ID_MAIN_FORM = "mainForm";
 
-    private static final String ID_NAME_LABEL = "label";
     private static final String ID_RUN = "runReport";
+    private static final String ID_POPUP_FEEDBACK = "popupFeedback";
 
-    private static final String ID_LABEL_SIZE = "col-md-4";
-    private static final String ID_INPUT_SIZE = "col-md-8";
-
-    private static final String ID_PARAMETERS_TABLE = "paramTable";
+    private static final Integer AUTO_COMPLETE_BOX_SIZE = 10;
+    
+    private static final String ID_VALUE_LIST = "valueList";
+    private static final String ID_ADD_BUTTON = "add";
+    private static final String ID_REMOVE_BUTTON = "remove";
+    
+    private static final String ID_PARAMETERS = "paramTable";
 
     private IModel<ReportDto> reportModel;
-    private ReportType reportType;
-
-    public void setReportType(ReportType reportType) {
-        this.reportType = reportType;
-
-        if (getParametersTable() != null) {
-            replace(createTablePanel());
-        }
-    }
-
-    public RunReportPopupPanel(String id) {
+    
+    public RunReportPopupPanel(String id, final ReportType reportType) {
         super(id);
-    }
 
-    @Override
-    protected void initLayout() {
-
-        TablePanel table = createTablePanel();
-        add(table);
-
-        AjaxButton addButton = new AjaxButton(ID_RUN,
-                createStringResource("runReportPopupContent.button.run")) {
-
-                    @Override
-                    public void onClick(AjaxRequestTarget target) {
-                        runConfirmPerformed(target, reportModel, getParameters());
-                    }
-                };
-        add(addButton);
-
-    }
-
-    private TablePanel createTablePanel() {
         reportModel = new LoadableModel<ReportDto>(false) {
 
-            @Override
+    		private static final long serialVersionUID = 1L;
+
+			@Override
             protected ReportDto load() {
                 return new ReportDto(reportType, true);
             }
         };
 
-        ISortableDataProvider<JasperReportParameterDto, String> provider = new ListDataProvider<>(this,
-                new PropertyModel<List<JasperReportParameterDto>>(reportModel, "jasperReportDto.parameters"));
-        TablePanel table = new TablePanel<>(ID_PARAMETERS_TABLE, provider, initParameterColumns());
-        table.setOutputMarkupId(true);
-        table.setShowPaging(true);
-        return table;
+        initLayout();
     }
 
-    private TablePanel getParametersTable() {
-        return (TablePanel) get(ID_PARAMETERS_TABLE);
+    protected void initLayout() {
+
+    	Form<?> mainForm = new Form<>(ID_MAIN_FORM);
+    	add(mainForm);
+    	
+    	        
+        ListView<JasperReportParameterDto> paramListView = new ListView<JasperReportParameterDto>(ID_PARAMETERS, new PropertyModel<>(reportModel, "jasperReportDto.parameters")) {
+
+        	private static final long serialVersionUID = 1L;
+
+			@Override
+			protected void populateItem(ListItem<JasperReportParameterDto> paramItem) {
+				paramItem.add(createParameterPanel(paramItem.getModel()));
+				
+			}
+		};
+		paramListView.setOutputMarkupId(true);
+		mainForm.add(paramListView);
+		
+		FeedbackAlerts feedback = new FeedbackAlerts(ID_POPUP_FEEDBACK);
+		feedback.setFilter(new ComponentFeedbackMessageFilter(paramListView){
+			
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public boolean accept(FeedbackMessage message) {
+				return true;
+			}
+		});
+        feedback.setOutputMarkupId(true);
+        mainForm.add(feedback);
+		
+        AjaxSubmitButton addButton = new AjaxSubmitButton(ID_RUN,
+                createStringResource("runReportPopupContent.button.run")) {
+        	private static final long serialVersionUID = 1L;
+        	
+        	@Override
+        			protected void onError(AjaxRequestTarget target, Form<?> form) {
+        				FeedbackAlerts feedback = (FeedbackAlerts) form.get(ID_POPUP_FEEDBACK);
+        				target.add(feedback);
+        			}
+
+        	@Override
+        	protected void onSubmit(AjaxRequestTarget target, Form<?> form) {
+        		runConfirmPerformed(target, reportModel);
+        	}
+                };
+        mainForm.add(addButton);
+
     }
+    
+    private WebMarkupContainer createParameterPanel(final IModel<JasperReportParameterDto> parameterModel) {
+    	WebMarkupContainer paramPanel = new WebMarkupContainer("paramPanel");
+    	paramPanel.setOutputMarkupId(true);
+    	String paramValue = new PropertyModel<String>(parameterModel, "name").getObject();
+        StringResourceModel paramDisplay = PageBase.createStringResourceStatic(RunReportPopupPanel.this, "runReportPopupContent.param.name." + paramValue, new Object[]{});
 
-    private List<JasperReportParameterDto> getParameters() {
-        TablePanel table = getParametersTable();
-        List<JasperReportParameterDto> params = ((ListDataProvider) table.getDataTable().getDataProvider()).getAvailableData();
-        return params;
-    }
+        paramPanel.add(new Label("name", paramDisplay)); // use display name rather than property name
 
-    private List<IColumn<JasperReportParameterDto, String>> initParameterColumns() {
-        List<IColumn<JasperReportParameterDto, String>> columns = new ArrayList<>();
-
-        //parameter name column
-        columns.add(new AbstractColumn(createStringResource("runReportPopupContent.param.name")) {
-
-            @Override
-            public void populateItem(Item item, String componentId, IModel model) {
-                String paramValue = new PropertyModel<String>(model, "name").getObject();
-                StringResourceModel paramDisplay = new StringResourceModel("runReportPopupContent.param.name." + paramValue, null, paramValue, new Object[]{});
-                item.add(new Label(componentId, paramDisplay)); // use display name rather than property name
-            }
-        });
-
-        //parameter class column
-        columns.add(new AbstractColumn(createStringResource("runReportPopupContent.param.class")) {
-
-            @Override
-            public void populateItem(Item item, String componentId, IModel model) {
-                //Do not show whole parameter class name as this is not very user friendly
-                String paramClass = new PropertyModel<String>(model, "typeAsString").getObject();
-                paramClass = (paramClass == null) ? "" : paramClass.substring(paramClass.lastIndexOf(".") + 1);
-                item.add(new Label(componentId, paramClass));
-            }
-        });
-
-        //parameter value editing column
-        columns.add(new EditablePropertyColumn<JasperReportParameterDto>(createStringResource("runReportPopupContent.param.value"), "value") {
-
-            @Override
-            public void populateItem(Item<ICellPopulator<JasperReportParameterDto>> cellItem, String componentId,
-                    final IModel<JasperReportParameterDto> rowModel) {
-                Component component = createTypedInputPanel(componentId, rowModel, getPropertyExpression());
-                cellItem.add(component);
-//                    cellItem.setOutputMarkupId(true);
-            }
-
-        });
-
-        return columns;
-    }
-
-    private Component createTypedInputPanel(String componentId, IModel<JasperReportParameterDto> model, String expression) {
-        JasperReportParameterDto param = model.getObject();
-        param.setEditing(true);
-
-        IModel label = new PropertyModel<String>(model, "name");
-        PropertyModel value = new PropertyModel<String>(model, expression);
-        String tooltipKey = model.getObject().getTypeAsString();
-        Class type = null;
-
-        final LookupTableType lookup = createLookupTable(param);
-
-        try {
-            type = param.getType();
-        } catch (ClassNotFoundException e) {
-            // TODO Auto-generated catch block
-            return null;
+        String paramClass = new PropertyModel<String>(parameterModel, "nestedTypeAsString").getObject();
+        if (StringUtils.isBlank(paramClass)) {
+        	paramClass = new PropertyModel<String>(parameterModel, "typeAsString").getObject();
         }
-        InputPanel panel = null;
+        paramClass = paramClass == null ? "" : paramClass.substring(paramClass.lastIndexOf(".") + 1);
+        paramPanel.add(new Label("type", paramClass));
+        
+        ListView<JasperReportValueDto> listView = new ListView<JasperReportValueDto>(ID_VALUE_LIST, new PropertyModel<>(parameterModel, "value")) {
+
+    		private static final long serialVersionUID = 1L;
+
+			@Override
+    		protected void populateItem(ListItem<JasperReportValueDto> item) {
+    			item.add(createInputMarkup(item.getModel(), parameterModel.getObject()));
+    			
+    		}
+
+    	};
+    	listView.setOutputMarkupId(true);
+        
+        paramPanel.add(listView);
+		return paramPanel;
+    }
+ 
+	private WebMarkupContainer createInputMarkup(final IModel<JasperReportValueDto> valueModel, JasperReportParameterDto param) {
+		param.setEditing(true);
+		WebMarkupContainer paramValueMarkup = new WebMarkupContainer("valueMarkup");
+		paramValueMarkup.setOutputMarkupId(true);
+    
+		InputPanel input = createTypedInputPanel("inputValue", valueModel, "value", param);
+		paramValueMarkup.add(input);
+    
+		//buttons
+		AjaxLink<String> addButton = new AjaxLink<String>(ID_ADD_BUTTON) {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public void onClick(AjaxRequestTarget target) {
+				addValue(paramValueMarkup, param, target);
+			}
+		};
+		addButton.add(new VisibleEnableBehaviour() {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public boolean isVisible() {
+				return isAddButtonVisible(param);
+			}
+		});
+		paramValueMarkup.add(addButton);
+
+		AjaxLink<String> removeButton = new AjaxLink<String>(ID_REMOVE_BUTTON) {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public void onClick(AjaxRequestTarget target) {
+				removeValue(paramValueMarkup, param, valueModel.getObject(), target);
+			}
+		};
+		removeButton.add(new VisibleEnableBehaviour() {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public boolean isVisible() {
+				return isRemoveButtonVisible();
+			}
+		});
+		paramValueMarkup.add(removeButton);
+		return paramValueMarkup;
+	}
+    
+    private InputPanel createTypedInputPanel(String componentId, IModel<JasperReportValueDto> model, String expression, JasperReportParameterDto param) {
+    	InputPanel panel;
+    	Class<?> type;
+        try {
+        	if (param.isMultiValue()) {
+        		type = param.getNestedType();
+        	} else {
+        		type = param.getType();
+        	}
+        } catch (ClassNotFoundException e) {
+            getSession().error("Could not find parameter type definition. Check the configuration.");
+            throw new RestartResponseException(getPageBase());
+        }
 
         if (type.isEnum()) {
-            panel = WebMiscUtil.createEnumPanel(type, componentId, new PropertyModel(model, expression), this);
+            panel = WebComponentUtil.createEnumPanel(type, componentId, new PropertyModel<>(model, expression), this);
         } else if (XMLGregorianCalendar.class.isAssignableFrom(type)) {
-            panel = new DatePanel(componentId, new PropertyModel<XMLGregorianCalendar>(model, expression));
-//        } else if ("resourceName".equals(param.getName())) { // hardcoded for Reconc report
-//            panel = new DropDownChoicePanel(componentId, new PropertyModel(model, expression),
-//                    createResourceListModel(), new ChoiceRenderer<String>(), false);
-        } else if (lookup != null) {
-            panel = new AutoCompleteTextPanel<String>(componentId, new LookupPropertyModel<String>(model, expression,
-                    lookup), String.class) {
+            panel = new DatePanel(componentId, new PropertyModel<>(model, expression));
+        } else if (param.getProperties() != null && param.getProperties().getTargetType() != null) { // render autocomplete box
+        	LookupTableType lookup = new LookupTableType();
+            panel = new AutoCompleteTextPanel<String>(componentId, new LookupReportPropertyModel(model, expression, lookup, true), String.class) {
+				
+            	private static final long serialVersionUID = 1L;
 
-                        @Override
-                        public Iterator<String> getIterator(String input) {
-                            return prepareAutoCompleteList(input, lookup).iterator();
-                        }
-                    };
-        } /*
-         else if ("stringAttributeName".equals(param.getName())) { // hardcoded for User report
-         panel = new DropDownChoicePanel(componentId, new PropertyModel(model, expression),
-         createUserAttributeListModel(String.class), new ChoiceRenderer<String>(), false);
-         } else if ("polyStringAttributeName".equals(param.getName())) { // hardcoded for User report
-         panel = new DropDownChoicePanel(componentId, new PropertyModel(model, expression),
-         createUserAttributeListModel(PolyString.class), new ChoiceRenderer<String>(), false);
-         } */ else {
-            panel = new TextPanel<String>(componentId, new PropertyModel<String>(model, expression));
+				@Override
+				public Iterator<String> getIterator(String input) {
+					return prepareAutoCompleteList(input, lookup, param).iterator();
+				}
+			};
+		} else {
+            panel = new TextPanel<>(componentId, new PropertyModel<>(model, expression), type);
         }
         List<FormComponent> components = panel.getFormComponents();
         for (FormComponent component : components) {
-            if (component instanceof DateInput) {
-                addFormUpdatingBehavior(component, "date", model);
-                addFormUpdatingBehavior(component, "hours", model);
-                addFormUpdatingBehavior(component, "minutes", model);
-                addFormUpdatingBehavior(component, "amOrPmChoice", model);
-            } else {
                 component.add(new EmptyOnBlurAjaxFormUpdatingBehaviour());
-            }
         }
+        
+        panel.setOutputMarkupId(true);
         return panel;
-
+    }
+    
+    private void addValue(WebMarkupContainer paramValueMarkup, JasperReportParameterDto valueModel, AjaxRequestTarget target) {
+    	valueModel.addValue();
+    	//reload just current parameter container panel
+    	target.add(paramValueMarkup.findParent(ListView.class).findParent(WebMarkupContainer.class));
+    }
+    
+    private ListView getParametersView(){
+		return (ListView) get(createComponentPath(ID_MAIN_FORM, ID_PARAMETERS));
     }
 
-    private <T extends ObjectType> LookupTableType createLookupTable(JasperReportParameterDto param) {
+    private boolean isAddButtonVisible(JasperReportParameterDto valueDecs) {
+    	try {
+			return valueDecs.isMultiValue();
+		} catch (ClassNotFoundException e) {
+			return false;
+		}
+    }
+    
+	private void removeValue(WebMarkupContainer paramValueMarkup, JasperReportParameterDto valueModel,
+			JasperReportValueDto object, AjaxRequestTarget target) {
+		valueModel.removeValue(object);
+		//reload just current parameter container panel
+		target.add(paramValueMarkup.findParent(ListView.class).findParent(WebMarkupContainer.class));
+	}
+       
+	private boolean isRemoveButtonVisible() {
+		return true;
+	}
+   
+    private <O extends ObjectType> List<LookupTableRowType> createLookupTableRows(JasperReportParameterDto param, String input) {
         ItemPath label = null;
         ItemPath key = null;
+        List<LookupTableRowType> rows = new ArrayList<>();
 
-        JRPropertiesMap properties = param.getProperties();
+        JasperReportParameterPropertiesDto properties = param.getProperties();
 
         if (properties == null) {
             return null;
         }
 
-        String pLabel = properties.getProperty("label");
+        String pLabel = properties.getLabel();
         if (pLabel != null) {
             label = new ItemPath(pLabel);
         }
-        String pKey = properties.getProperty("key");
+        String pKey = properties.getKey();
         if (pKey != null) {
             key = new ItemPath(pKey);
         }
 
-        String pTargetType = properties.getProperty("targetType");
-        Class<T> targetType = null;
+        String pTargetType = properties.getTargetType();
+        Class<O> targetType = null;
         if (pTargetType != null) {
             try {
-                targetType = (Class<T>) Class.forName(pTargetType);
+                targetType = (Class<O>) Class.forName(pTargetType);
             } catch (ClassNotFoundException e) {
                 error("Error while creating lookup table for input parameter: " + param.getName() + ", " + e.getClass().getSimpleName() + " (" + e.getMessage() + ")");
-                //e.printStackTrace();
+          
             }
         }
 
-        if (label != null && targetType != null) {
+        if (label != null && targetType != null && input != null) {
             OperationResult result = new OperationResult(OPERATION_LOAD_RESOURCES);
             Task task = createSimpleTask(OPERATION_LOAD_RESOURCES);
 
-            Collection<PrismObject<T>> objects;
+            Collection<PrismObject<O>> objects;
+            ObjectQuery query = QueryBuilder.queryFor(targetType, getPrismContext())
+                    .item(new QName(SchemaConstants.NS_C, pLabel)).startsWith(input)
+                        .matching(new QName(SchemaConstants.NS_MATCHING_RULE, "origIgnoreCase"))
+                    .maxSize(AUTO_COMPLETE_BOX_SIZE)
+                    .build();
             try {
-                objects = modelService.searchObjects(targetType, new ObjectQuery(), SelectorOptions.createCollection(GetOperationOptions.createNoFetch()), task, result);
+                objects = getPageBase().getModelService().searchObjects(targetType, query, SelectorOptions.createCollection(GetOperationOptions.createNoFetch()), task, result);
 
-                LookupTableType lookup = new LookupTableType();
-
-                for (PrismObject<T> o : objects) {
+                for (PrismObject<O> o : objects) {
                     Object realKeyValue = null;
-                    PrismProperty labelItem = o.findProperty(label);
+                    PrismProperty<?> labelItem = o.findProperty(label);
 
                     //TODO: e.g. support not only for property, but also ref, container..
                     if (labelItem == null || labelItem.isEmpty()) {
                         continue;
                     }
-                    PrismProperty keyItem = o.findProperty(key);
+                    PrismProperty<?> keyItem = o.findProperty(key);
                     if ("oid".equals(pKey)) {
                         realKeyValue = o.getOid();
                     }
@@ -342,7 +411,7 @@ public class RunReportPopupPanel extends SimplePanel<ReportDto> {
                     realKeyValue = (realKeyValue == null) ? keyItem.getRealValue() : realKeyValue;
 
                     // TODO: take definition into account
-                    QName typeName = labelItem.getDefinition().getTypeName();
+//                    QName typeName = labelItem.getDefinition().getTypeName();
 
                     LookupTableRowType row = new LookupTableRowType();
 
@@ -354,17 +423,16 @@ public class RunReportPopupPanel extends SimplePanel<ReportDto> {
 
                     row.setLabel(convertObjectToPolyStringType(realLabelValue));
 
-                    lookup.getRow().add(row);
+                    rows.add(row);
                 }
 
-                return lookup;
-            } catch (SchemaException | ObjectNotFoundException | SecurityViolationException | CommunicationException | ConfigurationException e) {
+                return rows;
+            } catch (SchemaException | ObjectNotFoundException | SecurityViolationException | CommunicationException | ConfigurationException | ExpressionEvaluationException e) {
                 error("Error while creating lookup table for input parameter: " + param.getName() + ", " + e.getClass().getSimpleName() + " (" + e.getMessage() + ")");
-                //e.printStackTrace();
             }
 
         }
-        return null;
+        return rows;
     }
 
     private PolyStringType convertObjectToPolyStringType(Object o) {
@@ -379,90 +447,36 @@ public class RunReportPopupPanel extends SimplePanel<ReportDto> {
         }
     }
 
-    private List<String> prepareAutoCompleteList(String input, LookupTableType lookupTable) {
+    private List<String> prepareAutoCompleteList(String input, LookupTableType lookupTable, JasperReportParameterDto param) {
         List<String> values = new ArrayList<>();
 
         if (lookupTable == null) {
             return values;
         }
 
-        List<LookupTableRowType> rows = lookupTable.getRow();
+        List<LookupTableRowType> rows = createLookupTableRows(param, input);
 
-        if (input == null || input.isEmpty()) {
-            for (LookupTableRowType row : rows) {
-                values.add(WebMiscUtil.getOrigStringFromPoly(row.getLabel()));
+        if (rows == null) {
+            return values;
+        }
+        if (lookupTable.getRow() != null) {
+            lookupTable.getRow().addAll(rows);
+        }
 
-                if (values.size() > 10) {
-                    return values;
-                }
-            }
-        } else {
-            for (LookupTableRowType row : rows) {
-                if (WebMiscUtil.getOrigStringFromPoly(row.getLabel()).toLowerCase().startsWith(input.toLowerCase() )) {
-                    values.add(WebMiscUtil.getOrigStringFromPoly(row.getLabel()));
-                }
+        for (LookupTableRowType row : rows) {
+            values.add(WebComponentUtil.getOrigStringFromPoly(row.getLabel()));
 
-                if (values.size() > 10) {
-                    return values;
-                }
+            if (values.size() > AUTO_COMPLETE_BOX_SIZE) {
+                break;
             }
         }
 
         return values;
     }
 
-    private IModel<List<String>> createUserAttributeListModel(Class type) {
-        final List<String> attrList = new ArrayList();
-        PrismObjectDefinition<UserType> userDefinition = getPrismContext().getSchemaRegistry().findObjectDefinitionByCompileTimeClass(UserType.class);
-        List<? extends ItemDefinition> itemDefs = userDefinition.getDefinitions();
-
-        for (ItemDefinition id : itemDefs) {
-            if (id instanceof PrismPropertyDefinition
-                    && ((((PrismPropertyDefinition) id).isIndexed() == null)
-                    || (((PrismPropertyDefinition) id).isIndexed() == true))) {
-                if (id.getTypeClass() != null && id.getTypeClass().equals(type)) {
-                    attrList.add(id.getName().getLocalPart());
-                }
-            }
-        }
-
-        return new AbstractReadOnlyModel<List<String>>() {
-
-            @Override
-            public List<String> getObject() {
-                return attrList;
-            }
-
-        };
-    }
-
-    private IModel<List<String>> createResourceListModel() {
-        OperationResult result = new OperationResult(OPERATION_LOAD_RESOURCES);
-        Task task = createSimpleTask(OPERATION_LOAD_RESOURCES);
-        List<PrismObject<ResourceType>> resources = null;
-        final List<String> resourceList = new ArrayList();
-
-        try {
-            resources = modelService.searchObjects(ResourceType.class, new ObjectQuery(), null, task, result);
-        } catch (Exception ex) {
-            LOGGER.error(ex.getMessage());
-        }
-
-        for (PrismObject<ResourceType> resource : resources) {
-            resourceList.add(resource.getBusinessDisplayName());
-        }
-
-        return new AbstractReadOnlyModel<List<String>>() {
-
-            @Override
-            public List<String> getObject() {
-                return resourceList;
-            }
-        };
-    }
 
     public Task createSimpleTask(String operation, PrismObject<UserType> owner) {
-        Task task = taskManager.createTaskInstance(operation);
+        Task task = getPageBase().getTaskManager().createTaskInstance(operation);
 
         if (owner == null) {
             MidPointPrincipal user = SecurityUtils.getPrincipalUser();
@@ -484,69 +498,61 @@ public class RunReportPopupPanel extends SimplePanel<ReportDto> {
         return createSimpleTask(operation, user != null ? user.getUser().asPrismObject() : null);
     }
 
-    private void addFormUpdatingBehavior(FormComponent parent, String id, final IModel<JasperReportParameterDto> model) {
-        Component c = parent.get(id);
-        if (c == null) {
-            return;
-        }
-        c.add(new EmptyOnBlurAjaxFormUpdatingBehaviour());
-    }
-
-    private void runConfirmPerformed(AjaxRequestTarget target, IModel<ReportDto> model, List<JasperReportParameterDto> params) {
+    private void runConfirmPerformed(AjaxRequestTarget target, IModel<ReportDto> model) {
         ReportDto reportDto = model.getObject();
 
-//    	List<ReportParameterType> reportParams = new ArrayList<ReportParameterType>();
-        PrismContainerDefinition<ReportParameterType> paramContainterDef = getPrismContext().getSchemaRegistry().findContainerDefinitionByElementName(ReportConstants.REPORT_PARAMS_PROPERTY_NAME);
-        PrismContainer<ReportParameterType> paramContainer = paramContainterDef.instantiate();
+        PrismContainerDefinition<ReportParameterType> paramContainerDef = getPrismContext().getSchemaRegistry().findContainerDefinitionByElementName(ReportConstants.REPORT_PARAMS_PROPERTY_NAME);
+        PrismContainer<ReportParameterType> paramContainer;
         try {
-
+        	paramContainer = paramContainerDef.instantiate();
             ReportParameterType reportParam = new ReportParameterType();
             PrismContainerValue<ReportParameterType> reportParamValue = reportParam.asPrismContainerValue();
             reportParamValue.revive(getPrismContext());
             paramContainer.add(reportParamValue);
-            Class attributeNameClass = null;
+            
+            List<JasperReportParameterDto> params = getParametersView().getModelObject();
             for (JasperReportParameterDto paramDto : params) {
                 if (paramDto.getValue() == null) {
                     continue;
                 }
-                QName typeName = null;
-                Object realValue = paramDto.getValue();
-                Class paramClass = paramDto.getType();
-                /*
-                 if ("attributeName".equals(paramDto.getName())) {                    
-                 attributeNameClass = ((ItemDefinition) realValue).getTypeClass();
-                 realValue = ((ItemDefinition) realValue).getName().getLocalPart();
-                 }
-                 if ("attributeValue".equals(paramDto.getName())) {
-                 if (attributeNameClass.equals(String.class)) {
-                 realValue = getPrismContext().serializeAnyData((String) realValue, 
-                 new QName(ReportConstants.NS_EXTENSION, paramDto.getName()), PrismContext.LANG_XML);
-                 } else if (attributeNameClass.equals(PolyString.class)) {
-                 realValue = getPrismContext().serializeAnyData(new PolyStringType((String) realValue),
-                 new QName(ReportConstants.NS_EXTENSION, paramDto.getName()), PrismContext.LANG_XML);
-                 }
-                 }
-                 */
-                if (XmlTypeConverter.canConvert(paramClass)) {
-                    typeName = XsdTypeMapper.toXsdType(paramClass);
-                } else {
-
-                    if (AuditEventType.class.isAssignableFrom(paramClass)) {
-                        paramClass = AuditEventTypeType.class;
-                        realValue = AuditEventType.fromAuditEventType((AuditEventType) realValue);
-                    } else if (AuditEventStage.class.isAssignableFrom(paramClass)) {
-                        paramClass = AuditEventStageType.class;
-                        realValue = AuditEventStage.fromAuditEventStage((AuditEventStage) realValue);
-                    }
-                    typeName = getPrismContext().getBeanConverter().determineTypeForClass(paramClass);
+                List<JasperReportValueDto> values = paramDto.getValue();
+                Class<?> paramClass = paramDto.getType();
+                
+                boolean multivalue = false;
+                if (List.class.isAssignableFrom(paramClass)) {
+                	paramClass = paramDto.getNestedType();
+                	if (paramClass == null) {
+                		getSession().error("Nested type for list must be defined!");
+                        target.add(getPageBase().getFeedbackPanel());
+                        return;
+                	}
                 }
-                PrismPropertyDefinition def = new PrismPropertyDefinition<>(new QName(ReportConstants.NS_EXTENSION, paramDto.getName()), typeName, getPrismContext());
+
+                QName typeName = getPrismContext().getSchemaRegistry().determineTypeForClass(paramClass);
+                PrismPropertyDefinitionImpl<?> def = new PrismPropertyDefinitionImpl<>(new QName(ReportConstants.NS_EXTENSION, paramDto.getName()), typeName, getPrismContext());
                 def.setDynamic(true);
                 def.setRuntimeSchema(true);
+                def.setMaxOccurs(multivalue ? -1 : 1);			// TODO multivalue is always 'false' here ...
+                
                 PrismProperty prop = def.instantiate();
-                prop.addRealValue(realValue);
-                reportParamValue.add(prop);
-                //setPropertyRealValue(new QName(ReportConstants.NS_EXTENSION, paramDto.getName()), paramDto.getValue(), getPrismContext());
+				for (JasperReportValueDto paramValue : values) {
+					Object realValue = paramValue.getValue();
+					if (realValue == null) {
+						continue;
+					}
+					if (AuditEventType.class.isAssignableFrom(paramClass)) {
+						paramClass = AuditEventTypeType.class;
+						realValue = AuditEventType.fromAuditEventType((AuditEventType) realValue);
+					} else if (AuditEventStage.class.isAssignableFrom(paramClass)) {
+						paramClass = AuditEventStageType.class;
+						realValue = AuditEventStage.fromAuditEventStage((AuditEventStage) realValue);
+					}
+
+					prop.addRealValue(realValue);
+				}
+				if (!prop.isEmpty()) {
+					reportParamValue.add(prop);
+				}
             }
         } catch (SchemaException | ClassNotFoundException e) {
             OperationResult result = new OperationResult("Parameters serialization");
@@ -556,31 +562,50 @@ public class RunReportPopupPanel extends SimplePanel<ReportDto> {
         }
 
         runConfirmPerformed(target, reportDto.getObject().asObjectable(), paramContainer);
-
     }
-
+    
     private PrismContext getPrismContext() {
         return getPageBase().getPrismContext();
     }
 
     protected void runConfirmPerformed(AjaxRequestTarget target, ReportType reportType2,
-            PrismContainer<ReportParameterType> reportParam) {
+			PrismContainer<ReportParameterType> reportParam) {
     }
 
-    private static class EmptyOnBlurAjaxFormUpdatingBehaviour extends AjaxFormComponentUpdatingBehavior {
+	@Override
+	public int getWidth() {
+		return 1150;
+	}
 
-        public EmptyOnBlurAjaxFormUpdatingBehaviour() {
-            super("change");
-        }
+	@Override
+	public int getHeight() {
+		return 560;
+	}
 
-        @Override
-        protected void onUpdate(AjaxRequestTarget target) {
-            MarkupContainer parent = getFormComponent().getParent();
-            if (parent instanceof DateInput) {
-                DateInput i = (DateInput) parent;
-                i.updateDateTimeModel();
-            }
-        }
-    }
+	@Override
+	public StringResourceModel getTitle() {
+		return createStringResource("RunReportPopupPanel.title");
+	}
+
+	@Override
+	public Component getComponent() {
+		return this;
+	}
+	
+	class LookupReportPropertyModel extends LookupPropertyModel<String> {
+
+		private static final long serialVersionUID = 1L;
+		
+		
+		public LookupReportPropertyModel(IModel<JasperReportValueDto> modelObject, String expression, LookupTableType lookupTable, boolean isStrict) {
+			super(modelObject, expression, lookupTable, isStrict);
+		}
+		
+		@Override
+		public boolean isSupportsDisplayName() {
+			return true;
+		}
+		
+	}
 
 }

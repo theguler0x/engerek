@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,15 @@
 package com.evolveum.midpoint.notifications.api.events;
 
 import com.evolveum.midpoint.notifications.api.OperationStatus;
+import com.evolveum.midpoint.prism.PrismContainer;
+import com.evolveum.midpoint.prism.PrismContainerValue;
+import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ChangeType;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.provisioning.api.ResourceOperationDescription;
 import com.evolveum.midpoint.task.api.LightweightIdentifierGenerator;
+import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.EventCategoryType;
@@ -30,6 +34,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.EventStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 
+import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
 import org.apache.commons.lang.StringUtils;
 
 /**
@@ -104,6 +109,11 @@ public class ResourceObjectEvent extends BaseEvent {
         }
     }
 
+    public ShadowType getShadow() {
+		PrismObject<? extends ShadowType> shadow = accountOperationDescription.getCurrentShadow();
+		return shadow != null ? shadow.asObjectable() : null;
+	}
+
     public boolean isShadowIntent(String intent) {
         if (StringUtils.isNotEmpty(intent)) {
             return intent.equals(accountOperationDescription.getCurrentShadow().asObjectable().getIntent());
@@ -143,4 +153,40 @@ public class ResourceObjectEvent extends BaseEvent {
                 '}';
     }
 
+	public String getShadowName() {
+		return getNotificationFunctions().getShadowName(getAccountOperationDescription().getCurrentShadow());
+	}
+
+	public PolyStringType getResourceName() {
+		return getAccountOperationDescription().getResource().asObjectable().getName();
+	}
+
+	public String getResourceOid() {
+		return getAccountOperationDescription().getResource().getOid();
+	}
+
+	public String getPlaintextPassword() {
+		ObjectDelta delta = getAccountOperationDescription().getObjectDelta();
+		return delta != null ? getNotificationFunctions().getPlaintextPasswordFromDelta(delta) : null;
+	}
+
+	public String getContentAsFormattedList() {
+		return getContentAsFormattedList(false, false);
+	}
+
+	public String getContentAsFormattedList(boolean showSynchronizationItems, boolean showAuxiliaryAttributes) {
+		return getNotificationFunctions().getContentAsFormattedList(this, showSynchronizationItems, showAuxiliaryAttributes);
+	}
+	
+	@Override
+	public String debugDump(int indent) {
+		StringBuilder sb = DebugUtil.createTitleStringBuilderLn(this.getClass(), indent);
+		debugDumpCommon(sb, indent);
+		DebugUtil.debugDumpWithLabelToStringLn(sb, "operationStatus", operationStatus, indent + 1);
+		DebugUtil.debugDumpWithLabelLn(sb, "accountOperationDescription", accountOperationDescription, indent + 1);
+		DebugUtil.debugDumpWithLabelToStringLn(sb, "changeType", changeType, indent + 1);
+		DebugUtil.debugDumpWithLabelLn(sb, "activationRequested", activationRequested, indent + 1);
+		DebugUtil.debugDumpWithLabelLn(sb, "deactivationRequested", deactivationRequested, indent + 1);
+		return sb.toString();
+	}
 }

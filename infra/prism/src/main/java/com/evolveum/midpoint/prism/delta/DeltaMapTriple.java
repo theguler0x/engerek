@@ -17,18 +17,14 @@ package com.evolveum.midpoint.prism.delta;
 
 import com.evolveum.midpoint.prism.SimpleVisitable;
 import com.evolveum.midpoint.prism.SimpleVisitor;
-import com.evolveum.midpoint.prism.Visitable;
-import com.evolveum.midpoint.prism.Visitor;
 import com.evolveum.midpoint.util.Cloner;
 import com.evolveum.midpoint.util.DebugDumpable;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.MiscUtil;
 
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -241,7 +237,7 @@ public class DeltaMapTriple<K,V> implements DebugDumpable, Serializable, SimpleV
 	}
 	
 	@Override
-	public void accept(SimpleVisitor<Entry<K, V>> visitor) {
+	public void simpleAccept(SimpleVisitor<Entry<K, V>> visitor) {
 		acceptMap(visitor, zeroMap);
 		acceptMap(visitor, plusMap);
 		acceptMap(visitor, minusMap);

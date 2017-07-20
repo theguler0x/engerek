@@ -15,11 +15,7 @@
  */
 package com.evolveum.midpoint.schema;
 
-import static org.testng.AssertJUnit.assertNull;
-import static org.testng.AssertJUnit.assertFalse;
 import static org.testng.AssertJUnit.assertTrue;
-import static org.testng.AssertJUnit.assertEquals;
-import static org.testng.AssertJUnit.assertNotNull;
 
 import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
@@ -133,7 +129,7 @@ public class TestSerialization {
 		System.out.println("Deserialized object (ObjectType):");
 		System.out.println(deserializedObject.asPrismObject().debugDump());
 		
-		ObjectDelta<O> diff = parsedObject.asPrismObject().diff(deserializedObject.asPrismObject());
+		ObjectDelta<O> diff = parsedObject.asPrismObject().diff((PrismObject) deserializedObject.asPrismObject());
 		assertTrue("Something changed in serializetion of "+parsedObject+" (ObjectType): "+diff, diff.isEmpty());
 	}
 

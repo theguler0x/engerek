@@ -32,7 +32,7 @@ public class CheckBoxPanel extends Panel {
     private static final String ID_CHECK = "check";
 
     public CheckBoxPanel(String id, IModel<Boolean> model) {
-        this(id, model, new Model<Boolean>(true));
+        this(id, model, new Model<>(true));
     }
 
     public CheckBoxPanel(String id, IModel<Boolean> model, final IModel<Boolean> enabled) {
@@ -70,5 +70,14 @@ public class CheckBoxPanel extends Panel {
     }
 
     public void onUpdate(AjaxRequestTarget target) {
+    }
+    
+    public boolean getValue() {
+    	Boolean val = getPanelComponent().getModelObject();
+    	if (val == null) {
+    		return false;
+    	}
+    	
+    	return val.booleanValue();
     }
 }

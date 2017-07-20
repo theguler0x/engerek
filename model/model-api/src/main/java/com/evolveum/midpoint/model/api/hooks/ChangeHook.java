@@ -15,14 +15,12 @@
  */
 package com.evolveum.midpoint.model.api.hooks;
 
-import java.util.Collection;
-
 import com.evolveum.midpoint.model.api.context.ModelContext;
-import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
+import com.evolveum.midpoint.util.exception.PolicyViolationException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * TODO
@@ -52,7 +50,7 @@ public interface ChangeHook {
      *   - ERROR, if the hook encountered an error which prevents model operation from continuing
      *     (this case is currently not defined very well)
      */
-    <O extends ObjectType> HookOperationMode invoke(ModelContext<O> context, Task task, OperationResult result);
+    <O extends ObjectType> HookOperationMode invoke(@NotNull ModelContext<O> context, @NotNull Task task, @NotNull OperationResult result) throws PolicyViolationException;
 
     /**
      * This method is invoked by the clockwork when an exception occurs.
@@ -67,5 +65,9 @@ public interface ChangeHook {
      * This method has no return value, as it is not expected that the processing would continue in
      * the background. (This could change in the future.)
      */
-    void invokeOnException(ModelContext context, Throwable throwable, Task task, OperationResult result);
+    void invokeOnException(@NotNull ModelContext context, @NotNull Throwable throwable, @NotNull Task task, @NotNull OperationResult result);
+
+    default int getPriority() {
+        return Integer.MAX_VALUE;
+    }
 }

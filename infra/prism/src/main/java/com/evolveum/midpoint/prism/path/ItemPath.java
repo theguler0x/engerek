@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,11 @@
  */
 package com.evolveum.midpoint.prism.path;
 
-import com.evolveum.midpoint.prism.PrismConstants;
+import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.prism.xml.ns._public.types_3.ItemPathType;
 import org.apache.commons.lang.Validate;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.xml.namespace.QName;
 import java.io.Serializable;
@@ -34,10 +36,18 @@ import java.util.Map;
  *
  */
 public class ItemPath implements Serializable, Cloneable {
-	
+
+	@Deprecated	// use ItemPathType.COMPLEX_TYPE
 	public static final QName XSD_TYPE = ItemPathType.COMPLEX_TYPE;
-	public static final ItemPath EMPTY_PATH = new ItemPath();
-	
+
+	public static final ItemPath EMPTY_PATH = ItemPath.createEmpty();
+
+	private static ItemPath createEmpty() {
+		ItemPath empty = new ItemPath();
+		empty.segments = Collections.emptyList();			// to ensure it won't get modified in no case
+		return empty;
+	}
+
 	private List<ItemPathSegment> segments;
 	private Map<String, String> namespaceMap;
 
@@ -49,8 +59,9 @@ public class ItemPath implements Serializable, Cloneable {
 		return namespaceMap;
 	}
 
-	public ItemPath() {
-		segments = new ArrayList<ItemPathSegment>(0);
+	// use ItemPath.EMPTY_PATH from outside clients to avoid unnecessary instantiation
+	private ItemPath() {
+		segments = new ArrayList<>();		// to provide room for growth
 	}
 		
 	public ItemPath(QName... qnames) {
@@ -67,7 +78,7 @@ public class ItemPath implements Serializable, Cloneable {
         }
     }
 
-	public ItemPath(Object[] namesOrIds) {
+	public ItemPath(Object... namesOrIds) {
 		this.segments = new ArrayList<>(namesOrIds.length);
 		for (Object nameOrId : namesOrIds) {
 			if (nameOrId instanceof QName) {
@@ -86,12 +97,12 @@ public class ItemPath implements Serializable, Cloneable {
 
 	private QName stringToQName(String name) {
 		Validate.notNull(name, "name");
-		if ("..".equals(name)) {
-			return PrismConstants.T_PARENT;
-		} else if ("@".equals(name)) {
-			return PrismConstants.T_OBJECT_REFERENCE;
-		} else if ("#".equals(name)) {
-			return PrismConstants.T_ID;
+		if (ParentPathSegment.SYMBOL.equals(name)) {
+			return ParentPathSegment.QNAME;
+		} else if (ObjectReferencePathSegment.SYMBOL.equals(name)) {
+			return ObjectReferencePathSegment.QNAME;
+		} else if (IdentifierPathSegment.SYMBOL.equals(name)) {
+			return IdentifierPathSegment.QNAME;
 		} else {
 			return new QName(name);
 		}
@@ -127,6 +138,12 @@ public class ItemPath implements Serializable, Cloneable {
 		add(subName);
 	}
 	
+	public ItemPath(List<ItemPathSegment> segments, List<ItemPathSegment> additionalSegments) {
+		this.segments = new ArrayList<>(segments.size()+additionalSegments.size());
+		this.segments.addAll(segments);
+		this.segments.addAll(additionalSegments);
+	}
+
 	public ItemPath(ItemPathSegment... segments) {
 		this.segments = new ArrayList<>(segments.length);
 		Collections.addAll(this.segments, segments);
@@ -140,6 +157,10 @@ public class ItemPath implements Serializable, Cloneable {
 	
 	public ItemPath subPath(QName subName) {
 		return new ItemPath(segments, subName);
+	}
+
+	public ItemPath subPath(Object... components) {
+		return new ItemPath(segments, new ItemPath(components).segments);
 	}
 
 	public ItemPath subPath(Long id) {
@@ -170,14 +191,22 @@ public class ItemPath implements Serializable, Cloneable {
 	}
 
 	private void add(QName qname) {
-		if (PrismConstants.T_PARENT.equals(qname)) {
-			this.segments.add(new ParentPathSegment());
-		} else if (PrismConstants.T_OBJECT_REFERENCE.equals(qname)) {
-			this.segments.add(new ObjectReferencePathSegment());
-		} else if (PrismConstants.T_ID.equals(qname)) {
-			this.segments.add(new IdentifierPathSegment());
+		this.segments.add(createSegment(qname, false));
+	}
+
+	private void add(ItemPathSegment segment) {
+		this.segments.add(segment);
+	}
+
+	public static ItemPathSegment createSegment(QName qname, boolean variable) {
+		if (ParentPathSegment.QNAME.equals(qname)) {
+			return new ParentPathSegment();
+		} else if (ObjectReferencePathSegment.QNAME.equals(qname)) {
+			return new ObjectReferencePathSegment();
+		} else if (IdentifierPathSegment.QNAME.equals(qname)) {
+			return new IdentifierPathSegment();
 		} else {
-			this.segments.add(new NameItemPathSegment(qname));
+			return new NameItemPathSegment(qname, variable);
 		}
 	}
 
@@ -192,6 +221,7 @@ public class ItemPath implements Serializable, Cloneable {
 		return segments.get(0);
 	}
 
+	@NotNull
 	public ItemPath rest() {
 		return tail();
 	}
@@ -204,7 +234,8 @@ public class ItemPath implements Serializable, Cloneable {
         }
         return null;
     }
-	
+
+    @Nullable
 	public ItemPathSegment last() {
 		if (segments.size() == 0) {
 			return null;
@@ -222,6 +253,7 @@ public class ItemPath implements Serializable, Cloneable {
 	/**
 	 * Returns path containing all segments except the first N.
 	 */
+	@NotNull
 	public ItemPath tail(int n) {
 		if (segments.size() < n) {
 			return EMPTY_PATH;
@@ -229,6 +261,7 @@ public class ItemPath implements Serializable, Cloneable {
 		return new ItemPath(segments.subList(n, segments.size()));
 	}
 
+	@NotNull
 	public ItemPath tail() {
 		return tail(1);
 	}
@@ -236,6 +269,7 @@ public class ItemPath implements Serializable, Cloneable {
 	/**
 	 * Returns a path containing all segments except the last one.
 	 */
+	@NotNull
 	public ItemPath allExceptLast() {
 		if (segments.size() == 0) {
 			return EMPTY_PATH;
@@ -260,7 +294,8 @@ public class ItemPath implements Serializable, Cloneable {
      * counted from backwards.
      * If the segment is not present, returns empty path.
      */
-    public ItemPath allUpTo(ItemPathSegment segment) {
+	@SuppressWarnings("unused")
+	public ItemPath allUpTo(ItemPathSegment segment) {
         int i = segments.lastIndexOf(segment);
         if (i < 0) {
             return EMPTY_PATH;
@@ -318,8 +353,27 @@ public class ItemPath implements Serializable, Cloneable {
 		}
 		return normalizedPath;
 	}
-	
-	public CompareResult compareComplex(ItemPath otherPath) {
+
+	public ItemPath removeIdentifiers() {
+		ItemPath rv = new ItemPath();
+		for (ItemPathSegment segment : segments) {
+			if (!(segment instanceof IdItemPathSegment)) {
+				rv.add(segment);
+			}
+		}
+		return rv;
+	}
+
+	/**
+	 * path1.compareComplex(path2) returns:
+	 *
+	 *  - EQUIVALENT if the paths are equivalent
+	 *  - SUBPATH if path1 is a subpath of path2, i.e. it is its 'prefix' (it is shorter): like A/B is a subpath of A/B/C/D
+	 *  - SUPERPATH if path2 is a subpath of path1, like A/B/C/D is a superpath of A/B
+	 *  - NO_RELATION if neither of the above three occurs
+	 */
+	@Deprecated
+	public CompareResult compareComplexOld(ItemPath otherPath) {
 		ItemPath thisNormalized = this.normalize();
 		ItemPath otherNormalized = otherPath == null ? EMPTY_PATH : otherPath.normalize();
 		int i = 0;
@@ -332,13 +386,83 @@ public class ItemPath implements Serializable, Cloneable {
 			i++;
 		}
 		if (i < thisNormalized.size()) {
-			return CompareResult.SUPERPATH;
+			return CompareResult.SUPERPATH;				// "this" is longer than "other"
 		}
 		if (i < otherNormalized.size()) {
-			return CompareResult.SUBPATH;
+			return CompareResult.SUBPATH;				// "this" is shorter than "other"
 		}
 		return CompareResult.EQUIVALENT;
 	}
+
+	/**
+	 * Alternative to normalization: reads the same sequence of segments of 'path' as segments of 'path.normalize()'
+	 */
+	private class ItemPathNormalizingIterator implements Iterator<ItemPathSegment> {
+		final ItemPath path;
+		private int i = 0;
+		private boolean nextIsArtificialId = false;
+
+		ItemPathNormalizingIterator(ItemPath path) {
+			this.path = path;
+		}
+
+		@Override
+		public boolean hasNext() {
+			// note that if i == path.size(), nextIsArtificialId is always false
+			return i < path.size();
+		}
+
+		@Override
+		public ItemPathSegment next() {
+			if (i >= path.size()) {
+				throw new IndexOutOfBoundsException("Index: " + i + ", path size: " + path.size() + ", path: " + path);
+			} else if (nextIsArtificialId) {
+				nextIsArtificialId = false;
+				return new IdItemPathSegment();
+			} else if (i == path.size() - 1) {
+				// the last segment: nothing will be added
+				return path.segments.get(i++);
+			} else {
+				ItemPathSegment rv = path.segments.get(i++);
+				if (!(rv instanceof IdItemPathSegment) && !(path.segments.get(i) instanceof IdItemPathSegment)) {
+					nextIsArtificialId = true;			// next one returned will be artificial id segment
+				}
+				return rv;
+			}
+		}
+	}
+
+	private ItemPathNormalizingIterator normalizingIterator() {
+		return new ItemPathNormalizingIterator(this);
+	}
+
+	public CompareResult compareComplex(ItemPath otherPath) {
+		ItemPathNormalizingIterator thisIterator = this.normalizingIterator();
+		ItemPathNormalizingIterator otherIterator = (otherPath != null ? otherPath : EMPTY_PATH).normalizingIterator();
+		while (thisIterator.hasNext() && otherIterator.hasNext()) {
+			ItemPathSegment thisSegment = thisIterator.next();
+			ItemPathSegment otherSegment = otherIterator.next();
+			if (!thisSegment.equivalent(otherSegment)) {
+				return CompareResult.NO_RELATION;
+			}
+		}
+		if (thisIterator.hasNext()) {
+			return CompareResult.SUPERPATH;				// "this" is longer than "other"
+		}
+		if (otherIterator.hasNext()) {
+			return CompareResult.SUBPATH;				// "this" is shorter than "other"
+		}
+		return CompareResult.EQUIVALENT;
+	}
+
+//	public CompareResult compareComplex(ItemPath otherPath) {
+//		CompareResult r1 = compareComplexOld(otherPath);
+//		CompareResult r2 = compareComplexEfficient(otherPath);
+//		if (r1 != r2) {
+//			throw new AssertionError("old vs efficient: r1 = " + r1 + ", r2 = " + r2);
+//		}
+//		return r2;
+//	}
 
     public static boolean containsEquivalent(Collection<ItemPath> paths, ItemPath pathToBeFound) {
         for (ItemPath path : paths) {
@@ -349,15 +473,57 @@ public class ItemPath implements Serializable, Cloneable {
         return false;
     }
 
-    public static boolean containsSubpathOrEquivalent(Collection<ItemPath> paths, ItemPath pathToBeFound) {
-        for (ItemPath path : paths) {
-            CompareResult r = pathToBeFound.compareComplex(path);
-            if (r == CompareResult.SUBPATH || r == CompareResult.EQUIVALENT) {
-                return true;
-            }
-        }
-        return false;
+	/**
+	 * Returns true if the collection contains a superpath of or equivalent path to the given path.
+	 * I.e. having collection = { A/B, A/C }
+	 * then the method for this collection and 'path' returns:
+	 *  - path = A/B -> true
+	 *  - path = A -> true
+	 *  - path = A/B/C -> false
+	 *  - path = X -> false
+	 */
+    public static boolean containsSuperpathOrEquivalent(Collection<ItemPath> paths, ItemPath pathToBeFound) {
+    	return paths.stream().anyMatch(p -> p.isSuperPathOrEquivalent(pathToBeFound));
     }
+
+	/**
+	 * Returns true if the collection contains a superpath of the given path.
+	 * I.e. having collection = { A/B, A/C }
+	 * then the method for this collection and 'path' returns:
+	 *  - path = A/B -> false
+	 *  - path = A -> true
+	 *  - path = A/B/C -> false
+	 *  - path = X -> false
+	 */
+	public static boolean containsSuperpath(Collection<ItemPath> paths, ItemPath pathToBeFound) {
+		return paths.stream().anyMatch(p -> p.isSuperPath(pathToBeFound));
+	}
+
+	/**
+	 * Returns true if the collection contains a subpath of or equivalent path to the given path.
+	 * I.e. having collection = { A/B, A/C }
+	 * then the method for this collection and 'path' returns:
+	 *  - path = A/B -> true
+	 *  - path = A -> false
+	 *  - path = A/B/C -> true
+	 *  - path = X -> false
+	 */
+    public static boolean containsSubpathOrEquivalent(Collection<ItemPath> paths, ItemPath pathToBeFound) {
+    	return paths.stream().anyMatch(p -> p.isSubPathOrEquivalent(pathToBeFound));
+    }
+
+	/**
+	 * Returns true if the collection contains a superpath of the given path.
+	 * I.e. having collection = { A/B, A/C }
+	 * then the method for this collection and 'path' returns:
+	 *  - path = A/B -> false
+	 *  - path = A -> false
+	 *  - path = A/B/C -> true
+	 *  - path = X -> false
+	 */
+	public static boolean containsSubpath(Collection<ItemPath> paths, ItemPath pathToBeFound) {
+		return paths.stream().anyMatch(p -> p.isSubPath(pathToBeFound));
+	}
 
     public ItemPath namedSegmentsOnly() {
         ItemPath rv = new ItemPath();
@@ -373,23 +539,35 @@ public class ItemPath implements Serializable, Cloneable {
 		return itemPath == null || itemPath.isEmpty();
 	}
 
+	public static boolean isNullOrEmpty(ItemPathType pathType) {
+		return pathType == null || isNullOrEmpty(pathType.getItemPath());
+	}
+
+	@SuppressWarnings("unused")
 	public static boolean containsSingleNameSegment(ItemPath path) {
 		return path != null && path.size() == 1 && path.first() instanceof NameItemPathSegment;
 	}
 
 	public boolean startsWith(Class<? extends ItemPathSegment> clazz) {
-		if (isEmpty()) {
-			return false;
-		} else {
-			return clazz.isAssignableFrom(first().getClass());
-		}
+		return !isEmpty() && clazz.isAssignableFrom(first().getClass());
 	}
 
 	public boolean startsWith(ItemPath other) {
-		if (other == null) {
-			return true;
-		}
-		return other.isSubPathOrEquivalent(this);
+		return other == null || other.isSubPathOrEquivalent(this);
+	}
+	
+	public boolean startsWithName(QName name) {
+		return !isEmpty()
+				&& startsWith(NameItemPathSegment.class)
+				&& QNameUtil.match(name, ((NameItemPathSegment) first()).getName());
+	}
+
+	public boolean startsWithVariable() {
+		return !isEmpty() && first().isVariable();
+	}
+
+	public ItemPath stripVariableSegment() {
+		return startsWithVariable() ? rest() : this;
 	}
 
 	public QName asSingleName() {
@@ -404,11 +582,36 @@ public class ItemPath implements Serializable, Cloneable {
 		return path != null ? path.asSingleName() : null;
 	}
 
+	public static ItemPath[] asPathArray(QName... names) {
+		ItemPath[] paths = new ItemPath[names.length];
+		int i = 0;
+		for (QName name : names) {
+			paths[i++] = new ItemPath(name);
+		}
+		return paths;
+	}
+
+	public ItemPath append(QName childName) {
+		return new ItemPath(this, childName);
+	}
+
+	public ItemPath append(ItemPath childPath) {
+		return new ItemPath(this, childPath);
+	}
+
+	@NotNull
+	public static List<ItemPath> fromStringList(List<String> pathsAsStrings) {
+		List<ItemPath> rv = new ArrayList<>();
+		if (pathsAsStrings != null) {
+			for (String pathAsString : pathsAsStrings) {
+				rv.add(new ItemPathType(pathAsString).getItemPath());
+			}
+		}
+		return rv;
+	}
+
 	public enum CompareResult {
-		EQUIVALENT,
-		SUPERPATH,
-		SUBPATH,
-		NO_RELATION;
+		EQUIVALENT, SUPERPATH, SUBPATH, NO_RELATION
 	}
 	
 	public boolean isSubPath(ItemPath otherPath) {
@@ -419,6 +622,11 @@ public class ItemPath implements Serializable, Cloneable {
 		return compareComplex(otherPath) == CompareResult.SUPERPATH;
 	}
 
+	public boolean isSuperPathOrEquivalent(ItemPath otherPath) {
+		CompareResult result = compareComplex(otherPath);
+		return result == CompareResult.SUPERPATH || result == CompareResult.EQUIVALENT;
+	}
+
     public boolean isSubPathOrEquivalent(ItemPath otherPath) {
         CompareResult result = compareComplex(otherPath);
         return result == CompareResult.SUBPATH || result == CompareResult.EQUIVALENT;
@@ -426,9 +634,6 @@ public class ItemPath implements Serializable, Cloneable {
 
     /**
      * Compares two paths semantically.
-     *
-     * @param otherPath
-     * @return
      */
     public boolean equivalent(ItemPath otherPath) {
 		return compareComplex(otherPath) == CompareResult.EQUIVALENT;
@@ -459,9 +664,6 @@ public class ItemPath implements Serializable, Cloneable {
      * Returns the remainder of "this" path after passing all segments from the other path.
      * (I.e. this path must begin with the content of the other path. Throws an exception when
      * it is not the case.)
-     *
-     * @param otherPath
-     * @return
      */
 	public ItemPath remainder(ItemPath otherPath) {
 		ItemPath thisNormalized = this.normalize();
@@ -485,7 +687,7 @@ public class ItemPath implements Serializable, Cloneable {
 	
 	/**
 	 * Convenience static method with checks
-	 * @throw IllegalArgumentException
+	 * @throws IllegalArgumentException If the argument is an item path segment other than a named one
 	 */
 	public static QName getName(ItemPathSegment segment) {
 		if (segment == null) {
@@ -509,18 +711,29 @@ public class ItemPath implements Serializable, Cloneable {
 		if (itemPath == null) {
 			return null;
 		}
-		ItemPathSegment first = itemPath.first();
+		return itemPath.getFirstNameSegment();
+	}
+	
+	public NameItemPathSegment getFirstNameSegment() {
+		ItemPathSegment first = first();
 		if (first instanceof NameItemPathSegment) {
 			return (NameItemPathSegment)first;
 		}
 		if (first instanceof IdItemPathSegment) {
-			return getFirstNameSegment(itemPath.rest());
+			return getFirstNameSegment(rest());
 		}
 		return null;
 	}
 	
 	public static QName getFirstName(ItemPath itemPath) {
-		NameItemPathSegment nameSegment = getFirstNameSegment(itemPath);
+		if (itemPath == null) {
+			return null;
+		}
+		return itemPath.getFirstName();
+	}
+	
+	public QName getFirstName() {
+		NameItemPathSegment nameSegment = getFirstNameSegment();
 		if (nameSegment == null) {
 			return null;
 		}
@@ -568,14 +781,19 @@ public class ItemPath implements Serializable, Cloneable {
 		return result;
 	}
 
+	public boolean equals(Object obj, boolean exact) {
+		if (exact) {
+			return equals(obj);
+		} else {
+			return obj instanceof ItemPath && equivalent((ItemPath) obj);
+		}
+	}
+
     /**
      * More strict version of ItemPath comparison. Does not use any normalization
      * nor approximate matching QNames via QNameUtil.match.
      *
      * For semantic-level comparison, please use equivalent(..) method.
-     *
-     * @param obj
-     * @return
      */
 	@Override
 	public boolean equals(Object obj) {
@@ -610,18 +828,28 @@ public class ItemPath implements Serializable, Cloneable {
 	}
 
 	public boolean containsSpecialSymbols() {
-		for (ItemPathSegment segment : segments) {
-			if (segment instanceof ReferencePathSegment || segment instanceof IdentifierPathSegment) {
-				return true;
-			}
-		}
-		return false;
+		return segments.stream().anyMatch(s -> s instanceof IdentifierPathSegment || s instanceof ReferencePathSegment);
 	}
 
-	public static void checkNoReferences(ItemPath path) {
+	public boolean containsSpecialSymbolsExceptParent() {
+		return segments.stream().anyMatch(s -> s instanceof IdentifierPathSegment || s instanceof ObjectReferencePathSegment);
+	}
+
+	public static void checkNoSpecialSymbols(ItemPath path) {
 		if (containsSpecialSymbols(path)) {
-			throw new IllegalStateException("Item path shouldn't contain references but it does: " + path);
+			throw new IllegalStateException("Item path shouldn't contain special symbols but it does: " + path);
 		}
 	}
+
+	public static void checkNoSpecialSymbolsExceptParent(ItemPath path) {
+		if (path != null && path.containsSpecialSymbolsExceptParent()) {
+			throw new IllegalStateException("Item path shouldn't contain special symbols (except for parent) but it does: " + path);
+		}
+	}
+
+	public ItemPathType asItemPathType() {
+		return new ItemPathType(this);
+	}
+
 
 }

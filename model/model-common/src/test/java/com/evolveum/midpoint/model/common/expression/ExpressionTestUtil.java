@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Evolveum
+ * Copyright (c) 2013-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,19 +18,25 @@ package com.evolveum.midpoint.model.common.expression;
 import java.util.ArrayList;
 import java.util.Collection;
 
-import com.evolveum.midpoint.model.common.expression.ExpressionFactory;
-import com.evolveum.midpoint.model.common.expression.ExpressionUtil;
-import com.evolveum.midpoint.model.common.expression.evaluator.AsIsExpressionEvaluatorFactory;
+import org.apache.commons.configuration.BaseConfiguration;
+import org.apache.commons.configuration.Configuration;
+
+import com.evolveum.midpoint.repo.common.expression.ExpressionFactory;
+import com.evolveum.midpoint.repo.common.expression.evaluator.AsIsExpressionEvaluatorFactory;
+import com.evolveum.midpoint.repo.common.expression.evaluator.LiteralExpressionEvaluatorFactory;
+import com.evolveum.midpoint.model.common.ConstantsManager;
+import com.evolveum.midpoint.model.common.expression.evaluator.ConstExpressionEvaluatorFactory;
 import com.evolveum.midpoint.model.common.expression.evaluator.GenerateExpressionEvaluatorFactory;
-import com.evolveum.midpoint.model.common.expression.evaluator.LiteralExpressionEvaluatorFactory;
 import com.evolveum.midpoint.model.common.expression.evaluator.PathExpressionEvaluatorFactory;
 import com.evolveum.midpoint.model.common.expression.functions.FunctionLibrary;
+import com.evolveum.midpoint.model.common.expression.functions.FunctionLibraryUtil;
 import com.evolveum.midpoint.model.common.expression.script.ScriptExpressionEvaluatorFactory;
 import com.evolveum.midpoint.model.common.expression.script.ScriptExpressionFactory;
 import com.evolveum.midpoint.model.common.expression.script.jsr223.Jsr223ScriptEvaluator;
 import com.evolveum.midpoint.model.common.expression.script.xpath.XPathScriptEvaluator;
+import com.evolveum.midpoint.model.common.stringpolicy.ValuePolicyProcessor;
 import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.crypto.AESProtector;
+import com.evolveum.midpoint.prism.crypto.ProtectorImpl;
 import com.evolveum.midpoint.schema.util.ObjectResolver;
 import com.evolveum.midpoint.security.api.SecurityEnforcer;
 import com.evolveum.midpoint.test.util.MidPointTestConstants;
@@ -41,17 +47,17 @@ import com.evolveum.midpoint.test.util.MidPointTestConstants;
  */
 public class ExpressionTestUtil {
 	
-	public static AESProtector createInitializedProtector(PrismContext prismContext) {
-		AESProtector protector = new AESProtector();
+	public static ProtectorImpl createInitializedProtector(PrismContext prismContext) {
+		ProtectorImpl protector = new ProtectorImpl();
         protector.setKeyStorePath(MidPointTestConstants.KEYSTORE_PATH);
         protector.setKeyStorePassword(MidPointTestConstants.KEYSTORE_PASSWORD);
-        //protector.setPrismContext(prismContext);
         protector.init();
         return protector;
 	}
 	
-	public static ExpressionFactory createInitializedExpressionFactory(ObjectResolver resolver, AESProtector protector, PrismContext prismContext, SecurityEnforcer securityEnforcer) {
-    	ExpressionFactory expressionFactory = new ExpressionFactory(resolver, prismContext);
+	public static ExpressionFactory createInitializedExpressionFactory(ObjectResolver resolver, ProtectorImpl protector, 
+			PrismContext prismContext, SecurityEnforcer securityEnforcer) {
+    	ExpressionFactory expressionFactory = new ExpressionFactory(resolver, securityEnforcer, prismContext);
     	
     	// asIs
     	AsIsExpressionEvaluatorFactory asIsFactory = new AsIsExpressionEvaluatorFactory(prismContext, protector);
@@ -62,18 +68,25 @@ public class ExpressionTestUtil {
     	LiteralExpressionEvaluatorFactory valueFactory = new LiteralExpressionEvaluatorFactory(prismContext);
     	expressionFactory.addEvaluatorFactory(valueFactory);
     	
+		// const
+    	ConstantsManager constManager = new ConstantsManager(createConfiguration());
+    	ConstExpressionEvaluatorFactory constFactory = new ConstExpressionEvaluatorFactory(protector, constManager, prismContext);
+    	expressionFactory.addEvaluatorFactory(constFactory);
+    	
     	// path
     	PathExpressionEvaluatorFactory pathFactory = new PathExpressionEvaluatorFactory(prismContext, resolver, protector);
     	expressionFactory.addEvaluatorFactory(pathFactory);
     	
     	// generate
-    	GenerateExpressionEvaluatorFactory generateFactory = new GenerateExpressionEvaluatorFactory(protector, resolver, prismContext);
+    	ValuePolicyProcessor valuePolicyGenerator = new ValuePolicyProcessor();
+    	valuePolicyGenerator.setExpressionFactory(expressionFactory);
+    	GenerateExpressionEvaluatorFactory generateFactory = new GenerateExpressionEvaluatorFactory(protector, resolver, valuePolicyGenerator, prismContext);
     	expressionFactory.addEvaluatorFactory(generateFactory);
 
     	// script
     	Collection<FunctionLibrary> functions = new ArrayList<FunctionLibrary>();
-        functions.add(ExpressionUtil.createBasicFunctionLibrary(prismContext, protector));
-        functions.add(ExpressionUtil.createLogFunctionLibrary(prismContext));
+        functions.add(FunctionLibraryUtil.createBasicFunctionLibrary(prismContext, protector));
+        functions.add(FunctionLibraryUtil.createLogFunctionLibrary(prismContext));
         ScriptExpressionFactory scriptExpressionFactory = new ScriptExpressionFactory(resolver, prismContext, protector);
         scriptExpressionFactory.setFunctions(functions);
         XPathScriptEvaluator xpathEvaluator = new XPathScriptEvaluator(prismContext);
@@ -84,6 +97,12 @@ public class ExpressionTestUtil {
         expressionFactory.addEvaluatorFactory(scriptExpressionEvaluatorFactory);
         
         return expressionFactory;
+	}
+	
+	private static Configuration createConfiguration() {
+    	BaseConfiguration config = new BaseConfiguration();
+    	config.addProperty("foo", "foobar");
+		return config;
 	}
 
 }

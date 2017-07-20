@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,14 +15,17 @@
  */
 package com.evolveum.midpoint.model.common.expression.evaluator;
 
+import java.util.List;
+
 import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.model.api.ModelService;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluationContext;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismReferenceDefinition;
 import com.evolveum.midpoint.prism.PrismReferenceValue;
 import com.evolveum.midpoint.prism.crypto.Protector;
+import com.evolveum.midpoint.prism.delta.ItemDelta;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluationContext;
 import com.evolveum.midpoint.schema.util.ObjectResolver;
 import com.evolveum.midpoint.security.api.SecurityEnforcer;
 import com.evolveum.midpoint.util.logging.Trace;
@@ -43,7 +46,7 @@ public class ReferenceSearchExpressionEvaluator
 		super(expressionEvaluatorType, outputDefinition, protector, objectResolver, modelService, prismContext, securityEnforcer);
 	}
 	
-	protected PrismReferenceValue createPrismValue(String oid, QName targetTypeQName, ExpressionEvaluationContext params) {
+	protected PrismReferenceValue createPrismValue(String oid, QName targetTypeQName, List<ItemDelta<PrismReferenceValue, PrismReferenceDefinition>> additionalAttributeValues, ExpressionEvaluationContext params) {
 		PrismReferenceValue refVal = new PrismReferenceValue();
 		
 		refVal.setOid(oid);

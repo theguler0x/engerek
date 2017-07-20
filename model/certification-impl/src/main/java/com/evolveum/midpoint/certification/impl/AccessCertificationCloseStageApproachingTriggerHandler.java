@@ -27,11 +27,7 @@ import com.evolveum.midpoint.util.exception.*;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignStateType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCaseType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -65,7 +61,7 @@ public class AccessCertificationCloseStageApproachingTriggerHandler implements T
 	}
 	
 	@Override
-	public <O extends ObjectType> void handle(PrismObject<O> prismObject, Task task, OperationResult result) {
+	public <O extends ObjectType> void handle(PrismObject<O> prismObject, TriggerType trigger, Task task, OperationResult result) {
 		try {
 			ObjectType object = prismObject.asObjectable();
 			if (!(object instanceof AccessCertificationCampaignType)) {
@@ -82,14 +78,14 @@ public class AccessCertificationCloseStageApproachingTriggerHandler implements T
 			}
 
 			eventHelper.onCampaignStageDeadlineApproaching(campaign, task, result);
-			List<AccessCertificationCaseType> caseList = queryHelper.searchCases(campaign.getOid(), null, null, task, result);
-			Collection<String> reviewers = eventHelper.getCurrentReviewers(campaign, caseList);
+			List<AccessCertificationCaseType> caseList = queryHelper.searchCases(campaign.getOid(), null, null, result);
+			Collection<String> reviewers = eventHelper.getCurrentActiveReviewers(caseList);
 			for (String reviewerOid : reviewers) {
-				List<AccessCertificationCaseType> reviewerCaseList = queryHelper.selectCasesForReviewer(campaign, caseList, reviewerOid);
+				List<AccessCertificationCaseType> reviewerCaseList = queryHelper.selectOpenCasesForReviewer(caseList, reviewerOid);
 				ObjectReferenceType reviewerRef = ObjectTypeUtil.createObjectRef(reviewerOid, ObjectTypes.USER);
 				eventHelper.onReviewDeadlineApproaching(reviewerRef, reviewerCaseList, campaign, task, result);
 			}
-		} catch (SchemaException|SecurityViolationException|ObjectNotFoundException|CommunicationException|ConfigurationException|RuntimeException e) {
+		} catch (SchemaException|RuntimeException e) {
 			LoggingUtils.logException(LOGGER, "Couldn't generate 'deadline approaching' notifications", e);
 		}
 	}

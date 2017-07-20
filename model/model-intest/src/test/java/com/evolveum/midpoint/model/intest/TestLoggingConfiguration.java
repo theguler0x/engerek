@@ -36,20 +36,19 @@ import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
 import com.evolveum.midpoint.prism.util.PrismTestUtil;
+import com.evolveum.midpoint.schema.internals.InternalsConfig;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.MiscSchemaUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.test.IntegrationTestTools;
 import com.evolveum.midpoint.test.util.LogfileTestTailer;
 import com.evolveum.midpoint.test.util.TestUtil;
-import com.evolveum.midpoint.util.aspect.MidpointAspect;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AuditingConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ClassLoggerConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.LoggingComponentType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.LoggingConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.LoggingLevelType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SubSystemLoggerConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemObjectsType;
@@ -67,9 +66,10 @@ public class TestLoggingConfiguration extends AbstractConfiguredModelIntegration
 	
 	@Override
 	public void initSystem(Task initTask, OperationResult initResult) throws Exception {
+		InternalsConfig.setAvoidLoggingChange(false);
 		// DO NOT call super.initSystem() as this will install system config. We do not want that here.
-		userAdministrator = repoAddObjectFromFile(USER_ADMINISTRATOR_FILE, UserType.class, initResult);
-		repoAddObjectFromFile(ROLE_SUPERUSER_FILE, RoleType.class, initResult);
+		userAdministrator = repoAddObjectFromFile(USER_ADMINISTRATOR_FILE, initResult);
+		repoAddObjectFromFile(ROLE_SUPERUSER_FILE, initResult);
 		login(userAdministrator);
 	}
 	
@@ -138,8 +138,9 @@ public class TestLoggingConfiguration extends AbstractConfiguredModelIntegration
 		tailer.assertMarkerNotLogged(LogfileTestTailer.LEVEL_TRACE, ProfilingDataManager.Subsystem.PROVISIONING.name());
 		
 		// WHEN
+		repositoryService.postInit(result);
 		modelService.postInit(result);
-		
+
 		// THEN
 		tailer.logAndTail();
 		
@@ -470,7 +471,7 @@ public class TestLoggingConfiguration extends AbstractConfiguredModelIntegration
 		// THEN
 		
 		tailer.tail();
-		tailer.assertAudit(3);
+		tailer.assertAudit(2);
 		tailer.assertAuditRequest();
 		tailer.assertAuditExecution();
 		

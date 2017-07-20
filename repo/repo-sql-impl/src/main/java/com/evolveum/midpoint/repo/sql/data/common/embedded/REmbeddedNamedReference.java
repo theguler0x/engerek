@@ -17,12 +17,9 @@
 package com.evolveum.midpoint.repo.sql.data.common.embedded;
 
 import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.repo.sql.data.common.ObjectReference;
 import com.evolveum.midpoint.repo.sql.data.common.other.RObjectType;
-import com.evolveum.midpoint.repo.sql.util.ClassMapper;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.commons.lang.builder.ReflectionToStringBuilder;
 import org.apache.commons.lang.builder.ToStringStyle;
@@ -104,11 +101,11 @@ public class REmbeddedNamedReference extends REmbeddedReference {
         jaxb.setTargetName(RPolyString.copyToJAXB(repo.getTargetName()));
     }
 
-    public static void copyFromJAXB(ObjectReferenceType jaxb, REmbeddedNamedReference repo, PrismContext prismContext) {
+    public static void copyFromJAXB(ObjectReferenceType jaxb, REmbeddedNamedReference repo) {
         Validate.notNull(repo, "Repo object must not be null.");
         Validate.notNull(jaxb, "JAXB object must not be null.");
         Validate.notEmpty(jaxb.getOid(), "Target oid must not be null.");
-        REmbeddedReference.copyFromJAXB(jaxb, repo, prismContext);
+        REmbeddedReference.copyFromJAXB(jaxb, repo);
 
         repo.setTargetName(RPolyString.copyFromJAXB(jaxb.getTargetName()));
     }

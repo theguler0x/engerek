@@ -19,6 +19,8 @@ package com.evolveum.midpoint.prism.query;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.evolveum.midpoint.util.DebugUtil;
+
 public abstract class LogicalFilter extends ObjectFilter {
 	
 	protected List<ObjectFilter> conditions;
@@ -56,8 +58,8 @@ public abstract class LogicalFilter extends ObjectFilter {
 			return null;
 		}
 		List<ObjectFilter> clonedConditions = new ArrayList<ObjectFilter>(conditions.size());
-		for (ObjectFilter connditio: conditions) {
-			clonedConditions.add(connditio.clone());
+		for (ObjectFilter condition: conditions) {
+			clonedConditions.add(condition.clone());
 		}
 		return clonedConditions;
 	}
@@ -67,7 +69,7 @@ public abstract class LogicalFilter extends ObjectFilter {
 	}
 
 	@Override
-	public void checkConsistence() {
+	public void checkConsistence(boolean requireDefinitions) {
 		if (conditions == null) {
 			throw new IllegalArgumentException("Null conditions in "+this);
 		}
@@ -78,7 +80,7 @@ public abstract class LogicalFilter extends ObjectFilter {
 			if (condition == null) {
 				throw new IllegalArgumentException("Null subfilter in "+this);
 			}
-			condition.checkConsistence();
+			condition.checkConsistence(requireDefinitions);
 		}
 	}
 	
@@ -99,7 +101,7 @@ public abstract class LogicalFilter extends ObjectFilter {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
+	public boolean equals(Object obj, boolean exact) {
 		if (this == obj)
 			return true;
 		if (obj == null)
@@ -107,12 +109,48 @@ public abstract class LogicalFilter extends ObjectFilter {
 		if (getClass() != obj.getClass())
 			return false;
 		LogicalFilter other = (LogicalFilter) obj;
-		if (conditions == null) {
-			if (other.conditions != null)
+
+		if (conditions != null) {
+			if (conditions.size() != other.conditions.size()) {
 				return false;
-		} else if (!conditions.equals(other.conditions))
-			return false;
+			}
+			for (int i = 0; i < conditions.size(); i++) {
+				ObjectFilter of1 = this.conditions.get(i);
+				ObjectFilter of2 = other.conditions.get(i);
+				if (!of1.equals(of2, exact)) {
+					return false;
+				}
+			}
+		}
 		return true;
 	}
 	
+	@Override
+	public String debugDump(int indent) {
+		StringBuilder sb = new StringBuilder();
+		DebugUtil.indentDebugDump(sb, indent);
+		sb.append(getDebugDumpOperationName()).append(":");
+		for (ObjectFilter filter : getConditions()){
+			sb.append("\n");
+			sb.append(filter.debugDump(indent + 1));
+		}
+		return sb.toString();
+	}
+	
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		sb.append(getDebugDumpOperationName());
+		sb.append("(");
+		for (int i = 0; i < getConditions().size(); i++){
+			sb.append(getConditions().get(i));
+			if (i != getConditions().size() - 1) {
+				sb.append(",");
+			}
+		}
+		sb.append(")");
+		return sb.toString();
+	}
+	
+	protected abstract String getDebugDumpOperationName();
 }

@@ -17,18 +17,20 @@
 package com.evolveum.midpoint.repo.sql.data.common;
 
 import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.repo.sql.data.RepositoryContext;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.RPolyString;
 import com.evolveum.midpoint.repo.sql.util.DtoTranslationException;
 import com.evolveum.midpoint.repo.sql.util.IdGeneratorResult;
+import com.evolveum.midpoint.repo.sql.util.MidPointJoinedPersister;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.NodeType;
 
 import org.hibernate.annotations.ForeignKey;
+import org.hibernate.annotations.Persister;
 
 import javax.persistence.*;
-import javax.xml.datatype.XMLGregorianCalendar;
 
 import java.util.Collection;
 
@@ -38,6 +40,7 @@ import java.util.Collection;
 @Entity
 @ForeignKey(name = "fk_node")
 @Table(uniqueConstraints = @UniqueConstraint(name = "uc_node_name", columnNames = {"name_norm"}))
+@Persister(impl = MidPointJoinedPersister.class)
 public class RNode extends RObject<NodeType> {
 
     private RPolyString name;
@@ -83,9 +86,9 @@ public class RNode extends RObject<NodeType> {
         return result;
     }
 
-    public static void copyFromJAXB(NodeType jaxb, RNode repo, PrismContext prismContext,
-                                    IdGeneratorResult generatorResult) throws DtoTranslationException {
-        RObject.copyFromJAXB(jaxb, repo, prismContext, generatorResult);
+    public static void copyFromJAXB(NodeType jaxb, RNode repo, RepositoryContext repositoryContext,
+            IdGeneratorResult generatorResult) throws DtoTranslationException {
+        RObject.copyFromJAXB(jaxb, repo, repositoryContext, generatorResult);
 
         repo.setName(RPolyString.copyFromJAXB(jaxb.getName()));
         repo.setNodeIdentifier(jaxb.getNodeIdentifier());

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,23 +25,22 @@ import java.util.Map.Entry;
 
 import javax.xml.namespace.QName;
 
-import com.evolveum.midpoint.model.common.expression.ObjectDeltaObject;
+import com.evolveum.midpoint.common.refinery.*;
 import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.schema.DeltaConvertor;
 import com.evolveum.midpoint.schema.ResourceShadowDiscriminator;
+import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.util.exception.*;
-import com.evolveum.midpoint.xml.ns._public.model.model_context_3.LensProjectionContextType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import com.evolveum.prism.xml.ns._public.types_3.ObjectDeltaType;
 
 import org.apache.commons.lang.StringUtils;
 import org.jvnet.jaxb2_commons.lang.Validate;
 
 import com.evolveum.midpoint.common.crypto.CryptoUtil;
-import com.evolveum.midpoint.common.refinery.RefinedAttributeDefinition;
-import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
-import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
+import com.evolveum.midpoint.repo.common.expression.ObjectDeltaObject;
 import com.evolveum.midpoint.model.api.context.ModelProjectionContext;
 import com.evolveum.midpoint.model.api.context.SynchronizationPolicyDecision;
 import com.evolveum.midpoint.prism.delta.ChangeType;
@@ -51,30 +50,15 @@ import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
 import com.evolveum.midpoint.prism.delta.ReferenceDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.schema.processor.ResourceAttribute;
+import com.evolveum.midpoint.schema.processor.ResourceAttributeContainer;
 import com.evolveum.midpoint.schema.processor.ResourceSchema;
 import com.evolveum.midpoint.schema.util.MiscSchemaUtil;
 import com.evolveum.midpoint.schema.util.ShadowUtil;
+import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.schema.util.ResourceTypeUtil;
 import com.evolveum.midpoint.schema.util.SchemaDebugUtil;
 import com.evolveum.midpoint.util.Cloner;
 import com.evolveum.midpoint.util.DebugUtil;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnforcementType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FailedOperationTypeType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.LayerType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultStatusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ProjectionPolicyType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceObjectTypeDefinitionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceObjectTypeDependencyType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowAssociationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowDiscriminatorType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SynchronizationSituationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ValuePolicyType;
 
 /**
  * @author semancik
@@ -168,22 +152,36 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
      * 
      * Intermediary computation result. It is stored to allow re-computing of account constructions during
      * iterative computations.
+	 *
+	 * Source: AssignmentProcessor
+	 * Target: ConsolidationProcessor / ReconciliationProcessor (via squeezed structures)
      */
     private transient PrismValueDeltaSetTriple<PrismPropertyValue<Construction>> constructionDeltaSetTriple;
+
+	/**
+	 * Triples for outbound mappings; similar to the above.
+	 * Source: OutboundProcessor
+	 * Target: ConsolidationProcessor / ReconciliationProcessor (via squeezed structures)
+	 */
+	private transient Construction outboundConstruction;
     
-    private transient Construction outboundConstruction;
-    
-    private transient Collection<ResourceObjectTypeDependencyType> dependencies = null;
-    
-    private transient Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismPropertyValue<?>,PrismPropertyDefinition<?>>>> squeezedAttributes;
+	/**
+	 * Postprocessed triples from the above two properties.
+	 * Source: ConsolidationProcessor
+	 * Target: ReconciliationProcessor
+	 */
+	private transient Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismPropertyValue<?>,PrismPropertyDefinition<?>>>> squeezedAttributes;
     private transient Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismContainerValue<ShadowAssociationType>,PrismContainerDefinition<ShadowAssociationType>>>> squeezedAssociations;
     private transient Map<QName, DeltaSetTriple<ItemValueWithOrigin<PrismPropertyValue<QName>,PrismPropertyDefinition<QName>>>> squeezedAuxiliaryObjectClasses;
-    
-    // Cached copy, to avoid constructing it over and over again
+
+	private transient Collection<ResourceObjectTypeDependencyType> dependencies = null;
+
+	// Cached copy, to avoid constructing it over and over again
     private transient PrismObjectDefinition<ShadowType> shadowDefinition = null;
     
     private transient RefinedObjectClassDefinition structuralObjectClassDefinition;
     private transient Collection<RefinedObjectClassDefinition> auxiliaryObjectClassDefinitions;
+    private transient CompositeRefinedObjectClassDefinition compositeObjectClassDefinition;
     
     private ValuePolicyType accountPasswordPolicy;
 
@@ -200,6 +198,8 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 	 * TODO implement as non-transient.
 	 */
 	transient private boolean toBeArchived;
+	
+	transient private String humanReadableName;
 
 	LensProjectionContext(LensContext<? extends ObjectType> lensContext, ResourceShadowDiscriminator resourceAccountType) {
     	super(ShadowType.class, lensContext);
@@ -359,7 +359,7 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
     public boolean isModify() {
 		if (synchronizationPolicyDecision == SynchronizationPolicyDecision.KEEP) {
 			return true;
-		} else if (synchronizationPolicyDecision != null){
+		} else if (synchronizationPolicyDecision != null) {
 			return false;
 		}
 		return super.isModify();
@@ -368,7 +368,7 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 	public boolean isDelete() {
 		if (synchronizationPolicyDecision == SynchronizationPolicyDecision.DELETE) {
 			return true;
-		} else if (synchronizationPolicyDecision != null){
+		} else if (synchronizationPolicyDecision != null) {
 			return false;
 		}
 		if (syncDelta != null && syncDelta.isDelete()) {
@@ -389,7 +389,7 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 	public PrismObjectDefinition<ShadowType> getObjectDefinition() {
 		if (shadowDefinition == null) {
 			try {
-				shadowDefinition = ShadowUtil.applyObjectClass(super.getObjectDefinition(), getStructuralObjectClassDefinition());
+				shadowDefinition = ShadowUtil.applyObjectClass(super.getObjectDefinition(), getCompositeObjectClassDefinition());
 			} catch (SchemaException e) {
 				// This should not happen
 				throw new SystemException(e.getMessage(), e);
@@ -558,19 +558,22 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 		if (discr == null) {
 			return null;			// maybe when an account is deleted
 		}
+		if (resource == null) {
+			return null;
+		}
 		ResourceObjectTypeDefinitionType def = ResourceTypeUtil.getResourceObjectTypeDefinitionType(resource, discr.getKind(), discr.getIntent());
         return def;
     }
 	
 	private ResourceSchema getResourceSchema() throws SchemaException {
-		return RefinedResourceSchema.getResourceSchema(resource, getNotNullPrismContext());
+		return RefinedResourceSchemaImpl.getResourceSchema(resource, getNotNullPrismContext());
 	}
 	
     public RefinedResourceSchema getRefinedResourceSchema() throws SchemaException {
     	if (resource == null) {
     		return null;
     	}
-    	return RefinedResourceSchema.getRefinedSchema(resource, LayerType.MODEL, getNotNullPrismContext());
+    	return RefinedResourceSchemaImpl.getRefinedSchema(resource, LayerType.MODEL, getNotNullPrismContext());
     }
     
     public RefinedObjectClassDefinition getStructuralObjectClassDefinition() throws SchemaException {
@@ -586,24 +589,40 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 
     public Collection<RefinedObjectClassDefinition> getAuxiliaryObjectClassDefinitions() throws SchemaException {
     	if (auxiliaryObjectClassDefinitions == null) {
-			RefinedResourceSchema refinedSchema = getRefinedResourceSchema();
-			if (refinedSchema == null) {
-				return null;
-			}
-			List<QName> auxiliaryObjectClassQNames = new ArrayList<>();
-			addAuxiliaryObjectClassNames(auxiliaryObjectClassQNames, getObjectOld());
-			addAuxiliaryObjectClassNames(auxiliaryObjectClassQNames, getObjectNew());
-			auxiliaryObjectClassDefinitions = new ArrayList<>(auxiliaryObjectClassQNames.size());
-			for (QName auxiliaryObjectClassQName: auxiliaryObjectClassQNames) {
-				RefinedObjectClassDefinition auxiliaryObjectClassDef = refinedSchema.getRefinedDefinition(auxiliaryObjectClassQName);
-				if (auxiliaryObjectClassDef == null) {
-					throw new SchemaException("Auxiliary object class "+auxiliaryObjectClassQName+" specified in "+this+" does not exist");
-				}
-				auxiliaryObjectClassDefinitions.add(auxiliaryObjectClassDef);
-			}
+    		refreshAuxiliaryObjectClassDefinitions();
     	}
     	return auxiliaryObjectClassDefinitions;
 	}
+    
+    public void refreshAuxiliaryObjectClassDefinitions() throws SchemaException {
+    	RefinedResourceSchema refinedSchema = getRefinedResourceSchema();
+		if (refinedSchema == null) {
+			return;
+		}
+		List<QName> auxiliaryObjectClassQNames = new ArrayList<>();
+		addAuxiliaryObjectClassNames(auxiliaryObjectClassQNames, getObjectOld());
+		addAuxiliaryObjectClassNames(auxiliaryObjectClassQNames, getObjectNew());
+		auxiliaryObjectClassDefinitions = new ArrayList<>(auxiliaryObjectClassQNames.size());
+		for (QName auxiliaryObjectClassQName: auxiliaryObjectClassQNames) {
+			RefinedObjectClassDefinition auxiliaryObjectClassDef = refinedSchema.getRefinedDefinition(auxiliaryObjectClassQName);
+			if (auxiliaryObjectClassDef == null) {
+				throw new SchemaException("Auxiliary object class "+auxiliaryObjectClassQName+" specified in "+this+" does not exist");
+			}
+			auxiliaryObjectClassDefinitions.add(auxiliaryObjectClassDef);
+		}
+		compositeObjectClassDefinition = null;
+    }
+    
+    public CompositeRefinedObjectClassDefinition getCompositeObjectClassDefinition() throws SchemaException {
+    	if (compositeObjectClassDefinition == null) {
+    		RefinedObjectClassDefinition structuralObjectClassDefinition = getStructuralObjectClassDefinition();
+    		if (structuralObjectClassDefinition != null) {
+    			compositeObjectClassDefinition = new CompositeRefinedObjectClassDefinitionImpl(
+    					structuralObjectClassDefinition, getAuxiliaryObjectClassDefinitions());
+    		}
+    	}
+    	return compositeObjectClassDefinition;
+    }
 
 	private void addAuxiliaryObjectClassNames(List<QName> auxiliaryObjectClassQNames,
 			PrismObject<ShadowType> shadow) {
@@ -659,19 +678,7 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 	public void setAccountPasswordPolicy(ValuePolicyType accountPasswordPolicy) {
 		this.accountPasswordPolicy = accountPasswordPolicy;
 	}
-	
-	public ValuePolicyType getEffectivePasswordPolicy() {
-		if (accountPasswordPolicy != null) {
-			return accountPasswordPolicy;
-		}
 		
-		if (getLensContext().getFocusContext().getOrgPasswordPolicy() != null){
-			return getLensContext().getFocusContext().getOrgPasswordPolicy();
-		}
-		
-		return getLensContext().getGlobalPasswordPolicy();
-	}
-	
 	public AssignmentPolicyEnforcementType getAssignmentPolicyEnforcementType() {
 		// TODO: per-resource assignment enforcement
 		ResourceType resource = getResource();
@@ -739,9 +746,9 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
         }
         
         if (base == null && accDelta.isModify()) {
-        	RefinedObjectClassDefinition rAccountDef = getStructuralObjectClassDefinition();
-        	if (rAccountDef != null) {
-        		base = (PrismObject<ShadowType>) rAccountDef.createBlankShadow();
+        	RefinedObjectClassDefinition rOCD = getCompositeObjectClassDefinition();
+        	if (rOCD != null) {
+        		base = rOCD.createBlankShadow();
         	}
         }
 
@@ -818,6 +825,7 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 	 * E.g. they may both be MODIFY deltas even in case that the account should be created. The deltas begin to make sense
 	 * only if combined with sync decision. This method provides the deltas all combined and ready for execution.
 	 */
+	@Override
 	public ObjectDelta<ShadowType> getExecutableDelta() throws SchemaException {
 		SynchronizationPolicyDecision policyDecision = getSynchronizationPolicyDecision();
 		ObjectDelta<ShadowType> origDelta = getFixedDelta();
@@ -828,13 +836,13 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
             	// We need to convert modify delta to ADD
             	ObjectDelta<ShadowType> addDelta = new ObjectDelta<ShadowType>(getObjectTypeClass(),
                 		ChangeType.ADD, getPrismContext());
-                RefinedObjectClassDefinition rAccount = getStructuralObjectClassDefinition();
+                RefinedObjectClassDefinition rObjectClassDef = getCompositeObjectClassDefinition();
 
-                if (rAccount == null) {
+                if (rObjectClassDef == null) {
                     throw new IllegalStateException("Definition for account type " + getResourceShadowDiscriminator() 
                     		+ " not found in the context, but it should be there");
                 }
-                PrismObject<ShadowType> newAccount = (PrismObject<ShadowType>) rAccount.createBlankShadow();
+                PrismObject<ShadowType> newAccount = (PrismObject<ShadowType>) rObjectClassDef.createBlankShadow();
                 addDelta.setObjectToAdd(newAccount);
                 
                 if (origDelta != null) {
@@ -885,7 +893,7 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 		if (synchronizationPolicyDecision == SynchronizationPolicyDecision.BROKEN) {
 			return;
 		}
-    	if (fresh && !force) {
+    	if (fresh && !force && resourceShadowDiscriminator != null && !resourceShadowDiscriminator.isThombstone()) {
     		if (resource == null) {
 	    		throw new IllegalStateException("Null resource in "+this + (contextDesc == null ? "" : " in " +contextDesc));
 	    	}
@@ -903,6 +911,29 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 			}
     	}
     }
+	
+	@Override
+	protected void checkConsistence(PrismObject<ShadowType> object, String elementDesc, String contextDesc) {
+		super.checkConsistence(object, elementDesc, contextDesc);
+		ResourceAttributeContainer attributesContainer = ShadowUtil.getAttributesContainer(object);
+    	if (attributesContainer != null) {
+    		ResourceType resource = getResource();
+    		if (resource != null) {
+	    		String resourceNamespace = ResourceTypeUtil.getResourceNamespace(resource);
+	    		for(ResourceAttribute<?> attribute: attributesContainer.getAttributes()) {
+	    			QName attrName = attribute.getElementName();
+	    			if (SchemaConstants.NS_ICF_SCHEMA.equals(attrName.getNamespaceURI())) {
+	    				continue;
+	    			}
+	    			if (resourceNamespace.equals(attrName.getNamespaceURI())) {
+	    				continue;
+	    			}
+	    			String desc = elementDesc+" in "+this + (contextDesc == null ? "" : " in " +contextDesc);
+	    			throw new IllegalStateException("Invalid namespace for attribute "+attrName+" in "+desc);
+	    		}
+    		}
+    	}
+	}
 	
 	protected boolean isRequireSecondardyDeltaOid() {
 		if (synchronizationPolicyDecision == SynchronizationPolicyDecision.ADD ||
@@ -1047,16 +1078,6 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 		}
 		return false;
 	}
-	
-	public AccountOperation getOperation() {
-		if (isAdd()) {
-			return AccountOperation.ADD;
-		}
-		if (isDelete()) {
-			return AccountOperation.DELETE;
-		}
-		return AccountOperation.MODIFY;
-	}
 
     @Override
 	public void checkEncrypted() {
@@ -1070,29 +1091,32 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 	}
 
 	public String getHumanReadableName() {
-		StringBuilder sb = new StringBuilder();
-		sb.append("account(");
-		String humanReadableAccountIdentifier = getHumanReadableIdentifier();
-		if (StringUtils.isEmpty(humanReadableAccountIdentifier)) {
-			sb.append("no ID");
-		} else {
-			sb.append("ID ");
-			sb.append(humanReadableAccountIdentifier);
-		}
-		ResourceShadowDiscriminator discr = getResourceShadowDiscriminator();
-		if (discr != null) {
-			sb.append(", type '");
-			sb.append(discr.getIntent());
-			sb.append("', ");
-			if (discr.getOrder() != 0) {
-				sb.append("order ").append(discr.getOrder()).append(", ");
+		if (humanReadableName == null) {
+			StringBuilder sb = new StringBuilder();
+			sb.append("account(");
+			String humanReadableAccountIdentifier = getHumanReadableIdentifier();
+			if (StringUtils.isEmpty(humanReadableAccountIdentifier)) {
+				sb.append("no ID");
+			} else {
+				sb.append("ID ");
+				sb.append(humanReadableAccountIdentifier);
 			}
-		} else {
-			sb.append(" (no discriminator) ");
+			ResourceShadowDiscriminator discr = getResourceShadowDiscriminator();
+			if (discr != null) {
+				sb.append(", type '");
+				sb.append(discr.getIntent());
+				sb.append("', ");
+				if (discr.getOrder() != 0) {
+					sb.append("order ").append(discr.getOrder()).append(", ");
+				}
+			} else {
+				sb.append(" (no discriminator) ");
+			}
+			sb.append(getResource());
+			sb.append(")");
+			humanReadableName = sb.toString();
 		}
-		sb.append(getResource());
-		sb.append(")");
-		return sb.toString();
+		return humanReadableName;
 	}
 
 	private String getHumanReadableIdentifier() {
@@ -1108,7 +1132,7 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 		}
 		if (object.canRepresent(ShadowType.class)) {
 			PrismObject<ShadowType> shadow = (PrismObject<ShadowType>)object;
-			Collection<ResourceAttribute<?>> identifiers = ShadowUtil.getIdentifiers(shadow);
+			Collection<ResourceAttribute<?>> identifiers = ShadowUtil.getPrimaryIdentifiers(shadow);
 			if (identifiers == null) {
 				return null;
 			}
@@ -1210,6 +1234,9 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 	        
 	        sb.append("\n");
 	        DebugUtil.debugDumpWithLabel(sb, getDebugDumpTitle("squeezed associations"), squeezedAssociations, indent + 1);
+	        
+	        sb.append("\n");
+	        DebugUtil.debugDumpWithLabel(sb, getDebugDumpTitle("squeezed auxiliary object classes"), squeezedAuxiliaryObjectClasses, indent + 1);
 
 	        // This is just a debug thing
 //	        sb.append("\n");
@@ -1268,11 +1295,9 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
         return getKindValue(resourceShadowDiscriminator.getKind());
 	}
 
-	public void addToPrismContainer(PrismContainer<LensProjectionContextType> lensProjectionContextTypeContainer) throws SchemaException {
-
+	void addToPrismContainer(PrismContainer<LensProjectionContextType> lensProjectionContextTypeContainer, boolean reduced) throws SchemaException {
         LensProjectionContextType lensProjectionContextType = lensProjectionContextTypeContainer.createNewValue().asContainerable();
-
-        super.storeIntoLensElementContextType(lensProjectionContextType);
+        super.storeIntoLensElementContextType(lensProjectionContextType, reduced);
         lensProjectionContextType.setSyncDelta(syncDelta != null ? DeltaConvertor.toObjectDeltaType(syncDelta) : null);
 		lensProjectionContextType.setSecondaryDelta(secondaryDelta != null ? DeltaConvertor.toObjectDeltaType(secondaryDelta) : null);
         lensProjectionContextType.setWave(wave);
@@ -1289,11 +1314,13 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
         lensProjectionContextType.setDoReconciliation(doReconciliation);
         lensProjectionContextType.setSynchronizationSituationDetected(synchronizationSituationDetected);
         lensProjectionContextType.setSynchronizationSituationResolved(synchronizationSituationResolved);
-        lensProjectionContextType.setAccountPasswordPolicy(accountPasswordPolicy);
+        if (!reduced) {
+			lensProjectionContextType.setAccountPasswordPolicy(accountPasswordPolicy);
+		}
         lensProjectionContextType.setSyncAbsoluteTrigger(syncAbsoluteTrigger);
     }
 
-    public static LensProjectionContext fromLensProjectionContextType(LensProjectionContextType projectionContextType, LensContext lensContext, OperationResult result) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException {
+    public static LensProjectionContext fromLensProjectionContextType(LensProjectionContextType projectionContextType, LensContext lensContext, Task task, OperationResult result) throws SchemaException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException {
 
         String objectTypeClassString = projectionContextType.getObjectTypeClass();
         if (StringUtils.isEmpty(objectTypeClassString)) {
@@ -1303,16 +1330,17 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 
         LensProjectionContext projectionContext = new LensProjectionContext(lensContext, resourceShadowDiscriminator);
 
-        projectionContext.retrieveFromLensElementContextType(projectionContextType, result);
+        projectionContext.retrieveFromLensElementContextType(projectionContextType, task, result);
         if (projectionContextType.getSyncDelta() != null) {
 			projectionContext.syncDelta = DeltaConvertor.createObjectDelta(projectionContextType.getSyncDelta(), lensContext.getPrismContext());
         } else {
 			projectionContext.syncDelta = null;
 		}
 		ObjectDeltaType secondaryDeltaType = projectionContextType.getSecondaryDelta();
-		projectionContext.secondaryDelta = secondaryDeltaType != null ? (ObjectDelta) DeltaConvertor.createObjectDelta(secondaryDeltaType, lensContext.getPrismContext()) : null;
+		projectionContext.secondaryDelta = secondaryDeltaType != null ?
+				DeltaConvertor.createObjectDelta(secondaryDeltaType, lensContext.getPrismContext()) : null;
 		ObjectType object = projectionContextType.getObjectNew() != null ? projectionContextType.getObjectNew() : projectionContextType.getObjectOld();
-		projectionContext.fixProvisioningTypeInDelta(projectionContext.secondaryDelta, object, result);
+		projectionContext.fixProvisioningTypeInDelta(projectionContext.secondaryDelta, object, task, result);
 
 		projectionContext.wave = projectionContextType.getWave() != null ? projectionContextType.getWave() : 0;
         projectionContext.fullShadow = projectionContextType.isFullShadow() != null ? projectionContextType.isFullShadow() : false;
@@ -1360,5 +1388,21 @@ public class LensProjectionContext extends LensElementContext<ShadowType> implem
 		} else {
 			return null;
 		}
+	}
+	
+	public ResourceObjectVolatilityType getVolatility() throws SchemaException {
+		RefinedObjectClassDefinition structuralObjectClassDefinition = getStructuralObjectClassDefinition();
+		if (structuralObjectClassDefinition == null) {
+			return null;
+		}
+		return structuralObjectClassDefinition.getVolatility();
+	}
+
+	public boolean hasPendingOperations() {
+		PrismObject<ShadowType> current = getObjectCurrent();
+		if (current == null) {
+			return false;
+		}
+		return !current.asObjectable().getPendingOperation().isEmpty();
 	}
 }

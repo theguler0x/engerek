@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -40,26 +40,7 @@
             </jaxb:globalBindings>
         </xsd:appinfo>
     </xsd:annotation>
-    
-    <xsd:import namespace="http://www.w3.org/XML/1998/namespace"/>
-    
-    <xsd:import namespace="http://www.w3.org/2001/XMLSchema" schemaLocation="http://www.w3.org/2001/XMLSchema">
-        <xsd:annotation>
-            <xsd:documentation>
-                Importing the schema of XSD schema definition explicitly. This causes that we can use "strict" matching
-                for the xsd:schema elements used in runtime.
-            </xsd:documentation>
-        </xsd:annotation>
-    </xsd:import>
-
-    <xsd:import namespace="http://www.w3.org/2001/04/xmlenc#" schemaLocation="http://www.w3.org/2001/04/xmlenc">
-        <xsd:annotation>
-            <xsd:documentation>
-                The XML Encryption schema. Used for "protected" data types (property encryption).
-            </xsd:documentation>
-        </xsd:annotation>
-    </xsd:import>
-    
+        
     <xsd:import namespace="http://prism.evolveum.com/xml/ns/public/types-3" schemaLocation="http://prism.evolveum.com/xml/ns/public/types-3">
         <xsd:annotation>
             <xsd:documentation>
@@ -81,7 +62,7 @@
         </xsd:annotation>
         <xsd:complexType>
             <xsd:sequence>
-                <xsd:any namespace="##other" minOccurs="0" maxOccurs="unbounded" processContents="lax">
+                <xsd:any namespace="##any" minOccurs="0" maxOccurs="unbounded" processContents="lax">
                 </xsd:any>
             </xsd:sequence>
         </xsd:complexType>
@@ -100,9 +81,10 @@
             <xsd:element ref="tns:name" minOccurs="0">
             	<xsd:annotation>
             		<xsd:appinfo>
-            			<a:displayName>Name</a:displayName>
+            			<a:displayName>ObjectType.name</a:displayName>
             			<a:displayOrder>0</a:displayOrder>
             			<a:help>Short unique name of the object</a:help>
+            			<a:emphasized>true</a:emphasized>
             		</xsd:appinfo>
             	</xsd:annotation>
             </xsd:element>
@@ -110,7 +92,7 @@
             <xsd:element ref="tns:extension" minOccurs="0" maxOccurs="1">
             	<xsd:annotation>
             		<xsd:appinfo>
-            			<a:displayName>Extension</a:displayName>
+            			<a:displayName>ObjectType.extension</a:displayName>
             			<a:displayOrder>1000</a:displayOrder>
             			<a:help>Object extension contains extra properties</a:help>
             		</xsd:appinfo>
@@ -144,14 +126,21 @@
                     <xsd:element name="fullName" type="xsd:string">
                     	<xsd:annotation>
                     		<xsd:appinfo>
-                    			<a:displayName>Full Name</a:displayName>
+                    			<a:displayName>UserType.fullName</a:displayName>
                     			<a:displayOrder>10</a:displayOrder>
 		            			<a:help>User full name</a:help>
+		            			<a:emphasized>true</a:emphasized>
                     		</xsd:appinfo>
                     	</xsd:annotation>
                     </xsd:element>
                     <xsd:element name="givenName" type="xsd:string" minOccurs="0"/>
-                    <xsd:element name="familyName" type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="familyName" type="xsd:string" minOccurs="0">
+                    	<xsd:annotation>
+                    		<xsd:appinfo>
+		            			<a:emphasized>true</a:emphasized>
+                    		</xsd:appinfo>
+                    	</xsd:annotation>
+                    </xsd:element>
                     <!-- Multi-valued property -->
                     <xsd:element name="additionalNames" type="xsd:string" minOccurs="0" maxOccurs="unbounded"/>
                     <xsd:element name="polyName" type="t:PolyStringType" minOccurs="0"/>
@@ -162,7 +151,7 @@
                     <xsd:element name="activation" type="tns:ActivationType" minOccurs="0">
                     	<xsd:annotation>
 		            		<xsd:appinfo>
-		            			<a:displayName>Activation</a:displayName>
+		            			<a:displayName>ActivationType.activation</a:displayName>
 		            			<a:displayOrder>1200</a:displayOrder>
 		            			<a:help>User activation properties</a:help>
 		            		</xsd:appinfo>

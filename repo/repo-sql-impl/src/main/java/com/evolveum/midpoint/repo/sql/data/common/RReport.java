@@ -1,11 +1,13 @@
 package com.evolveum.midpoint.repo.sql.data.common;
 
 import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.repo.sql.data.RepositoryContext;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.RPolyString;
 import com.evolveum.midpoint.repo.sql.data.common.enums.RExportType;
 import com.evolveum.midpoint.repo.sql.data.common.enums.ROrientationType;
 import com.evolveum.midpoint.repo.sql.util.DtoTranslationException;
 import com.evolveum.midpoint.repo.sql.util.IdGeneratorResult;
+import com.evolveum.midpoint.repo.sql.util.MidPointJoinedPersister;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
@@ -13,6 +15,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportType;
 
 import org.hibernate.annotations.ForeignKey;
 import org.hibernate.annotations.Index;
+import org.hibernate.annotations.Persister;
 
 import javax.persistence.*;
 
@@ -21,6 +24,7 @@ import java.util.Collection;
 @Entity
 @Table(uniqueConstraints = @UniqueConstraint(name = "uc_report_name", columnNames = {"name_norm"}))
 @ForeignKey(name = "fk_report")
+@Persister(impl = MidPointJoinedPersister.class)
 public class RReport extends RObject<ReportType> {
 
     private RPolyString name;
@@ -108,11 +112,10 @@ public class RReport extends RObject<ReportType> {
         return result;
     }
 
-    public static void copyFromJAXB(ReportType jaxb, RReport repo, PrismContext prismContext,
-                                    IdGeneratorResult generatorResult)
-            throws DtoTranslationException {
+    public static void copyFromJAXB(ReportType jaxb, RReport repo, RepositoryContext repositoryContext,
+            IdGeneratorResult generatorResult) throws DtoTranslationException {
 
-        RObject.copyFromJAXB(jaxb, repo, prismContext, generatorResult);
+        RObject.copyFromJAXB(jaxb, repo, repositoryContext, generatorResult);
 
         repo.setName(RPolyString.copyFromJAXB(jaxb.getName()));
         repo.setOrientation(RUtil.getRepoEnumValue(jaxb.getOrientation(), ROrientationType.class));

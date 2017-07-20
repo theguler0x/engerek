@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-  ~ Copyright (c) 2010-2015 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -35,18 +35,18 @@
     <xsd:annotation>
         <xsd:documentation>
             <p>
-            This is a common schema for midPoint project. It contains all the
-            data types that the stock midPoint is using
-            This file contains more that a common schema in fact. It contains
-            all the objects, even parts of what is known as identity schema and
-            model schema in midPoint.
+                This is a common schema for midPoint project. It contains all the
+                data types that the stock midPoint is using
+                This file contains more that a common schema in fact. It contains
+                all the objects, even parts of what is known as identity schema and
+                model schema in midPoint.
             </p>
 
             See
             <a href="https://wiki.evolveum.com/display/midPoint/Data+Model">https://wiki.evolveum.com/display/midPoint/Data+Model</a>
             for more details.
 
-            <p>Version: 3.4-SNAPSHOT</p>
+            <p>Version: 3.6-SNAPSHOT</p>
 
             <p>Recommended namespace prefix: (default), c</p>
         </xsd:documentation>
@@ -58,64 +58,35 @@
         </xsd:appinfo>
     </xsd:annotation>
 
-    <xsd:import namespace="http://www.w3.org/2001/XMLSchema" 
-    			schemaLocation="http://www.w3.org/2001/XMLSchema">
-        <xsd:annotation>
-            <xsd:documentation>
-                Importing the schema of XSD schema definition explicitly. This causes that we can use "strict" matching
-                for the xsd:schema elements used in runtime.
-            </xsd:documentation>
-        </xsd:annotation>
-    </xsd:import>
-
-    <xsd:import namespace="http://www.w3.org/2001/04/xmlenc#" 
-    			schemaLocation="http://www.w3.org/2001/04/xmlenc">
-        <xsd:annotation>
-            <xsd:documentation>
-                The XML Encryption schema. Used for "protected" data types (property encryption).
-            </xsd:documentation>
-        </xsd:annotation>
-    </xsd:import>
-
-
-    <xsd:import namespace="http://prism.evolveum.com/xml/ns/public/annotation-3" 
-    			schemaLocation="http://prism.evolveum.com/xml/ns/public/annotation-3">
+    <xsd:import namespace="http://prism.evolveum.com/xml/ns/public/annotation-3"
+                schemaLocation="http://prism.evolveum.com/xml/ns/public/annotation-3">
         <xsd:annotation>
             <xsd:documentation>
                 Common prism annotations used in various XSD schemas.
             </xsd:documentation>
         </xsd:annotation>
     </xsd:import>
-    
-    <xsd:import namespace="http://prism.evolveum.com/xml/ns/public/types-3"
-    			schemaLocation="http://prism.evolveum.com/xml/ns/public/types-3">
-        <xsd:annotation>
-            <xsd:documentation>
-                Prism data types.
-            </xsd:documentation>
-        </xsd:annotation>
-    </xsd:import>
-    
-<!--      <xsd:import namespace="http://midpoint.evolveum.com/xml/ns/public/resource/capabilities-3" -->
-<!--     			schemaLocation="http://midpoint.evolveum.com/xml/ns/public/resource/capabilities-3"> -->
-<!--         <xsd:annotation> -->
-<!--             <xsd:documentation> -->
-<!--                 Capabilities -->
-<!--             </xsd:documentation> -->
-<!--         </xsd:annotation> -->
-<!--     </xsd:import> -->
 
-    <xsd:import namespace="http://prism.evolveum.com/xml/ns/public/query-3" 
-    			schemaLocation="http://prism.evolveum.com/xml/ns/public/query-3">
+    <xsd:import namespace="http://prism.evolveum.com/xml/ns/public/types-3"
+                schemaLocation="http://prism.evolveum.com/xml/ns/public/types-3">
         <xsd:annotation>
             <xsd:documentation>
                 Prism data types.
             </xsd:documentation>
         </xsd:annotation>
     </xsd:import>
-    
-    <xsd:import namespace="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/resource-schema-3" 
-    			schemaLocation="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/resource-schema-3">
+
+    <xsd:import namespace="http://prism.evolveum.com/xml/ns/public/query-3"
+                schemaLocation="http://prism.evolveum.com/xml/ns/public/query-3">
+        <xsd:annotation>
+            <xsd:documentation>
+                Prism data types.
+            </xsd:documentation>
+        </xsd:annotation>
+    </xsd:import>
+
+    <xsd:import namespace="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/resource-schema-3"
+                schemaLocation="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/resource-schema-3">
         <xsd:annotation>
             <xsd:documentation>
                 This is a hack. It should not be here. And it will be gone as soon as we remove a deprecated functionality
@@ -124,6 +95,7 @@
         </xsd:annotation>
     </xsd:import>
 
+<<<<<<< HEAD
     <!-- ################################## -->
     <!-- ##      Common Schema Layer     ## -->
     <!-- ################################## -->
@@ -14050,4 +14022,15 @@
         </xsd:complexContent>
     </xsd:complexType>
     
+=======
+    <!-- Individual components of the common schema -->
+    <xsd:include schemaLocation="http://midpoint.evolveum.com/xml/ns/public/common/common-core-3"/>
+    <xsd:include schemaLocation="http://midpoint.evolveum.com/xml/ns/public/common/common-certification-3"/>
+    <xsd:include schemaLocation="http://midpoint.evolveum.com/xml/ns/public/common/common-model-context-3"/>
+    <xsd:include schemaLocation="http://midpoint.evolveum.com/xml/ns/public/common/common-notifications-3"/>
+    <xsd:include schemaLocation="http://midpoint.evolveum.com/xml/ns/public/common/common-workflows-3"/>
+    <xsd:include schemaLocation="http://midpoint.evolveum.com/xml/ns/public/common/common-policy-3"/>
+    <xsd:include schemaLocation="http://midpoint.evolveum.com/xml/ns/public/common/common-case-management-3"/>
+
+>>>>>>> midpoint/master
 </xsd:schema>

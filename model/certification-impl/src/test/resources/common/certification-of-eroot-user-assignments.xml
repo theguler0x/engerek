@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!--
-  ~ Copyright (c) 2010-2015 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -27,19 +27,20 @@
         <objectType>UserType</objectType>
         <searchFilter>
             <q:org>
-                <q:path>parentOrgRef</q:path>
-                <q:orgRef oid="00000000-8888-6666-0000-300000000000">
+                <q:orgRef>
+                    <q:oid>00000000-8888-6666-0000-300000000000</q:oid>
                     <q:scope>SUBTREE</q:scope>
                 </q:orgRef>
             </q:org>
         </searchFilter>
+        <relation>default</relation>        <!-- the default -->
     </scopeDefinition>
     <remediationDefinition>
         <style>automated</style>
     </remediationDefinition>
     <stageDefinition>
         <number>1</number>
-        <days>14</days>
+        <duration>P14D</duration>
         <reviewerSpecification>
             <defaultReviewerRef oid="00000000-0000-0000-0000-000000000002" type="UserType" />   <!-- administrator -->
         </reviewerSpecification>

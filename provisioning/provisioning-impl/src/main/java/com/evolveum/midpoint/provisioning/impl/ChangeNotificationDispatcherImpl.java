@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import java.util.List;
 import org.apache.commons.lang.Validate;
 import org.springframework.stereotype.Component;
 
-import com.evolveum.midpoint.common.InternalsConfig;
 import com.evolveum.midpoint.provisioning.api.ChangeNotificationDispatcher;
 import com.evolveum.midpoint.provisioning.api.GenericConnectorException;
 import com.evolveum.midpoint.provisioning.api.ResourceEventDescription;
@@ -30,10 +29,12 @@ import com.evolveum.midpoint.provisioning.api.ResourceObjectChangeListener;
 import com.evolveum.midpoint.provisioning.api.ResourceObjectShadowChangeDescription;
 import com.evolveum.midpoint.provisioning.api.ResourceOperationDescription;
 import com.evolveum.midpoint.provisioning.api.ResourceOperationListener;
+import com.evolveum.midpoint.schema.internals.InternalsConfig;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
@@ -128,20 +129,12 @@ public class ChangeNotificationDispatcherImpl implements ChangeNotificationDispa
 	}
 
 
-	/* (non-Javadoc)
-	 * @see com.evolveum.midpoint.provisioning.api.ResourceObjectChangeListener#notifyChange(com.evolveum.midpoint.xml.ns._public.common.common_2.ResourceObjectShadowChangeDescriptionType, com.evolveum.midpoint.common.result.OperationResult)
-	 */
 	@Override
 	public void notifyChange(ResourceObjectShadowChangeDescription change, Task task, OperationResult parentResult) {
 		Validate.notNull(change, "Change description of resource object shadow must not be null.");
 		
 		if (LOGGER.isTraceEnabled()) {
 			LOGGER.trace("SYNCHRONIZATION change notification\n{} ", change.debugDump());
-		}
-		
-		if (filterProtectedObjects && change.isProtected()) {
-			LOGGER.trace("Skipping dispatching of {} because it is protected", change);
-			return;
 		}
 		
 		if (InternalsConfig.consistencyChecks) change.checkConsistence();
@@ -152,9 +145,9 @@ public class ChangeNotificationDispatcherImpl implements ChangeNotificationDispa
 				try {
 					listener.notifyChange(change, task, parentResult);
 				} catch (RuntimeException e) {
-					LOGGER.error("Exception {} thrown by object change listener {}: {}", new Object[]{
-							e.getClass(), listener.getName(), e.getMessage(), e });
-                    parentResult.createSubresult(CLASS_NAME_WITH_DOT + "notifyChange").recordWarning("Change listener has thrown unexpected exception", e);
+					LOGGER.error("Exception {} thrown by object change listener {}: {}", e.getClass(), listener.getName(),
+							e.getMessage(), e);
+					parentResult.createSubresult(CLASS_NAME_WITH_DOT + "notifyChange").recordWarning("Change listener has thrown unexpected exception", e);
                     throw e;
 				}
 			}
@@ -266,7 +259,7 @@ public class ChangeNotificationDispatcherImpl implements ChangeNotificationDispa
 			Task task, OperationResult parentResult) throws SchemaException,
 			CommunicationException, ConfigurationException,
 			SecurityViolationException, ObjectNotFoundException,
-			GenericConnectorException, ObjectAlreadyExistsException {
+			GenericConnectorException, ObjectAlreadyExistsException, ExpressionEvaluationException {
 		Validate.notNull(eventDescription, "Event description must not be null.");
 		
 		if (LOGGER.isTraceEnabled()) {

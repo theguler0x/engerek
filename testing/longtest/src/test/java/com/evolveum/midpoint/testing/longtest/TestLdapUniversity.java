@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2014 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,29 +17,25 @@
 package com.evolveum.midpoint.testing.longtest;
 
 
-import com.evolveum.midpoint.common.InternalsConfig;
 import com.evolveum.midpoint.common.LoggingConfigurationManager;
 import com.evolveum.midpoint.common.ProfilingConfigurationManager;
 import com.evolveum.midpoint.model.impl.sync.ReconciliationTaskHandler;
 import com.evolveum.midpoint.model.test.AbstractModelIntegrationTest;
 import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.schema.constants.MidPointConstants;
-import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.internals.InternalsConfig;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.test.util.MidPointTestConstants;
 import com.evolveum.midpoint.test.util.TestUtil;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnforcementType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectTemplateType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemObjectsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
-import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
 import org.apache.commons.io.IOUtils;
 import org.opends.server.types.Entry;
 import org.opends.server.types.LDIFImportConfig;
@@ -55,7 +51,6 @@ import org.testng.annotations.Test;
 import javax.xml.namespace.QName;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 
 import static com.evolveum.midpoint.test.IntegrationTestTools.display;
@@ -116,7 +111,7 @@ public class TestLdapUniversity extends AbstractModelIntegrationTest {
 		// System Configuration
         PrismObject<SystemConfigurationType> config;
 		try {
-			config = repoAddObjectFromFile(SYSTEM_CONFIGURATION_FILE, SystemConfigurationType.class, initResult);
+			config = repoAddObjectFromFile(SYSTEM_CONFIGURATION_FILE, initResult);
 		} catch (ObjectAlreadyExistsException e) {
 			throw new ObjectAlreadyExistsException("System configuration already exists in repository;" +
 					"looks like the previous test haven't cleaned it up", e);
@@ -127,8 +122,8 @@ public class TestLdapUniversity extends AbstractModelIntegrationTest {
                 config.asObjectable().getVersion(), initResult);
 
 		// administrator
-		PrismObject<UserType> userAdministrator = repoAddObjectFromFile(USER_ADMINISTRATOR_FILE, UserType.class, initResult);
-		repoAddObjectFromFile(ROLE_SUPERUSER_FILE, RoleType.class, initResult);
+		PrismObject<UserType> userAdministrator = repoAddObjectFromFile(USER_ADMINISTRATOR_FILE, initResult);
+		repoAddObjectFromFile(ROLE_SUPERUSER_FILE, initResult);
 		login(userAdministrator);
 		
 		// Resources
@@ -192,9 +187,9 @@ public class TestLdapUniversity extends AbstractModelIntegrationTest {
         for(int i=0; i < NUM_LDAP_ENTRIES; i++) {
             UserType userType = (UserType) prismContext.getSchemaRegistry().findObjectDefinitionByType(UserType.COMPLEX_TYPE).instantiate().asObjectable();
             if (i%2 == 0) {
-                userType.setName(createPolyString("e" + i));
+                userType.setName(createPolyStringType("e" + i));
             } else {
-                userType.setName(createPolyString("e" + i + "(u" + i + ")"));
+                userType.setName(createPolyStringType("e" + i + "(u" + i + ")"));
             }
             userType.setEmployeeNumber("e"+i);
             repositoryService.addObject(userType.asPrismObject(), null, result);
@@ -207,11 +202,11 @@ public class TestLdapUniversity extends AbstractModelIntegrationTest {
 
     }
 
-    private void assertUser(String name, Task task, OperationResult result) throws com.evolveum.midpoint.util.exception.ObjectNotFoundException, com.evolveum.midpoint.util.exception.SchemaException, com.evolveum.midpoint.util.exception.SecurityViolationException, com.evolveum.midpoint.util.exception.CommunicationException, com.evolveum.midpoint.util.exception.ConfigurationException {
+    private void assertUser(String name, Task task, OperationResult result) throws com.evolveum.midpoint.util.exception.ObjectNotFoundException, com.evolveum.midpoint.util.exception.SchemaException, com.evolveum.midpoint.util.exception.SecurityViolationException, com.evolveum.midpoint.util.exception.CommunicationException, com.evolveum.midpoint.util.exception.ConfigurationException, ExpressionEvaluationException {
         UserType user = findUserByUsername(name).asObjectable();
         display("user " + name, user.asPrismObject());
 
-        //assertEquals("Wrong number of assignments", 4, user.getAssignment().size());
+        //assertEquals("Wrong number of assignments", 4, user.getAssignmentNew().size());
     }
 
     @Test
@@ -315,11 +310,4 @@ public class TestLdapUniversity extends AbstractModelIntegrationTest {
     private String groupCn(int groupIndex) {
         return String.format("g%02d", groupIndex);
     }
-
-    private PolyStringType createPolyString(String orig) {
-        PolyStringType poly = new PolyStringType();
-        poly.setOrig(orig);
-        return poly;
-    }
-
 }

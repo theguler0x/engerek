@@ -21,10 +21,11 @@ import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ActionExpressionType;
 
 /**
- * Executes an action of a given type. Instances of this type must be registered with ExpressionEvaluator.
+ * Executes an action of a given type. Instances of this type must be registered with ScriptingExpressionEvaluator.
  *
  * @author mederly
  */
+@FunctionalInterface
 public interface ActionExecutor {
 
     /**
@@ -34,5 +35,5 @@ public interface ActionExecutor {
      * @param context
      * @param parentResult
      */
-    Data execute(ActionExpressionType command, Data input, ExecutionContext context, OperationResult parentResult) throws ScriptExecutionException;
+    PipelineData execute(ActionExpressionType command, PipelineData input, ExecutionContext context, OperationResult parentResult) throws ScriptExecutionException;
 }

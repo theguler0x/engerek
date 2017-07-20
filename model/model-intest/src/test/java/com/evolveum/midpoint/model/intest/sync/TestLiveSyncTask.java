@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 package com.evolveum.midpoint.model.intest.sync;
 
 import java.io.FileNotFoundException;
-
-import javax.xml.bind.JAXBException;
 
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
@@ -42,8 +40,8 @@ public class TestLiveSyncTask extends AbstractSynchronizationStoryTest {
 		super.initSystem(initTask, initResult);
 		
 		dummyResourceGreen.setSyncStyle(DummySyncStyle.SMART);
-		dummyResource.setSyncStyle(DummySyncStyle.DUMB);
-		dummyResourceBlue.setSyncStyle(DummySyncStyle.SMART);
+		getDummyResource().setSyncStyle(DummySyncStyle.DUMB);
+		getDummyResource(RESOURCE_DUMMY_BLUE_NAME).setSyncStyle(DummySyncStyle.SMART);
 		
 	}
 	
@@ -51,9 +49,9 @@ public class TestLiveSyncTask extends AbstractSynchronizationStoryTest {
 	protected void importSyncTask(PrismObject<ResourceType> resource) throws FileNotFoundException {
 		if (resource == resourceDummyGreen) {
 			importObjectFromFile(TASK_LIVE_SYNC_DUMMY_GREEN_FILENAME);
-		} else if (resource == resourceDummyBlue) {
+		} else if (resource == getDummyResourceObject(RESOURCE_DUMMY_BLUE_NAME)) {
 			importObjectFromFile(TASK_LIVE_SYNC_DUMMY_BLUE_FILENAME);
-		} else if (resource == resourceDummy) {
+		} else if (resource == getDummyResourceObject()) {
 			importObjectFromFile(TASK_LIVE_SYNC_DUMMY_FILENAME);
 		} else {
 			throw new IllegalArgumentException("Unknown resource "+resource);
@@ -64,9 +62,9 @@ public class TestLiveSyncTask extends AbstractSynchronizationStoryTest {
 	protected String getSyncTaskOid(PrismObject<ResourceType> resource) {
 		if (resource == resourceDummyGreen) {
 			return TASK_LIVE_SYNC_DUMMY_GREEN_OID;
-		} else if (resource == resourceDummyBlue) {
+		} else if (resource == getDummyResourceObject(RESOURCE_DUMMY_BLUE_NAME)) {
 			return TASK_LIVE_SYNC_DUMMY_BLUE_OID;
-		} else if (resource == resourceDummy) {
+		} else if (resource == getDummyResourceObject()) {
 			return TASK_LIVE_SYNC_DUMMY_OID;
 		} else {
 			throw new IllegalArgumentException("Unknown resource "+resource);

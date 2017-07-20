@@ -17,6 +17,7 @@
 package com.evolveum.midpoint.repo.sql.data.common;
 
 import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.repo.sql.data.RepositoryContext;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.REmbeddedReference;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.ROperationalState;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.RPolyString;
@@ -24,6 +25,7 @@ import com.evolveum.midpoint.repo.sql.data.common.enums.RResourceAdministrativeS
 import com.evolveum.midpoint.repo.sql.data.common.other.RReferenceOwner;
 import com.evolveum.midpoint.repo.sql.util.DtoTranslationException;
 import com.evolveum.midpoint.repo.sql.util.IdGeneratorResult;
+import com.evolveum.midpoint.repo.sql.util.MidPointJoinedPersister;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
@@ -33,6 +35,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceBusinessConf
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
 import org.hibernate.annotations.Cascade;
 import org.hibernate.annotations.ForeignKey;
+import org.hibernate.annotations.Persister;
 import org.hibernate.annotations.Where;
 
 import javax.persistence.*;
@@ -46,6 +49,7 @@ import java.util.Set;
 @Entity
 @ForeignKey(name = "fk_resource")
 @Table(uniqueConstraints = @UniqueConstraint(name = "uc_resource_name", columnNames = {"name_norm"}))
+@Persister(impl = MidPointJoinedPersister.class)
 public class RResource extends RObject<ResourceType> {
 
     private static final Trace LOGGER = TraceManager.getTrace(RResource.class);
@@ -136,13 +140,12 @@ public class RResource extends RObject<ResourceType> {
         return result;
     }
 
-    public static void copyFromJAXB(ResourceType jaxb, RResource repo, PrismContext prismContext,
-                                    IdGeneratorResult generatorResult)
-            throws DtoTranslationException {
-        RObject.copyFromJAXB(jaxb, repo, prismContext, generatorResult);
+    public static void copyFromJAXB(ResourceType jaxb, RResource repo, RepositoryContext repositoryContext,
+            IdGeneratorResult generatorResult) throws DtoTranslationException {
+        RObject.copyFromJAXB(jaxb, repo, repositoryContext, generatorResult);
 
         repo.setName(RPolyString.copyFromJAXB(jaxb.getName()));
-        repo.setConnectorRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getConnectorRef(), prismContext));
+        repo.setConnectorRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getConnectorRef(), repositoryContext.prismContext));
 
         if (jaxb.getConnector() != null) {
             LOGGER.warn("Connector from resource type won't be saved. It should be translated to connector reference.");
@@ -152,13 +155,13 @@ public class RResource extends RObject<ResourceType> {
             if (jaxb.getBusiness() != null) {
                 ResourceBusinessConfigurationType business = jaxb.getBusiness();
                 repo.getApproverRef().addAll(RUtil.safeListReferenceToSet(business.getApproverRef(),
-                        prismContext, repo, RReferenceOwner.RESOURCE_BUSINESS_CONFIGURATON_APPROVER));
+                        repositoryContext.prismContext, repo, RReferenceOwner.RESOURCE_BUSINESS_CONFIGURATON_APPROVER));
                 repo.setAdministrativeState(RUtil.getRepoEnumValue(business.getAdministrativeState(),
                         RResourceAdministrativeState.class));
             }
             if (jaxb.getOperationalState() != null) {
                 ROperationalState repoOpState = new ROperationalState();
-                ROperationalState.copyFromJAXB(jaxb.getOperationalState(), repoOpState, prismContext);
+                ROperationalState.copyFromJAXB(jaxb.getOperationalState(), repoOpState);
                 repo.setOperationalState(repoOpState);
             }
         } catch (Exception ex) {

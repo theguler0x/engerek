@@ -17,10 +17,12 @@ package com.evolveum.midpoint.prism;
 
 import static com.evolveum.midpoint.prism.PrismInternalTestUtil.*;
 import static org.testng.AssertJUnit.assertEquals;
-import static org.testng.AssertJUnit.assertNotNull;
+import static org.testng.AssertJUnit.assertFalse;
+import static org.testng.AssertJUnit.assertTrue;
 
 import java.io.IOException;
-import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 
 import javax.xml.namespace.QName;
 
@@ -28,20 +30,11 @@ import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 import org.xml.sax.SAXException;
 
-import com.evolveum.midpoint.prism.delta.ItemDelta;
-import com.evolveum.midpoint.prism.delta.ObjectDelta;
-import com.evolveum.midpoint.prism.delta.PropertyDelta;
-import com.evolveum.midpoint.prism.foo.AssignmentType;
-import com.evolveum.midpoint.prism.foo.UserType;
 import com.evolveum.midpoint.prism.path.IdItemPathSegment;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.path.ItemPathSegment;
 import com.evolveum.midpoint.prism.path.NameItemPathSegment;
-import com.evolveum.midpoint.prism.polystring.PolyString;
-import com.evolveum.midpoint.prism.util.PrismAsserts;
 import com.evolveum.midpoint.prism.util.PrismTestUtil;
-import com.evolveum.midpoint.util.DOMUtil;
-import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.PrettyPrinter;
 import com.evolveum.midpoint.util.exception.SchemaException;
 
@@ -73,7 +66,7 @@ public class TestPath {
 				  					  new NameItemPathSegment(new QName(NS, "bar")), new IdItemPathSegment(333L));
 		ItemPath path4 = new ItemPath(new QName(NS, "x"));
 		ItemPath path5 = new ItemPath(new NameItemPathSegment(new QName(NS, "foo")), new IdItemPathSegment(123L));
-		ItemPath pathE = new ItemPath();
+		ItemPath pathE = ItemPath.EMPTY_PATH;
 		
 		// WHEN
 		ItemPath normalized1 = path1.normalize();
@@ -111,17 +104,59 @@ public class TestPath {
 		ItemPath pathFooNull = new ItemPath(new NameItemPathSegment(new QName(NS, "foo")), new IdItemPathSegment());
 		ItemPath pathFoo123 = new ItemPath(new NameItemPathSegment(new QName(NS, "foo")), new IdItemPathSegment(123L));
 		ItemPath pathFooBar = new ItemPath(new QName(NS, "foo"), new QName(NS, "bar"));
-		ItemPath pathFooNullBar = new ItemPath(new NameItemPathSegment(new QName(NS, "foo")), new IdItemPathSegment(), 
+		ItemPath pathFooBarBaz = new ItemPath(new QName(NS, "foo"), new QName(NS, "bar"), new QName(NS, "baz"));
+		ItemPath pathFooNullBar = new ItemPath(new NameItemPathSegment(new QName(NS, "foo")), new IdItemPathSegment(),
 												new NameItemPathSegment(new QName(NS, "bar")));
-				
+		ItemPath pathZoo = new ItemPath(new QName(NS, "zoo"));
+
+		List<ItemPath> onlyEmpty = Collections.singletonList(ItemPath.EMPTY_PATH);
+		List<ItemPath> onlyFoo = Collections.singletonList(pathFoo);
+		List<ItemPath> onlyFooBar = Collections.singletonList(pathFooBar);
+
 		// WHEN, THEN
-		assert pathFoo.isSubPath(pathFooNull);
-		assert !pathFoo.equivalent(pathFoo123);
-		assert !pathFooNull.equivalent(pathFoo123);
-		assert pathFoo.isSubPath(pathFooBar);
-		assert pathFooBar.isSuperPath(pathFoo);
-		assert pathFooBar.equivalent(pathFooNullBar);
-		
+		assertTrue(pathFoo.isSubPath(pathFooNull));
+		assertFalse(pathFoo.equivalent(pathFoo123));
+		assertFalse(pathFooNull.equivalent(pathFoo123));
+		assertTrue(pathFoo.isSubPath(pathFooBar));
+		assertTrue(pathFooBar.isSuperPath(pathFoo));
+		assertTrue(pathFooBar.equivalent(pathFooNullBar));
+		assertTrue(ItemPath.EMPTY_PATH.isSubPath(pathFoo));
+		assertFalse(pathFoo.isSubPath(ItemPath.EMPTY_PATH));
+
+		assertTrue(ItemPath.containsSubpathOrEquivalent(onlyEmpty, pathFoo));
+		assertTrue(ItemPath.containsSubpath(onlyEmpty, pathFoo));
+		assertFalse(ItemPath.containsSuperpathOrEquivalent(onlyEmpty, pathFoo));
+		assertFalse(ItemPath.containsSuperpath(onlyEmpty, pathFoo));
+
+		assertTrue(ItemPath.containsSubpathOrEquivalent(onlyEmpty, ItemPath.EMPTY_PATH));
+		assertFalse(ItemPath.containsSubpath(onlyEmpty, ItemPath.EMPTY_PATH));
+		assertTrue(ItemPath.containsSuperpathOrEquivalent(onlyEmpty, ItemPath.EMPTY_PATH));
+		assertFalse(ItemPath.containsSuperpath(onlyEmpty, ItemPath.EMPTY_PATH));
+
+		assertTrue(ItemPath.containsSubpathOrEquivalent(onlyFoo, pathFoo));
+		assertFalse(ItemPath.containsSubpath(onlyFoo, pathFoo));
+		assertTrue(ItemPath.containsSuperpathOrEquivalent(onlyFoo, pathFoo));
+		assertFalse(ItemPath.containsSuperpath(onlyFoo, pathFoo));
+
+		assertFalse(ItemPath.containsSubpathOrEquivalent(onlyFoo, ItemPath.EMPTY_PATH));
+		assertFalse(ItemPath.containsSubpath(onlyFoo, ItemPath.EMPTY_PATH));
+		assertTrue(ItemPath.containsSuperpathOrEquivalent(onlyFoo, ItemPath.EMPTY_PATH));
+		assertTrue(ItemPath.containsSuperpath(onlyFoo, ItemPath.EMPTY_PATH));
+
+		assertFalse(ItemPath.containsSubpathOrEquivalent(onlyFoo, pathZoo));
+		assertFalse(ItemPath.containsSubpath(onlyFoo, pathZoo));
+		assertFalse(ItemPath.containsSuperpathOrEquivalent(onlyFoo, pathZoo));
+		assertFalse(ItemPath.containsSuperpath(onlyFoo, pathZoo));
+
+		assertFalse(ItemPath.containsSubpathOrEquivalent(onlyFooBar, pathFoo));
+		assertFalse(ItemPath.containsSubpath(onlyFooBar, pathFoo));
+		assertTrue(ItemPath.containsSuperpathOrEquivalent(onlyFooBar, pathFoo));
+		assertTrue(ItemPath.containsSuperpath(onlyFooBar, pathFoo));
+
+		assertTrue(ItemPath.containsSubpathOrEquivalent(onlyFooBar, pathFooBarBaz));
+		assertTrue(ItemPath.containsSubpath(onlyFooBar, pathFooBarBaz));
+		assertFalse(ItemPath.containsSuperpathOrEquivalent(onlyFooBar, pathFooBarBaz));
+		assertFalse(ItemPath.containsSuperpath(onlyFooBar, pathFooBarBaz));
 	}
 	
 	@Test

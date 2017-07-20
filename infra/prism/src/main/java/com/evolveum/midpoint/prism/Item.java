@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,19 +24,14 @@ import com.evolveum.midpoint.util.MiscUtil;
 import com.evolveum.midpoint.util.PrettyPrinter;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SystemException;
+import org.jetbrains.annotations.NotNull;
 
 import javax.xml.namespace.QName;
 
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-
+import java.util.*;
+import java.util.function.Function;
 
 /**
  * Item is a common abstraction of Property and PropertyContainer.
@@ -58,8 +53,11 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     protected QName elementName;
     protected PrismValue parent;
     protected D definition;
-    private List<V> values = new ArrayList<V>();
+    @NotNull protected final List<V> values = new ArrayList<>();
     private transient Map<String,Object> userData = new HashMap<>();;
+
+	protected boolean immutable;
+	protected boolean incomplete;
     
     protected transient PrismContext prismContext;          // beware, this one can easily be null
 
@@ -134,9 +132,10 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
      * <p/>
      * The name is the QName of XML element in the XML representation.
      *
-     * @param name the name to set
+     * @param elementName the name to set
      */
     public void setElementName(QName elementName) {
+		checkMutability();
         this.elementName = elementName;
     }
 
@@ -146,6 +145,7 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
      * @param definition the definition to set
      */
     public void setDefinition(D definition) {
+		checkMutability();
     	checkDefinition(definition);
         this.definition = definition;
     }
@@ -178,10 +178,42 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
         return getDefinition() == null ? null : getDefinition().getHelp();
     }
     
-    @Override
+    /**
+     * Flag that indicates incomplete item. If set to true then the
+     * values in this item are not complete. If this flag is true
+     * then it can be assumed that the object that this item represents
+     * has at least one value. This is a method how to indicate that
+     * the item really has some values, but are not here. This may
+     * be used for variety of purposes. It may indicate that the
+     * account has a password, but the password value is not revealed.
+     * This may indicate that a user has a photo, but the photo was not
+     * requested and therefore is not returned. This may be used to indicate
+     * that only part of the attribute values were returned from the search. 
+     * And so on.
+     */
+    public boolean isIncomplete() {
+		return incomplete;
+	}
+
+	public void setIncomplete(boolean incomplete) {
+		this.incomplete = incomplete;
+	}
+
+	@Override
     public PrismContext getPrismContext() {
-    	return prismContext;
+		if (prismContext != null) {
+			return prismContext;
+		} else if (parent != null) {
+			return parent.getPrismContext();
+		} else {
+			return null;
+		}
     }
+
+    // Primarily for testing
+    public PrismContext getPrismContextLocal() {
+		return prismContext;
+	}
     
     public void setPrismContext(PrismContext prismContext) {
 		this.prismContext = prismContext;
@@ -195,6 +227,8 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     	if (this.parent != null && parentValue != null && this.parent != parentValue) {
     		throw new IllegalStateException("Attempt to reset parent of item "+this+" from "+this.parent+" to "+parentValue);
     	}
+    	// Immutability check can be skipped, as setting the parent doesn't alter this object.
+		// However, if existing parent itself is immutable, adding/removing its child item will cause the exception.
     	this.parent = parentValue;
     }
     
@@ -209,17 +243,24 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
 		if (userData == null) {
 			userData = new HashMap<>();
 		}
-		return userData;
+		if (immutable) {
+			return Collections.unmodifiableMap(userData);			// TODO beware, objects in userData themselves are mutable
+		} else {
+			return userData;
+		}
 	}
     
     public Object getUserData(String key) {
+		// TODO make returned data immutable (?)
 		return getUserData().get(key);
 	}
     
     public void setUserData(String key, Object value) {
+		checkMutability();
     	getUserData().put(key, value);
     }
 
+    @NotNull
 	public List<V> getValues() {
 		return values;
 	}
@@ -230,6 +271,10 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     	}
 		return values.get(index);
 	}
+    
+    public abstract <X> X getRealValue();
+    
+    public abstract <X> Collection<X> getRealValues();
     
     public boolean hasValue(PrismValue value, boolean ignoreMetadata) {
     	return (findValue(value, ignoreMetadata) != null);
@@ -244,16 +289,13 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     }
     
     public boolean isSingleValue() {
-		// We are not sure about multiplicity if there is no definition or the definition is dynamic
-		if (getDefinition() != null && !getDefinition().isDynamic()) {
+    	// TODO what about dynamic definitions? See MID-3922
+		if (getDefinition() != null) {
     		if (getDefinition().isMultiValue()) {
     			return false;
     		}
     	}
-		if (values == null || values.size() < 2) {
-        	return true;
-        }
-		return false;
+		return values.size() <= 1;
 	}
     
     /**
@@ -355,11 +397,16 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     	return false;
     }
     
+    public boolean valuesExactMatch(Collection<V> matchValues, Comparator<V> comparator) {
+    	return MiscUtil.unorderedCollectionCompare(values, matchValues, comparator );
+    }
+    
     public int size() {
     	return values.size();
     }
     
     public boolean addAll(Collection<V> newValues) throws SchemaException {
+		checkMutability();			// TODO consider weaker condition, like testing if there's a real change
     	boolean changed = false;
     	for (V val: newValues) {
     		if (add(val)) {
@@ -369,11 +416,19 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     	return changed;
     }
     
-    public boolean add(V newValue) throws SchemaException {
+    public boolean add(@NotNull V newValue) throws SchemaException {
+    	return add(newValue, true);
+    }
+    
+    public boolean add(@NotNull V newValue, boolean checkUniqueness) throws SchemaException {
+		checkMutability();
+		if (newValue.getPrismContext() == null) {
+			newValue.setPrismContext(prismContext);
+		}
     	newValue.setParent(this);
-    	if (containsEquivalentValue(newValue)) {
+    	if (checkUniqueness && containsEquivalentValue(newValue)) {
     		return false;
-    	}	
+    	}
     	if (getDefinition() != null) {
     		newValue.applyDefinition(getDefinition(), false);
     	}
@@ -381,6 +436,7 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     }
     
     public boolean removeAll(Collection<V> newValues) {
+		checkMutability();					// TODO consider if there is real change
     	boolean changed = false;
     	for (V val: newValues) {
     		if (remove(val)) {
@@ -391,11 +447,15 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     }
 
     public boolean remove(V newValue) {
+		checkMutability();					// TODO consider if there is real change
     	boolean changed = false;
     	Iterator<V> iterator = values.iterator();
     	while (iterator.hasNext()) {
     		V val = iterator.next();
-    		if (val.representsSameValue(newValue) || val.equalsRealValue(newValue)) {
+			// the same algorithm as when deleting the item value from delete delta
+			// TODO either make equalsRealValue return false if both PCVs have IDs and these IDs are different
+			// TODO or include a special test condition here; see MID-3828
+			if (val.representsSameValue(newValue, false) || val.equalsRealValue(newValue)) {
     			iterator.remove();
     			changed = true;
     		}
@@ -404,33 +464,33 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     }
     
     public V remove(int index) {
+		checkMutability();					// TODO consider if there is real change
     	return values.remove(index);
     }
 
     public void replaceAll(Collection<V> newValues) throws SchemaException {
+		checkMutability();					// TODO consider if there is real change
     	values.clear();
     	addAll(newValues);
     }
 
     public void replace(V newValue) {
+		checkMutability();					// TODO consider if there is real change
     	values.clear();
         newValue.setParent(this);
     	values.add(newValue);
     }
     
     public void clear() {
-    	values.clear();
+		checkMutability();					// TODO consider if there is real change
+		values.clear();
     }
     
     public void normalize() {
-    	Iterator<V> iterator = values.iterator();
-    	while (iterator.hasNext()) {
-    		V value = iterator.next();
-    		value.normalize();
-    		if (value.isEmpty()) {
-    			iterator.remove();
-    		}
-    	}
+		checkMutability();					// TODO consider if there is real change
+		for (V value : values) {
+			value.normalize();
+		}
     }
     
     /**
@@ -448,14 +508,22 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     
     public abstract <IV extends PrismValue,ID extends ItemDefinition> PartiallyResolvedItem<IV,ID> findPartial(ItemPath path);
     
-    public Collection<? extends ItemDelta> diff(Item<V,D> other) {
+    // We want this method to be consistent with property diff
+    public ItemDelta<V,D> diff(Item<V,D> other) {
     	return diff(other, true, false);
     }
         
-    public Collection<? extends ItemDelta> diff(Item<V,D> other, boolean ignoreMetadata, boolean isLiteral) {
-    	Collection<? extends ItemDelta> itemDeltas = new ArrayList<ItemDelta>();
+    // We want this method to be consistent with property diff
+    public ItemDelta<V,D> diff(Item<V,D> other, boolean ignoreMetadata, boolean isLiteral) {
+    	List<? extends ItemDelta> itemDeltas = new ArrayList<>();
 		diffInternal(other, itemDeltas, ignoreMetadata, isLiteral);
-		return itemDeltas;
+		if (itemDeltas.isEmpty()) {
+			return null;
+		}
+		if (itemDeltas.size() > 1) {
+			throw new UnsupportedOperationException("Item multi-delta diff is not supported yet");
+		}
+		return itemDeltas.get(0);
     }
         
     protected void diffInternal(Item<V,D> other, Collection<? extends ItemDelta> deltas, 
@@ -476,7 +544,7 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     			boolean found = false;
     			while (iterator.hasNext()) {
     				PrismValue otherValue = iterator.next();
-    				if (thisValue.representsSameValue(otherValue) || delta == null) {
+    				if (thisValue.representsSameValue(otherValue, true) || delta == null) {
     					found = true;
     					// Matching IDs, look inside to figure out internal deltas
     					thisValue.diffMatchingRepresentation(otherValue, deltas, 
@@ -484,13 +552,15 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     					// No need to process this value again
     					iterator.remove();
     					break;
-    				} else if (thisValue.equalsComplex(otherValue, ignoreMetadata, isLiteral)) {
+					// TODO either make equalsRealValue return false if both PCVs have IDs and these IDs are different
+					// TODO or include a special test condition here; see MID-3828
+					} else if (thisValue.equalsComplex(otherValue, ignoreMetadata, isLiteral)) {
     					found = true;
     					// same values. No delta
     					// No need to process this value again
     					iterator.remove();
     					break;
-    				}
+					}
     			}
 				if (!found) {
 					// We have the value and the other does not, this is delete of the entire value
@@ -542,12 +612,23 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
 			visitor.visit(this);
 		}
 	}
+	
+	public void filterValues(Function<V, Boolean> function) {
+		Iterator<V> iterator = values.iterator();
+		while (iterator.hasNext()) {
+			Boolean keep = function.apply(iterator.next());
+			if (keep == null || !keep) {
+				iterator.remove();
+			}
+		}
+	}
 
 	public void applyDefinition(D definition) throws SchemaException {
 		applyDefinition(definition, true);
 	}
 	
 	public void applyDefinition(D definition, boolean force) throws SchemaException {
+		checkMutability();					// TODO consider if there is real change
 		if (definition != null) {
 			checkDefinition(definition);
 		}
@@ -568,12 +649,10 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
                 definition.revive(prismContext);
             }
         }
-    	if (values != null) {
-    		for (V value: values) {
-    			value.revive(prismContext);
-    		}
-    	}
-    }
+		for (V value: values) {
+			value.revive(prismContext);
+		}
+	}
 
     public abstract Item clone();
 
@@ -585,6 +664,8 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
         // another item
         clone.parent = null;
         clone.userData = MiscUtil.cloneMap(this.userData);
+        clone.incomplete = this.incomplete;
+		// Also do not copy 'immutable' flag so the clone is free to be modified
     }
     
     protected void propagateDeepCloneDefinition(boolean ultraDeep, D clonedDefinition) {
@@ -656,25 +737,23 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
     	} else if (requireDefinitions && !isRaw()) {
     		throw new IllegalStateException("No definition in item "+this+" ("+path+" in "+rootItem+")");
     	}
-    	if (values != null) {
-    		for(V val: values) {
-    			if (prohibitRaw && val.isRaw()) {
-    				throw new IllegalStateException("Raw value "+val+" in item "+this+" ("+path+" in "+rootItem+")");
-    			}
-    			if (val == null) {
-    				throw new IllegalStateException("Null value in item "+this+" ("+path+" in "+rootItem+")");
-    			}
-    			if (val.getParent() == null) {
-    				throw new IllegalStateException("Null parent for value "+val+" in item "+this+" ("+path+" in "+rootItem+")");
-    			}
-    			if (val.getParent() != this) {
-    				throw new IllegalStateException("Wrong parent for value "+val+" in item "+this+" ("+path+" in "+rootItem+"), "+
-    						"bad parent: " + val.getParent());
-    			}
-    			val.checkConsistenceInternal(rootItem, requireDefinitions, prohibitRaw, scope);
-    		}
-    	}
-    }
+		for (V val: values) {
+			if (prohibitRaw && val.isRaw()) {
+				throw new IllegalStateException("Raw value "+val+" in item "+this+" ("+path+" in "+rootItem+")");
+			}
+			if (val == null) {
+				throw new IllegalStateException("Null value in item "+this+" ("+path+" in "+rootItem+")");
+			}
+			if (val.getParent() == null) {
+				throw new IllegalStateException("Null parent for value "+val+" in item "+this+" ("+path+" in "+rootItem+")");
+			}
+			if (val.getParent() != this) {
+				throw new IllegalStateException("Wrong parent for value "+val+" in item "+this+" ("+path+" in "+rootItem+"), "+
+						"bad parent: " + val.getParent());
+			}
+			val.checkConsistenceInternal(rootItem, requireDefinitions, prohibitRaw, scope);
+		}
+	}
     
 	protected abstract void checkDefinition(D def);
 	
@@ -720,15 +799,24 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
 	}
 
 	public boolean isEmpty() {
-        return (getValues() == null || getValues().isEmpty());
+        return getValues().isEmpty();
     }
 
     @Override
 	public int hashCode() {
+		int valuesHash = 0;
+		if (values != null) {
+			valuesHash = MiscUtil.unorderedCollectionHashcode(values, null);
+		}
+		if (valuesHash == 0) {
+			// empty or non-significant container. We do not want this to destroy hashcode of
+			// parent item
+			return 0;
+		}
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + ((elementName == null) ? 0 : elementName.hashCode());
-		result = prime * result + ((values == null) ? 0 : MiscUtil.unorderedCollectionHashcode(values));
+		result = prime * result + valuesHash;
 		return result;
 	}
 
@@ -755,35 +843,29 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
 	}
 
 	private boolean equalsRealValues(List<V> thisValue, List<?> otherValues) {
-		Comparator<?> comparator = new Comparator<Object>() {
-			@Override
-			public int compare(Object o1, Object o2) {
-				if (o1 instanceof PrismValue && o2 instanceof PrismValue) {
-					PrismValue v1 = (PrismValue)o1;
-					PrismValue v2 = (PrismValue)o2;
-					return v1.equalsRealValue(v2) ? 0 : 1;
-				} else {
-					return -1;
-				}
-			}
-		};
-		return MiscUtil.unorderedCollectionEquals(thisValue, otherValues, comparator);
+		return MiscUtil.unorderedCollectionEquals(thisValue, otherValues, 
+				(o1, o2) -> {
+					if (o1 instanceof PrismValue && o2 instanceof PrismValue) {
+						PrismValue v1 = (PrismValue)o1;
+						PrismValue v2 = (PrismValue)o2;
+						return v1.equalsRealValue(v2);
+					} else {
+						return false;
+					}
+				});
 	}
 	
 	private boolean match(List<V> thisValue, List<?> otherValues) {
-		Comparator<?> comparator = new Comparator<Object>() {
-			@Override
-			public int compare(Object o1, Object o2) {
-				if (o1 instanceof PrismValue && o2 instanceof PrismValue) {
-					PrismValue v1 = (PrismValue)o1;
-					PrismValue v2 = (PrismValue)o2;
-					return v1.match(v2) ? 0 : 1;
-				} else {
-					return -1;
-				}
-			}
-		};
-		return MiscUtil.unorderedCollectionEquals(thisValue, otherValues, comparator);
+		return MiscUtil.unorderedCollectionEquals(thisValue, otherValues, 
+				(o1, o2) -> {
+					if (o1 instanceof PrismValue && o2 instanceof PrismValue) {
+						PrismValue v1 = (PrismValue)o1;
+						PrismValue v2 = (PrismValue)o2;
+						return v1.match(v2);
+					} else {
+						return false;
+					}
+				});
 	}
 
 	@Override
@@ -805,6 +887,9 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
 				return false;
 		} else if (!elementName.equals(other.elementName))
 			return false;
+		if (incomplete != other.incomplete) {
+				return false;
+		}
 		// Do not compare parent at all. This is not relevant.
 		if (values == null) {
 			if (other.values != null)
@@ -832,6 +917,9 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
 				return false;
 		} else if (!elementName.equals(other.elementName))
 			return false;
+		if (incomplete != other.incomplete) {
+			return false;
+		}
 		// Do not compare parent at all. This is not relevant.
 		if (values == null) {
 			if (other.values != null)
@@ -840,24 +928,28 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
 			return false;
 		return true;
 	}
+	
+	/**
+	 * Returns true if this item is metadata item that should be ignored
+	 * for metadata-insensitive comparisons and hashCode functions.
+	 */
+	public boolean isMetadata() {
+		D def = getDefinition();
+		if (def != null) {
+			return def.isOperational(); 
+		} else {
+			return false;
+		}
+	}
 
 	@Override
     public String toString() {
         return getClass().getSimpleName() + "(" + PrettyPrinter.prettyPrint(getElementName()) + ")";
     }
 
-    /**
-     * Provide terse and readable dump of the object suitable for log (at debug level).
-     */
-    public String debugDump() {
-        return debugDump(0);
-    }
-
     public String debugDump(int indent) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < indent; i++) {
-            sb.append(INDENT_STRING);
-        }
+        DebugUtil.indentDebugDump(sb, indent);
         if (DebugUtil.isDetailedDebugDump()) {
         	sb.append(getDebugDumpClassName()).append(": ");
         }
@@ -865,11 +957,58 @@ public abstract class Item<V extends PrismValue, D extends ItemDefinition> imple
         return sb.toString();
     }
 
-    /**
+	/**
      * Return a human readable name of this class suitable for logs.
      */
     protected String getDebugDumpClassName() {
         return "Item";
     }
+
+    protected void appendDebugDumpSuffix(StringBuilder sb) {
+    	if (incomplete) {
+    		sb.append(" (incomplete)");
+    	}
+    }
     
+	public boolean isImmutable() {
+		return immutable;
+	}
+
+	public void setImmutable(boolean immutable) {
+		this.immutable = immutable;
+		for (V value : getValues()) {
+			value.setImmutable(immutable);
+		}
+	}
+
+	protected void checkMutability() {
+		if (immutable) {
+			throw new IllegalStateException("An attempt to modify an immutable item: " + toString());
+		}
+	}
+
+	public void checkImmutability() {
+    	synchronized (this) {		// because of modifyUnfrozen
+			if (!immutable) {
+				throw new IllegalStateException("Item is not immutable even if it should be: " + this);
+			}
+		}
+	}
+
+	// should be always called on non-overlapping objects! (for the synchronization to work correctly)
+	public void modifyUnfrozen(Runnable mutator) {
+		synchronized (this) {
+			boolean wasImmutable = immutable;
+			if (wasImmutable) {
+				setImmutable(false);
+			}
+			try {
+				mutator.run();
+			} finally {
+				if (wasImmutable) {
+					setImmutable(true);
+				}
+			}
+		}
+	}
 }

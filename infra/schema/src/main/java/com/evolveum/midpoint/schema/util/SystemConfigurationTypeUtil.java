@@ -16,8 +16,8 @@
 
 package com.evolveum.midpoint.schema.util;
 
-import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.InternalsConfigurationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
 
@@ -52,5 +52,21 @@ public class SystemConfigurationTypeUtil {
             return null;
         }
         return sysconfigObject.asObjectable().getInternals().getMaxModelClicks();
+    }
+
+    public static String getDefaultHostname(SystemConfigurationType sysconfig) {
+        if (sysconfig == null) {
+            return null;
+        } else if (sysconfig.getInfrastructure() != null && sysconfig.getInfrastructure().getDefaultHostname() != null) {
+            return sysconfig.getInfrastructure().getDefaultHostname();
+        } else {
+            return sysconfig.getDefaultHostname();      // deprecated (legacy)
+        }
+    }
+
+    // TODO move to better place?
+    public static void applyOperationResultHandling(SystemConfigurationType config) {
+        Integer value = config != null && config.getInternals() != null ? config.getInternals().getSubresultStripThreshold() : null;
+        OperationResult.setSubresultStripThreshold(value);
     }
 }

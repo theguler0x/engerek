@@ -16,12 +16,14 @@
 
 package com.evolveum.midpoint.model.impl.scripting.actions;
 
-import com.evolveum.midpoint.model.impl.scripting.Data;
+import com.evolveum.midpoint.model.impl.scripting.PipelineData;
 import com.evolveum.midpoint.model.impl.scripting.ExecutionContext;
 import com.evolveum.midpoint.model.api.ScriptExecutionException;
+import com.evolveum.midpoint.model.api.PipelineItem;
 import com.evolveum.midpoint.model.impl.scripting.helpers.OperationsHelper;
-import com.evolveum.midpoint.prism.Item;
 import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.prism.PrismObjectValue;
+import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.util.logging.Trace;
@@ -53,28 +55,35 @@ public class DeleteExecutor extends BaseActionExecutor {
     }
 
     @Override
-    public Data execute(ActionExpressionType expression, Data input, ExecutionContext context, OperationResult result) throws ScriptExecutionException {
+    public PipelineData execute(ActionExpressionType expression, PipelineData input, ExecutionContext context, OperationResult globalResult) throws ScriptExecutionException {
 
-        boolean raw = getParamRaw(expression, input, context, result);
+        boolean raw = getParamRaw(expression, input, context, globalResult);
+        boolean dryRun = getParamDryRun(expression, input, context, globalResult);
 
-        for (Item item : input.getData()) {
-            if (item instanceof PrismObject) {
-                PrismObject<? extends ObjectType> prismObject = (PrismObject) item;
+        for (PipelineItem item : input.getData()) {
+            PrismValue value = item.getValue();
+            OperationResult result = operationsHelper.createActionResult(item, this, context, globalResult);
+            context.checkTaskStop();
+            if (value instanceof PrismObjectValue) {
+                PrismObject<? extends ObjectType> prismObject = ((PrismObjectValue) value).asPrismObject();
                 ObjectType objectType = prismObject.asObjectable();
                 long started = operationsHelper.recordStart(context, objectType);
+                Throwable exception = null;
                 try {
-                    operationsHelper.applyDelta(createDeleteDelta(objectType), operationsHelper.createExecutionOptions(raw), context, result);
+                    operationsHelper.applyDelta(createDeleteDelta(objectType), operationsHelper.createExecutionOptions(raw), dryRun, context, result);
                     operationsHelper.recordEnd(context, objectType, started, null);
                 } catch (Throwable ex) {
                     operationsHelper.recordEnd(context, objectType, started, ex);
-                    throw ex;   // TODO think about this
+                    exception = processActionException(ex, NAME, value, context);
                 }
-                context.println("Deleted " + item.toString() + rawSuffix(raw));
+                context.println((exception != null ? "Attempted to delete " : "Deleted ") + prismObject.toString() + rawDrySuffix(raw, dryRun) + exceptionSuffix(exception));
             } else {
-                throw new ScriptExecutionException("Item couldn't be deleted, because it is not a PrismObject: " + item.toString());
+				//noinspection ThrowableNotThrown
+				processActionException(new ScriptExecutionException("Item is not a PrismObject"), NAME, value, context);
             }
+            operationsHelper.trimAndCloneResult(result, globalResult, context);
         }
-        return Data.createEmpty();
+        return input;
     }
 
     private ObjectDelta createDeleteDelta(ObjectType objectType) {

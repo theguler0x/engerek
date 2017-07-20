@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,48 +15,42 @@
  */
 package com.evolveum.midpoint.model.common.expression.script;
 
-import com.evolveum.midpoint.model.common.expression.ExpressionSyntaxException;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
-import com.evolveum.midpoint.model.common.expression.functions.BasicExpressionFunctions;
 import com.evolveum.midpoint.model.common.expression.functions.FunctionLibrary;
 import com.evolveum.midpoint.prism.ItemDefinition;
-import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.PrismValue;
+import com.evolveum.midpoint.repo.common.expression.ExpressionSyntaxException;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.ObjectResolver;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
-import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ScriptExpressionEvaluatorType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ScriptExpressionReturnTypeType;
 
-import org.w3c.dom.Element;
-
-import javax.xml.namespace.QName;
-
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
+import java.util.function.Function;
 
 /**
  * @author Radovan Semancik
  */
 public interface ScriptEvaluator {
 	
-	public <T, V extends PrismValue> List<V> evaluate(ScriptExpressionEvaluatorType expressionType, ExpressionVariables variables,
-													  ItemDefinition outputDefinition, ScriptExpressionReturnTypeType suggestedReturnType, ObjectResolver objectResolver,
-													  Collection<FunctionLibrary> functions, String contextDescription, Task task, OperationResult result)
+	<T, V extends PrismValue> List<V> evaluate(ScriptExpressionEvaluatorType expressionType, ExpressionVariables variables,
+			ItemDefinition outputDefinition, Function<Object, Object> additionalConvertor,
+			ScriptExpressionReturnTypeType suggestedReturnType, ObjectResolver objectResolver,
+			Collection<FunctionLibrary> functions, String contextDescription, Task task, OperationResult result)
             throws ExpressionEvaluationException, ObjectNotFoundException, ExpressionSyntaxException;
 
     /**
      * Returns human readable name of the language that this evaluator supports
      */
-    public String getLanguageName();
+	String getLanguageName();
 
 	/**
 	 * Returns URL of the language that this evaluator can handle
 	 */
-	public String getLanguageUrl();
+	String getLanguageUrl();
 
 }

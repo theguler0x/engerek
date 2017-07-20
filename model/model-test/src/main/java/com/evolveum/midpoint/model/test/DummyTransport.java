@@ -17,10 +17,13 @@
 package com.evolveum.midpoint.model.test;
 
 import com.evolveum.midpoint.notifications.api.NotificationManager;
+import com.evolveum.midpoint.notifications.api.events.Event;
 import com.evolveum.midpoint.notifications.api.transports.Message;
 import com.evolveum.midpoint.notifications.api.transports.Transport;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
+import com.evolveum.midpoint.util.DebugDumpable;
+import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
@@ -34,12 +37,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 
 /**
  * @author mederly
  */
 @Component
-public class DummyTransport implements Transport {
+public class DummyTransport implements Transport, DebugDumpable {
 
     private static final Trace LOGGER = TraceManager.getTrace(DummyTransport.class);
 
@@ -60,10 +65,10 @@ public class DummyTransport implements Transport {
         }
     }
 
-    private Map<String,List<Message>> messages = new HashMap<String,List<Message>>();
+    private Map<String,List<Message>> messages = new HashMap<>();
 
     @Override
-    public void send(Message message, String name, Task task, OperationResult parentResult) {
+    public void send(Message message, String name, Event event, Task task, OperationResult parentResult) {
 
         OperationResult result = parentResult.createSubresult(DOT_CLASS + "send");
 
@@ -80,18 +85,40 @@ public class DummyTransport implements Transport {
     public List<Message> getMessages(String transportName) {
         return messages.get(transportName);
     }
+    
+    public Map<String,List<Message>> getMessages() {
+    	return messages;
+    }
 
     public void clearMessages() {
-        messages = new HashMap<String,List<Message>>();
+        messages = new HashMap<>();
     }
 
     @Override
     public String getDefaultRecipientAddress(UserType recipient) {
-        return "dummyAddress";
+        return recipient.getEmailAddress() != null ? recipient.getEmailAddress() : "dummyAddress";
     }
 
     @Override
     public String getName() {
         return "dummy";
     }
+
+	@Override
+	public String debugDump() {
+		return debugDump(0);
+	}
+
+	@Override
+	public String debugDump(int indent) {
+    	StringBuilder sb = new StringBuilder();
+    	DebugUtil.indentDebugDump(sb, indent);
+    	sb.append("(\n");
+		for (Map.Entry<String, List<Message>> entry : messages.entrySet()) {
+			DebugUtil.debugDumpWithLabelLn(sb, entry.getKey(), entry.getValue(), indent + 1);
+		}
+		DebugUtil.indentDebugDump(sb, indent);
+		sb.append(")");
+		return sb.toString();
+	}
 }

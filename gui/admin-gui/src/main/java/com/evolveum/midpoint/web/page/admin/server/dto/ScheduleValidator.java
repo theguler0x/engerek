@@ -25,6 +25,8 @@ import org.apache.wicket.markup.html.form.*;
 import org.apache.wicket.markup.html.form.validation.AbstractFormValidator;
 
 import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ScheduleValidator extends AbstractFormValidator {
 
@@ -47,7 +49,20 @@ public class ScheduleValidator extends AbstractFormValidator {
 
     @Override
 	public FormComponent<?>[] getDependentFormComponents() {
-		return new FormComponent[] { recurring, bound, interval };      // todo is this correct? (cron should not be here, as it is not always present...)
+    	List<FormComponent<?>> dependentComponents = new ArrayList<>();
+    	if (interval.isEnabled()) {
+    		dependentComponents.add(interval);
+    	}
+    	
+    	if (recurring.isEnabled()) {
+    		dependentComponents.add(recurring);
+    	}
+    	
+    	if (bound.isEnabled()) {
+    		dependentComponents.add(bound);
+    	}
+    	
+    	return dependentComponents.toArray(new FormComponent<?>[]{});    // todo is this correct? (cron should not be here, as it is not always present...)
 	}
 
 	@Override
@@ -77,32 +92,29 @@ public class ScheduleValidator extends AbstractFormValidator {
 
         if (recurring.getModelObject()) {
 
-            if (interval.getModelObject() != null && interval.getModelObject() <= 0) {
+			Integer intervalValue = interval.getModelObject();
+			if (intervalValue != null && intervalValue <= 0) {
                 error(interval, "pageTask.scheduleValidation.intervalNotPositive");
             }
 
 			if (bound.getModelObject()) {
 
-				if (interval.getModelObject() == null) {
+				if (intervalValue == null) {
 				    error(interval, "pageTask.scheduleValidation.noInterval");
 			    }
 
             } else {
 
-                if (interval.getModelObject() != null && !StringUtils.isEmpty(cron.getModelObject())) {
+				String cronValue = cron.getModelObject();
+				if (intervalValue != null && !StringUtils.isEmpty(cronValue)) {
                     error(interval, "pageTask.scheduleValidation.bothIntervalAndCron");
                 }
 
-                // there can be recurring tasks that are started only on demand, so we allow specifying no timing information
-//                if (interval.getModelObject() == null && StringUtils.isEmpty(cron.getModelObject())) {
-//                    error(interval, "pageTask.scheduleValidation.neitherIntervalNorCron");
-//                }
-
-                if (!StringUtils.isEmpty(cron.getModelObject())) {
-                    ParseException pe = taskManager.validateCronExpression(cron.getModelObject());
+                if (!StringUtils.isEmpty(cronValue)) {
+                    ParseException pe = taskManager.validateCronExpression(cronValue);
                     if (pe != null) {
                         error(cron, "pageTask.scheduleValidation.invalidCronSpecification");
-                        LOGGER.warn("Invalid cron-like specification: " + cron.getModelObject() + ": " + pe);
+                        LOGGER.warn("Invalid cron-like specification: " + cronValue + ": " + pe);
                     }
                 }
             }

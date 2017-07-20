@@ -24,9 +24,11 @@ import com.evolveum.midpoint.repo.sql.query2.definition.JpaLinkDefinition;
 import com.evolveum.midpoint.repo.sql.query2.hqm.condition.Condition;
 import com.evolveum.midpoint.repo.sql.util.ClassMapper;
 import org.apache.commons.lang.Validate;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Query in HQL that is being created.
@@ -57,21 +59,33 @@ public abstract class HibernateQuery {
      */
     private List<Condition> conditions = new ArrayList<>();
 
-    class Ordering {
-        String byProperty;
-        OrderDirection direction;
+    public class Ordering {
+        @NotNull private final String byProperty;
+        private final OrderDirection direction;
 
-        public Ordering(String byProperty, OrderDirection direction) {
+        Ordering(@NotNull String byProperty, OrderDirection direction) {
             this.byProperty = byProperty;
             this.direction = direction;
+        }
+
+        @NotNull
+        public String getByProperty() {
+            return byProperty;
+        }
+
+        public OrderDirection getDirection() {
+            return direction;
         }
     }
 
     private List<Ordering> orderingList = new ArrayList<>();
 
-    public HibernateQuery(JpaEntityDefinition primaryEntityDef) {
-        Validate.notNull(primaryEntityDef, "primaryEntityDef");
+    public HibernateQuery(@NotNull JpaEntityDefinition primaryEntityDef) {
         primaryEntity = createItemSpecification(primaryEntityDef);
+    }
+
+    protected HibernateQuery(EntityReference primaryEntity) {
+        this.primaryEntity = primaryEntity;
     }
 
     public List<ProjectionElement> getProjectionElements() {
@@ -80,6 +94,12 @@ public abstract class HibernateQuery {
 
     public void addProjectionElement(ProjectionElement element) {
         projectionElements.add(element);
+    }
+
+    public void addProjectionElementsFor(List<String> items) {
+        for (String item : items) {
+            addProjectionElement(new GenericProjectionElement(item));
+        }
     }
 
     public EntityReference getPrimaryEntity() {
@@ -98,11 +118,15 @@ public abstract class HibernateQuery {
         conditions.add(condition);
     }
 
-    public String getAsHqlText(int indent) {
+    public String getAsHqlText(int indent, boolean distinct) {
         StringBuilder sb = new StringBuilder();
 
         indent(sb, indent);
-        sb.append("select\n");
+        sb.append("select");
+        if (distinct) {
+        	sb.append(" distinct");
+		}
+        sb.append("\n");
         ProjectionElement.dumpToHql(sb, projectionElements, indent + 1);     // we finish at the end of the last line (not at the new line)
         sb.append("\n");
 
@@ -195,8 +219,17 @@ public abstract class HibernateQuery {
         return getPrimaryEntity().getAlias();
     }
 
+    // use with care!
+    public void setPrimaryEntityAlias(String alias) {
+        getPrimaryEntity().setAlias(alias);
+    }
+
     public void addOrdering(String propertyPath, OrderDirection direction) {
         orderingList.add(new Ordering(propertyPath, direction));
+    }
+
+    public List<Ordering> getOrderingList() {
+        return orderingList;
     }
 
     public abstract RootHibernateQuery getRootQuery();

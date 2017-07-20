@@ -98,6 +98,13 @@
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>
+            <xsd:element name="multivalued" type="xsd:string" minOccurs="0" maxOccurs="unbounded">
+                <xsd:annotation>
+                    <xsd:appinfo>
+                        <a:indexed>true</a:indexed>
+                    </xsd:appinfo>
+                </xsd:annotation>
+            </xsd:element>
         </xsd:sequence>
     </xsd:complexType>
     
@@ -160,6 +167,22 @@
                         <a:displayName>Funeral</a:displayName>
                         <a:displayOrder>160</a:displayOrder>
                         <a:help>Dead men tell no tales</a:help>
+                    </xsd:appinfo>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="overrideActivation" type="c:ActivationStatusType" minOccurs="0" maxOccurs="1">
+                <xsd:annotation>
+                    <xsd:appinfo>
+                        <a:indexed>true</a:indexed>
+                    </xsd:appinfo>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="sshPubKey" type="xsd:base64Binary" minOccurs="0" maxOccurs="1">
+                <xsd:annotation>
+                    <xsd:appinfo>
+                        <a:indexed>true</a:indexed>
+                        <a:displayName>Ssh Public Key</a:displayName>
+                        <a:displayOrder>119</a:displayOrder>
                     </xsd:appinfo>
                 </xsd:annotation>
             </xsd:element>

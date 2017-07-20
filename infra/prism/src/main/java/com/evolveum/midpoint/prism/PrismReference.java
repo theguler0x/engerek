@@ -16,6 +16,8 @@
 
 package com.evolveum.midpoint.prism;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import javax.xml.namespace.QName;
@@ -26,6 +28,7 @@ import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.MiscUtil;
 import com.evolveum.midpoint.util.PrettyPrinter;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Object Reference is a property that describes reference to an object. It is
@@ -53,23 +56,12 @@ public class PrismReference extends Item<PrismReferenceValue,PrismReferenceDefin
 	/**
 	 * {@inheritDoc}
 	 */
-	public PrismReferenceDefinition getDefinition() {
-		return (PrismReferenceDefinition) super.getDefinition();
-	}
-		
-	/**
-     * Returns reference values.
-     * <p/>
-     * The values are returned as set. The order of values is not significant.
-     *
-     * @return property values
-     */
-	@Override
-    public List<PrismReferenceValue> getValues() {
-        return (List<PrismReferenceValue>) super.getValues();
-    }
-
     public PrismReferenceValue getValue() {
+		// I know of no reason why we should not return a value if it's only one (even for multivalued items) (see MID-3922)
+		// TODO reconsider this
+		if (getValues().size() == 1) {
+			return getValues().get(0);
+		}
     	// We are not sure about multiplicity if there is no definition or the definition is dynamic
     	if (getDefinition() != null && !getDefinition().isDynamic()) {
     		if (getDefinition().isMultiValue()) {
@@ -100,9 +92,29 @@ public class PrismReference extends Item<PrismReferenceValue,PrismReferenceDefin
 		}
 		return null;
 	}
+	
+	@Override
+	public Referencable getRealValue() {
+		if (getValue() == null) {
+			return null;
+		}
+		return getValue().asReferencable();
+	}
+	
+	@Override
+	public Collection<Referencable> getRealValues() {
+		if (getValues() == null) {
+			return null;
+		}
+		List<Referencable> realValues = new ArrayList<>(getValues().size());
+		for (PrismReferenceValue refVal : getValues()) {
+			realValues.add(refVal.asReferencable());
+		}
+		return realValues;
+	}
 
     
-    public boolean add(PrismReferenceValue value) {
+    public boolean add(@NotNull PrismReferenceValue value) {
     	value.setParent(this);
     	return getValues().add(value);
     }

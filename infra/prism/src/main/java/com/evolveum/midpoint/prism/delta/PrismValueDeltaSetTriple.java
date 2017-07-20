@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,30 +15,21 @@
  */
 package com.evolveum.midpoint.prism.delta;
 
-import com.evolveum.midpoint.prism.ConsistencyCheckScope;
 import com.evolveum.midpoint.prism.ItemDefinition;
-import com.evolveum.midpoint.prism.Itemable;
 import com.evolveum.midpoint.prism.Objectable;
-import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.OriginType;
 import com.evolveum.midpoint.prism.Visitable;
 import com.evolveum.midpoint.prism.Visitor;
-import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.util.Cloner;
 import com.evolveum.midpoint.util.DebugDumpable;
-import com.evolveum.midpoint.util.DebugUtil;
-import com.evolveum.midpoint.util.MiscUtil;
+import com.evolveum.midpoint.util.Processor;
 import com.evolveum.midpoint.util.exception.SchemaException;
 
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.Iterator;
-
-import javax.xml.namespace.QName;
 
 /**
  * DeltaSetTriple that is limited to hold prism values. By limiting to the PrismValue descendants we gain advantage to be
@@ -61,7 +52,7 @@ public class PrismValueDeltaSetTriple<V extends PrismValue> extends DeltaSetTrip
      * Compares two (unordered) collections and creates a triple describing the differences.
      */
     public static <V extends PrismValue> PrismValueDeltaSetTriple<V> diffPrismValueDeltaSetTriple(Collection<V> valuesOld, Collection<V> valuesNew) {
-    	PrismValueDeltaSetTriple<V> triple = new PrismValueDeltaSetTriple<V>();
+    	PrismValueDeltaSetTriple<V> triple = new PrismValueDeltaSetTriple<>();
         diff(valuesOld, valuesNew, triple);
         return triple;
     }
@@ -211,33 +202,31 @@ public class PrismValueDeltaSetTriple<V extends PrismValue> extends DeltaSetTrip
 	}
 
 	public PrismValueDeltaSetTriple<V> clone() {
-		PrismValueDeltaSetTriple<V> clone = new PrismValueDeltaSetTriple<V>();
+		PrismValueDeltaSetTriple<V> clone = new PrismValueDeltaSetTriple<>();
 		copyValues(clone);
 		return clone;
 	}
 
 	protected void copyValues(PrismValueDeltaSetTriple<V> clone) {
-		Cloner<V> cloner = new Cloner<V>() {
-			@Override
-			public V clone(V original) {
-				return (V) original.clone();
-			}
-		};
-		super.copyValues(clone, cloner);
+		super.copyValues(clone, original -> (V) original.clone());
 	}
 	
 	public void checkConsistence() {
-		Visitor visitor = new Visitor() {
-			@Override
-			public void visit(Visitable visitable) {
-				if (visitable instanceof PrismValue) {
-					if (((PrismValue)visitable).isEmpty()) {
-						throw new IllegalStateException("Empty value "+visitable+" in triple "+PrismValueDeltaSetTriple.this);
-					}
+		Visitor visitor = visitable -> {
+			if (visitable instanceof PrismValue) {
+				if (((PrismValue)visitable).isEmpty()) {
+					throw new IllegalStateException("Empty value "+visitable+" in triple "+PrismValueDeltaSetTriple.this);
 				}
 			}
 		};
 		accept(visitor);
+		
+		Processor<V> processor = pval -> {
+			if (pval.getParent() != null) {
+				throw new IllegalStateException("Value "+pval+" in triple "+PrismValueDeltaSetTriple.this+" has parent, looks like it was not cloned properly");
+			}
+		};
+		foreach(processor);
 	}
 	
 	@Override
@@ -257,18 +246,18 @@ public class PrismValueDeltaSetTriple<V extends PrismValue> extends DeltaSetTrip
 	}
 	
 	public void checkNoParent() {
-		checkNoParent(zeroSet);
-		checkNoParent(plusSet);
-		checkNoParent(minusSet);
+		checkNoParent(zeroSet, "zero");
+		checkNoParent(plusSet, "plus");
+		checkNoParent(minusSet, "minus");
 	}
 	
-	private void checkNoParent(Collection<V> set) {
+	private void checkNoParent(Collection<V> set, String desc) {
 		if (set == null) {
 			return;
 		}
 		for (V val: set) {
 			if (val.getParent() != null) {
-				throw new IllegalStateException("Value "+val+" in triple set "+this+" has a parrent "+val.getParent()+". This is unexpected");
+				throw new IllegalStateException("Value "+val+" in "+desc+" triple set "+this+" has a parrent "+val.getParent()+". This is unexpected");
 			}
 		}
 	}

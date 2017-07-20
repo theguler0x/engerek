@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,14 @@
  */
 package com.evolveum.midpoint.schema.util;
 
+import com.evolveum.midpoint.util.exception.CommunicationException;
+import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
+import com.evolveum.midpoint.util.exception.PolicyViolationException;
+import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.exception.TunnelException;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ErrorSelectorType;
 
 /**
  * @author Radovan Semancik
@@ -41,6 +48,36 @@ public class ExceptionUtil {
 			return lookForMessage(e.getCause());
 		}
 		return null;
+	}
+	
+	public static boolean isSelected(ErrorSelectorType selector, Throwable exception, boolean defaultValue) {
+		if (selector == null) {
+			return defaultValue;
+		}
+		if (exception instanceof CommunicationException) {
+			return isSelected(selector.isNetwork(), defaultValue);
+		}
+		if (exception instanceof SecurityViolationException) {
+			return isSelected(selector.isSecurity(), defaultValue);
+		}
+		if (exception instanceof PolicyViolationException) {
+			return isSelected(selector.isPolicy(), defaultValue);
+		}
+		if (exception instanceof SchemaException) {
+			return isSelected(selector.isSchema(), defaultValue);
+		}
+		if (exception instanceof ConfigurationException || exception instanceof ExpressionEvaluationException) {
+			return isSelected(selector.isConfiguration(), defaultValue);
+		}
+		return isSelected(selector.isGeneric(), defaultValue);
+	}
+
+	private static boolean isSelected(Boolean value, boolean defaultValue) {
+		if (value == null) {
+			return defaultValue;
+		} else {
+			return value;
+		}
 	}
 	
 }

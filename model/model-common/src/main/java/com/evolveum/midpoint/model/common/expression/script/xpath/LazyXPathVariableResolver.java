@@ -16,20 +16,17 @@
 
 package com.evolveum.midpoint.model.common.expression.script.xpath;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
 import javax.xml.namespace.QName;
 import javax.xml.xpath.XPathVariableResolver;
 
-import com.evolveum.midpoint.prism.parser.DomParser;
-
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-import com.evolveum.midpoint.model.common.expression.ExpressionSyntaxException;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.prism.ItemDefinition;
 import com.evolveum.midpoint.prism.Itemable;
 import com.evolveum.midpoint.prism.Objectable;
@@ -39,6 +36,8 @@ import com.evolveum.midpoint.prism.PrismProperty;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.repo.common.expression.ExpressionSyntaxException;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.ObjectResolver;
@@ -139,56 +138,25 @@ public class LazyXPathVariableResolver implements XPathVariableResolver {
 	        
 	        if (variableValue instanceof PrismObject) {
 	        	PrismObject<?> prismObject = (PrismObject<?>)variableValue;
-	        	variableValue = prismObject.getPrismContext().serializeToDom(prismObject);
+	        	variableValue = prismObject.getPrismContext().domSerializer().serialize(prismObject);
 
 	        } else if (variableValue instanceof PrismProperty<?>) {
 	        	PrismProperty<?> prismProperty = (PrismProperty<?>)variableValue;
-	        	DomParser domProcessor = prismProperty.getPrismContext().getParserDom();
 	        	final List<Element> elementList = new ArrayList<Element>();
 	        	for (PrismPropertyValue<?> value: prismProperty.getValues()) {
-	        		Element valueElement = prismContext.serializeValueToDom(value, prismProperty.getElementName());
+	        		Element valueElement = prismContext.domSerializer().serialize(value, prismProperty.getElementName());
 	        		elementList.add(valueElement);
 	        	}
-	        	NodeList nodeList = new NodeList() {
-					@Override
-					public Node item(int index) {
-						return elementList.get(index);
-					}
-					@Override
-					public int getLength() {
-						return elementList.size();
-					}
-				};
+	        	NodeList nodeList = new AdHocNodeList(elementList);
 				variableValue = nodeList;
 				
 	        } else if (variableValue instanceof PrismValue) {
 	        	PrismValue pval = (PrismValue)variableValue;
-	        	DomParser domProcessor = prismContext.getParserDom();
 	        	if (pval.getParent() == null) {
 	        		// Set a fake parent to allow serialization
-	        		pval.setParent(new Itemable() {
-						@Override
-						public PrismContext getPrismContext() {
-							return prismContext;
-						}
-						
-						@Override
-						public ItemPath getPath() {
-							return null;
-						}
-						
-						@Override
-						public QName getElementName() {
-							return FAKE_VARIABLE_QNAME;
-						}
-						
-						@Override
-						public ItemDefinition getDefinition() {
-							return null;
-						}
-					});
+	        		pval.setParent(new AdHocItemable(prismContext));
 	        	}
-	        	variableValue = prismContext.serializeValueToDom(pval, variableName);
+	        	variableValue = prismContext.domSerializer().serialize(pval, variableName);
 	        }
 	        
 	        if (!((variableValue instanceof Node)||variableValue instanceof NodeList) 
@@ -222,4 +190,50 @@ public class LazyXPathVariableResolver implements XPathVariableResolver {
     				+" with value "+variableValue+" in "+contextDescription, e);
     	}
     }
+
+	private static class AdHocNodeList implements NodeList, Serializable {
+		private final List<Element> elementList;
+
+		public AdHocNodeList(List<Element> elementList) {
+			this.elementList = elementList;
+		}
+
+		@Override
+		public Node item(int index) {
+			return elementList.get(index);
+		}
+
+		@Override
+		public int getLength() {
+			return elementList.size();
+		}
+	}
+
+	private static class AdHocItemable implements Itemable, Serializable {
+		private transient final PrismContext prismContext;			// might be a problem ... but XPath is not supported anyway
+
+		public AdHocItemable(PrismContext prismContext) {
+			this.prismContext = prismContext;
+		}
+
+		@Override
+		public PrismContext getPrismContext() {
+			return prismContext;
+		}
+
+		@Override
+		public ItemPath getPath() {
+			return null;
+		}
+
+		@Override
+		public QName getElementName() {
+			return FAKE_VARIABLE_QNAME;
+		}
+
+		@Override
+		public ItemDefinition getDefinition() {
+			return null;
+		}
+	}
 }

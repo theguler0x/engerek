@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,23 +15,29 @@
  */
 package com.evolveum.midpoint.schema;
 
-import static javax.xml.XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI;
+import javax.xml.XMLConstants;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
 
+import com.evolveum.midpoint.prism.PrismContextImpl;
+import com.evolveum.midpoint.prism.schema.SchemaRegistryImpl;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.internals.InternalMonitor;
+import com.evolveum.midpoint.schema.internals.InternalsConfig;
+
+import org.jetbrains.annotations.NotNull;
 import org.xml.sax.SAXException;
 
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.schema.SchemaDefinitionFactory;
-import com.evolveum.midpoint.prism.schema.SchemaRegistry;
 import com.evolveum.midpoint.prism.util.PrismContextFactory;
 import com.evolveum.midpoint.prism.xml.GlobalDynamicNamespacePrefixMapper;
 import com.evolveum.midpoint.schema.constants.MidPointConstants;
 import com.evolveum.midpoint.schema.processor.MidPointSchemaDefinitionFactory;
+import com.evolveum.midpoint.util.DOMUtil;
 import com.evolveum.midpoint.util.PrettyPrinter;
 import com.evolveum.midpoint.util.exception.SchemaException;
 
@@ -57,16 +63,21 @@ public class MidPointPrismContextFactory implements PrismContextFactory {
 
 	@Override
 	public PrismContext createPrismContext() throws SchemaException, FileNotFoundException {
-		SchemaRegistry schemaRegistry = createSchemaRegistry();
-		PrismContext context = PrismContext.create(schemaRegistry);
+		SchemaRegistryImpl schemaRegistry = createSchemaRegistry();
+		PrismContextImpl context = PrismContextImpl.create(schemaRegistry);
 		context.setDefinitionFactory(createDefinitionFactory());
+		context.setDefaultRelation(SchemaConstants.ORG_DEFAULT);
+		if (InternalsConfig.isPrismMonitoring()) {
+			context.setMonitor(new InternalMonitor());
+		}
 		return context;
 	}
 	
 	public PrismContext createEmptyPrismContext() throws SchemaException, FileNotFoundException {
-		SchemaRegistry schemaRegistry = createSchemaRegistry();
-		PrismContext context = PrismContext.createEmptyContext(schemaRegistry);
+		SchemaRegistryImpl schemaRegistry = createSchemaRegistry();
+		PrismContextImpl context = PrismContextImpl.createEmptyContext(schemaRegistry);
 		context.setDefinitionFactory(createDefinitionFactory());
+		context.setDefaultRelation(SchemaConstants.ORG_DEFAULT);
 		return context;
 	}
 	
@@ -79,9 +90,10 @@ public class MidPointPrismContextFactory implements PrismContextFactory {
 		context.initialize();
 		return context;
 	}
-	
-	private SchemaRegistry createSchemaRegistry() throws SchemaException, FileNotFoundException {
-		SchemaRegistry schemaRegistry = new SchemaRegistry();
+
+	@NotNull
+	private SchemaRegistryImpl createSchemaRegistry() throws SchemaException, FileNotFoundException {
+		SchemaRegistryImpl schemaRegistry = new SchemaRegistryImpl();
 		schemaRegistry.setDefaultNamespace(SchemaConstantsGenerated.NS_COMMON);
 		schemaRegistry.setNamespacePrefixMapper(new GlobalDynamicNamespacePrefixMapper());
 		registerBuiltinSchemas(schemaRegistry);
@@ -89,23 +101,20 @@ public class MidPointPrismContextFactory implements PrismContextFactory {
 		return schemaRegistry;
 	}
     
-    protected void registerExtensionSchemas(SchemaRegistry schemaRegistry) throws SchemaException, FileNotFoundException {
+    protected void registerExtensionSchemas(SchemaRegistryImpl schemaRegistry) throws SchemaException, FileNotFoundException {
     	if (extraSchemaDir != null && extraSchemaDir.exists()) {
     		schemaRegistry.registerPrismSchemasFromDirectory(extraSchemaDir);
     	}
     }
 	
-	private void registerBuiltinSchemas(SchemaRegistry schemaRegistry) throws SchemaException {
+	private void registerBuiltinSchemas(SchemaRegistryImpl schemaRegistry) throws SchemaException {
 		// Note: the order of schema registration may affect the way how the schema files are located
 		// (whether are pulled from the registry or by using a catalog file).
 		
 		// Standard schemas
 		
-		schemaRegistry.registerSchemaResource("xml/ns/standard/XMLSchema.xsd", "xsd");
-		schemaRegistry.registerSchemaResource("xml/ns/standard/xmldsig-core-schema.xsd", "ds");
-		schemaRegistry.registerSchemaResource("xml/ns/standard/xenc-schema.xsd", "enc");
-
-		schemaRegistry.getNamespacePrefixMapper().registerPrefix(W3C_XML_SCHEMA_INSTANCE_NS_URI, "xsi", false);
+		schemaRegistry.getNamespacePrefixMapper().registerPrefix("http://www.w3.org/2001/XMLSchema", DOMUtil.NS_W3C_XML_SCHEMA_PREFIX, false);
+		schemaRegistry.getNamespacePrefixMapper().registerPrefix(XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI, "xsi", false);
 
 		
 		// Prism Schemas
@@ -151,21 +160,13 @@ public class MidPointPrismContextFactory implements PrismContextFactory {
 		schemaRegistry.registerPrismSchemaResource("xml/ns/public/model/extension-3.xsd", "mext");
 		schemaRegistry.registerPrismSchemaResource("xml/ns/public/report/extension-3.xsd", "rext");
 
-        schemaRegistry.registerPrismSchemaResource("xml/ns/public/model/context/model-context-3.xsd", "mctx",
-                com.evolveum.midpoint.xml.ns._public.model.model_context_3.ObjectFactory.class.getPackage());
-
-        schemaRegistry.registerPrismSchemaResource("xml/ns/public/model/workflow/extension-3.xsd", "wf");
-
-        schemaRegistry.registerPrismSchemaResource("xml/ns/public/model/workflow/common-forms-3.xsd", "wfcf",
-                com.evolveum.midpoint.xml.ns.model.workflow.common_forms_3.ObjectFactory.class.getPackage());
-
-        schemaRegistry.registerPrismSchemaResource("xml/ns/public/model/workflow/process-instance-state-3.xsd", "wfpis",
-                com.evolveum.midpoint.xml.ns.model.workflow.process_instance_state_3.ObjectFactory.class.getPackage());
-
         schemaRegistry.registerPrismSchemaResource("xml/ns/public/model/scripting/scripting-3.xsd", "s",
                 com.evolveum.midpoint.xml.ns._public.model.scripting_3.ObjectFactory.class.getPackage());
 
         schemaRegistry.registerPrismSchemaResource("xml/ns/public/task/noop-3.xsd", "noop");
+
+
+		schemaRegistry.registerPrismSchemaResource("xml/ns/public/task/jdbc-ping-3.xsd", "jping");
 
         schemaRegistry.registerPrismSchemaResource("xml/ns/public/task/extension-3.xsd", "taskext");
 
@@ -177,6 +178,7 @@ public class MidPointPrismContextFactory implements PrismContextFactory {
         schemaRegistry.getNamespacePrefixMapper().addDeclaredByDefault(MidPointConstants.PREFIX_NS_RI); // declared by default
 
         schemaRegistry.getNamespacePrefixMapper().registerPrefix(SchemaConstants.NS_ORG, SchemaConstants.PREFIX_NS_ORG, false);
+		schemaRegistry.getNamespacePrefixMapper().addDeclaredByDefault(SchemaConstants.PREFIX_NS_ORG); // declared by default
     }
 	
 	private void setupDebug() {

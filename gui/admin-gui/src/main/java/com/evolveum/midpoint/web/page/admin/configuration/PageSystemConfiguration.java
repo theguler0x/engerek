@@ -20,6 +20,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import com.evolveum.midpoint.web.application.Url;
+import com.evolveum.midpoint.web.page.admin.configuration.component.*;
+import com.evolveum.midpoint.web.page.admin.configuration.dto.*;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import org.apache.commons.lang.StringUtils;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.extensions.markup.html.tabs.AbstractTab;
@@ -29,6 +33,9 @@ import org.apache.wicket.model.PropertyModel;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.util.string.StringValue;
 
+import com.evolveum.midpoint.gui.api.model.LoadableModel;
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
+import com.evolveum.midpoint.gui.api.util.WebModelServiceUtils;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.DiffUtil;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
@@ -46,32 +53,25 @@ import com.evolveum.midpoint.web.component.AjaxButton;
 import com.evolveum.midpoint.web.component.AjaxSubmitButton;
 import com.evolveum.midpoint.web.component.TabbedPanel;
 import com.evolveum.midpoint.web.component.form.Form;
-import com.evolveum.midpoint.web.component.util.LoadableModel;
-import com.evolveum.midpoint.web.page.admin.configuration.component.LoggingConfigPanel;
-import com.evolveum.midpoint.web.page.admin.configuration.component.NotificationConfigPanel;
-import com.evolveum.midpoint.web.page.admin.configuration.component.ProfilingConfigPanel;
-import com.evolveum.midpoint.web.page.admin.configuration.component.SystemConfigPanel;
-import com.evolveum.midpoint.web.page.admin.configuration.dto.LoggingDto;
-import com.evolveum.midpoint.web.page.admin.configuration.dto.NotificationConfigurationDto;
-import com.evolveum.midpoint.web.page.admin.configuration.dto.ObjectPolicyConfigurationTypeDto;
-import com.evolveum.midpoint.web.page.admin.configuration.dto.ProfilingDto;
-import com.evolveum.midpoint.web.page.admin.configuration.dto.PropertyConstraintTypeDto;
-import com.evolveum.midpoint.web.page.admin.configuration.dto.SystemConfigurationDto;
 import com.evolveum.midpoint.web.page.error.PageError;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
-import com.evolveum.midpoint.web.util.WebModelUtils;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectPolicyConfigurationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.PropertyConstraintType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemObjectsType;
 import com.evolveum.prism.xml.ns._public.types_3.ItemPathType;
 
 /**
  * @author lazyman
  */
-@PageDescriptor(url = { "/admin/config", "/admin/config/system" }, action = {
-		@AuthorizationAction(actionUri = PageAdminConfiguration.AUTH_CONFIGURATION_ALL, label = PageAdminConfiguration.AUTH_CONFIGURATION_ALL_LABEL, description = PageAdminConfiguration.AUTH_CONFIGURATION_ALL_DESCRIPTION),
-		@AuthorizationAction(actionUri = AuthorizationConstants.AUTZ_UI_CONFIGURATION_SYSTEM_CONFIG_URL, label = "PageSystemConfiguration.auth.configSystemConfiguration.label", description = "PageSystemConfiguration.auth.configSystemConfiguration.description") })
+@PageDescriptor(
+		urls = {
+				@Url(mountUrl = "/admin/config", matchUrlForSecurity = "/admin/config"),
+				@Url(mountUrl = "/admin/config/system"),
+		},
+		action = {
+				@AuthorizationAction(actionUri = PageAdminConfiguration.AUTH_CONFIGURATION_ALL,
+						label = PageAdminConfiguration.AUTH_CONFIGURATION_ALL_LABEL,
+						description = PageAdminConfiguration.AUTH_CONFIGURATION_ALL_DESCRIPTION),
+				@AuthorizationAction(actionUri = AuthorizationConstants.AUTZ_UI_CONFIGURATION_SYSTEM_CONFIG_URL,
+						label = "PageSystemConfiguration.auth.configSystemConfiguration.label",
+						description = "PageSystemConfiguration.auth.configSystemConfiguration.description")
+		})
 public class PageSystemConfiguration extends PageAdminConfiguration {
 
 	public static final String SELECTED_TAB_INDEX = "tab";
@@ -80,6 +80,7 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
 	public static final int CONFIGURATION_TAB_NOTIFICATION = 1;
 	public static final int CONFIGURATION_TAB_LOGGING = 2;
 	public static final int CONFIGURATION_TAB_PROFILING = 3;
+	public static final int CONFIGURATION_TAB_ADMIN_GUI = 4;
 
 	private static final Trace LOGGER = TraceManager.getTrace(PageSystemConfiguration.class);
 
@@ -97,6 +98,7 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
 	private LoggingConfigPanel loggingConfigPanel;
 	private ProfilingConfigPanel profilingConfigPanel;
 	private SystemConfigPanel systemConfigPanel;
+	private AdminGuiConfigPanel adminGuiConfigPanel;
 	private NotificationConfigPanel notificationConfigPanel;
 
 	private LoadableModel<SystemConfigurationDto> model;
@@ -131,20 +133,20 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
 
 		SystemConfigurationDto dto = null;
 		try {
-			PrismObject<SystemConfigurationType> systemConfig = WebModelUtils.loadObject(
+			PrismObject<SystemConfigurationType> systemConfig = WebModelServiceUtils.loadObject(
 					SystemConfigurationType.class, SystemObjectsType.SYSTEM_CONFIGURATION.value(), options,
 					this, task, result);
 			dto = new SystemConfigurationDto(systemConfig);
 			result.recordSuccess();
 		} catch (Exception ex) {
-			LoggingUtils.logException(LOGGER, "Couldn't load system configuration", ex);
+			LoggingUtils.logUnexpectedException(LOGGER, "Couldn't load system configuration", ex);
 			result.recordFatalError("Couldn't load system configuration.", ex);
 		}
 
 		// what do you do with null? many components depends on this not to be
 		// null :)
-		if (!WebMiscUtil.isSuccessOrHandledError(result) || dto == null) {
-			showResultInSession(result);
+		if (!WebComponentUtil.isSuccessOrHandledError(result) || dto == null) {
+			showResult(result, false);
 			throw getRestartResponseException(PageError.class);
 		}
 
@@ -190,8 +192,17 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
 			@Override
 			public WebMarkupContainer getPanel(String panelId) {
 				profilingConfigPanel = new ProfilingConfigPanel(panelId,
-						new PropertyModel<ProfilingDto>(model, "profilingDto"));
+						new PropertyModel<ProfilingDto>(model, "profilingDto"), PageSystemConfiguration.this);
 				return profilingConfigPanel;
+			}
+		});
+
+		tabs.add(new AbstractTab(createStringResource("pageSystemConfiguration.adminGui.title")) {
+
+			@Override
+			public WebMarkupContainer getPanel(String panelId) {
+                adminGuiConfigPanel = new AdminGuiConfigPanel(panelId, model);
+				return adminGuiConfigPanel;
 			}
 		});
 
@@ -270,6 +281,7 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
 			SystemConfigurationType newObject = model.getObject().getNewObject();
 
 			saveObjectPolicies(newObject);
+            saveAdminGui(newObject);
 
 
 			ObjectDelta<SystemConfigurationType> delta = DiffUtil.diff(model.getObject().getOldObject(), newObject);
@@ -277,20 +289,19 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
 			if (LOGGER.isTraceEnabled()) {
 				LOGGER.trace("System configuration delta:\n{}", delta.debugDump());
 			}
-			if (delta != null && !delta.isEmpty()) {
+			if (!delta.isEmpty()) {
 				getPrismContext().adopt(delta);
-				getModelService().executeChanges(WebMiscUtil.createDeltaCollection(delta), null, task,
-						result);
+				getModelService().executeChanges(WebComponentUtil.createDeltaCollection(delta), null, task, result);
 			}
 
 			result.computeStatusIfUnknown();
 		} catch (Exception e) {
 			result.recomputeStatus();
 			result.recordFatalError("Couldn't save system configuration.", e);
-			LoggingUtils.logException(LOGGER, "Couldn't save system configuration.", e);
+			LoggingUtils.logUnexpectedException(LOGGER, "Couldn't save system configuration.", e);
 		}
 
-		showResultInSession(result);
+		showResult(result);
 		target.add(getFeedbackPanel());
 		resetPerformed(target);
 	}
@@ -311,6 +322,7 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
 			}
 			newObjectPolicyConfig = new ObjectPolicyConfigurationType();
 			newObjectPolicyConfig.setType(o.getType());
+			newObjectPolicyConfig.setSubtype(o.getSubtype());
 			newObjectPolicyConfig.setObjectTemplateRef(o.getTemplateRef());
 
 			List<PropertyConstraintType> constraintList = new ArrayList<>();
@@ -342,6 +354,19 @@ public class PageSystemConfiguration extends PageAdminConfiguration {
 
 		systemConfig.getDefaultObjectPolicyConfiguration().clear();
 		systemConfig.getDefaultObjectPolicyConfiguration().addAll(confList);
+	}
+
+	private void saveAdminGui(SystemConfigurationType systemConfig) {
+		if (adminGuiConfigPanel == null) {
+			return;
+		}
+		SystemConfigurationDto linksList = adminGuiConfigPanel.getModel().getObject();
+        //update userDashboardLink list
+        systemConfig.getAdminGuiConfiguration().getUserDashboardLink().clear();
+        systemConfig.getAdminGuiConfiguration().getUserDashboardLink().addAll(linksList.getUserDashboardLink());
+        //update additionalMenu list
+        systemConfig.getAdminGuiConfiguration().getAdditionalMenuLink().clear();
+        systemConfig.getAdminGuiConfiguration().getAdditionalMenuLink().addAll(linksList.getAdditionalMenuLink());
 	}
 
 

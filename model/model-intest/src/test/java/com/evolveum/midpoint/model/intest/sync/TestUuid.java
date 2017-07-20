@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,56 +23,42 @@ import static org.testng.AssertJUnit.assertNotNull;
 import static org.testng.AssertJUnit.assertNull;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
-
-import javax.xml.namespace.QName;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.ContextConfiguration;
+import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 
-import com.evolveum.icf.dummy.resource.BreakMode;
 import com.evolveum.icf.dummy.resource.DummyAccount;
 import com.evolveum.icf.dummy.resource.DummyResource;
 import com.evolveum.midpoint.audit.api.AuditEventRecord;
 import com.evolveum.midpoint.audit.api.AuditEventStage;
 import com.evolveum.midpoint.audit.api.AuditEventType;
-import com.evolveum.midpoint.common.monitor.InternalMonitor;
 import com.evolveum.midpoint.model.impl.sync.ReconciliationTaskHandler;
-import com.evolveum.midpoint.model.impl.sync.ReconciliationTaskResultListener;
 import com.evolveum.midpoint.model.impl.util.DebugReconciliationTaskResultListener;
 import com.evolveum.midpoint.model.intest.AbstractInitializedModelIntegrationTest;
-import com.evolveum.midpoint.prism.Objectable;
 import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.util.PrismTestUtil;
-import com.evolveum.midpoint.schema.ObjectDeltaOperation;
 import com.evolveum.midpoint.schema.constants.MidPointConstants;
-import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.internals.InternalCounters;
+import com.evolveum.midpoint.schema.internals.InternalMonitor;
+import com.evolveum.midpoint.schema.internals.InternalOperationClasses;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.schema.result.OperationResultStatus;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.test.DummyResourceContoller;
-import com.evolveum.midpoint.test.IntegrationTestTools;
-import com.evolveum.midpoint.test.ProvisioningScriptSpec;
 import com.evolveum.midpoint.test.util.TestUtil;
-import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnforcementType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.TaskType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
@@ -82,6 +68,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
  *
  */
 @ContextConfiguration(locations = {"classpath:ctx-model-intest-test-main.xml"})
+@Listeners({ com.evolveum.midpoint.tools.testng.AlphabeticalMethodInterceptor.class })
 @DirtiesContext(classMode = ClassMode.AFTER_CLASS)
 public class TestUuid extends AbstractInitializedModelIntegrationTest {
 	
@@ -132,7 +119,7 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
 		dummyResourceCtlUuid.setResource(resourceDummyUuid);	
 				
 		InternalMonitor.reset();
-		InternalMonitor.setTraceShadowFetchOperation(true);
+		InternalMonitor.setTrace(InternalOperationClasses.SHADOW_FETCH_OPERATIONS, true);
 		
 //		DebugUtil.setDetailedDebugDump(true);
 	}
@@ -150,9 +137,9 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
 
         // TODO
         
-        dummyResource.purgeScriptHistory();
+        getDummyResource().purgeScriptHistory();
         dummyAuditService.clear();
-        rememberShadowFetchOperationCount();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
         reconciliationTaskResultListener.clear();
         
 		// WHEN
@@ -177,7 +164,7 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
         
         assertEquals("Unexpected number of users", 5, users.size());
         
-        display("Dummy resource", dummyResource.debugDump());
+        display("Dummy resource", getDummyResource().debugDump());
         
         assertReconAuditModifications(0, TASK_RECONCILE_DUMMY_UUID_OID);
         
@@ -203,10 +190,12 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
 		account.addAttributeValues(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME, ACCOUNT_AUGUSTUS_FULLNAME);
 		dummyResourceUuid.addAccount(account);
         
-        dummyResource.purgeScriptHistory();
+		getDummyResource().purgeScriptHistory();
         dummyAuditService.clear();
-        rememberShadowFetchOperationCount();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
         reconciliationTaskResultListener.clear();
+        
+        Task taskBefore = taskManager.getTask(TASK_RECONCILE_DUMMY_UUID_OID, result);
         
 		// WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -215,7 +204,7 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
         // THEN
         TestUtil.displayThen(TEST_NAME);
         
-        waitForTaskNextRunAssertSuccess(TASK_RECONCILE_DUMMY_UUID_OID, true);
+        waitForTaskNextRunAssertSuccess(taskBefore, true);
         
         // THEN
         TestUtil.displayThen(TEST_NAME);        
@@ -234,7 +223,7 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
         
         assertEquals("Unexpected number of users", 6, users.size());
         
-        display("Dummy resource", dummyResource.debugDump());
+        display("Dummy resource", getDummyResource().debugDump());
                 
         assertReconAuditModifications(1, TASK_RECONCILE_DUMMY_UUID_OID);
         
@@ -279,10 +268,12 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
 		
 		display("Old shadow OID", augustusShadowOid);
 		display("Account ID "+ oldAccount.getId() + " -> " + account.getId());
+		
+		Task taskBefore = taskManager.getTask(TASK_RECONCILE_DUMMY_UUID_OID, result);
         
-        dummyResource.purgeScriptHistory();
+		getDummyResource().purgeScriptHistory();
         dummyAuditService.clear();
-        rememberShadowFetchOperationCount();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
         reconciliationTaskResultListener.clear();
         
 		// WHEN
@@ -292,11 +283,11 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
         // THEN
         TestUtil.displayThen(TEST_NAME);
         
-        waitForTaskNextRunAssertSuccess(TASK_RECONCILE_DUMMY_UUID_OID, true);
+        waitForTaskNextRunAssertSuccess(taskBefore, true);
         
         // THEN
         TestUtil.displayThen(TEST_NAME);        
-        reconciliationTaskResultListener.assertResult(RESOURCE_DUMMY_UUID_OID, 0, 1, 0, 1);
+        reconciliationTaskResultListener.assertResult(RESOURCE_DUMMY_UUID_OID, 0, 1, 0, 0);
         
         List<PrismObject<UserType>> users = modelService.searchObjects(UserType.class, null, null, task, result);
         display("Users after import", users);
@@ -311,7 +302,7 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
         
         assertEquals("Unexpected number of users", 6, users.size());
         
-        display("Dummy resource", dummyResource.debugDump());
+        display("Dummy resource", getDummyResource().debugDump());
                 
         assertReconAuditModifications(1, TASK_RECONCILE_DUMMY_UUID_OID);
         
@@ -358,10 +349,12 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
 		
 		display("Old shadow OID", augustusShadowOid);
 		display("Account ID "+ oldAccount.getId() + " -> " + account.getId());
+		
+		Task taskBefore = taskManager.getTask(TASK_RECONCILE_DUMMY_UUID_OID, result);
         
-        dummyResource.purgeScriptHistory();
+		getDummyResource().purgeScriptHistory();
         dummyAuditService.clear();
-        rememberShadowFetchOperationCount();
+        rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
         reconciliationTaskResultListener.clear();
         
 		// WHEN
@@ -371,11 +364,11 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
         // THEN
         TestUtil.displayThen(TEST_NAME);
         
-        waitForTaskNextRunAssertSuccess(TASK_RECONCILE_DUMMY_UUID_OID, true);
+        waitForTaskNextRunAssertSuccess(taskBefore, true);
         
         // THEN
         TestUtil.displayThen(TEST_NAME);        
-        reconciliationTaskResultListener.assertResult(RESOURCE_DUMMY_UUID_OID, 0, 1, 0, 1);
+        reconciliationTaskResultListener.assertResult(RESOURCE_DUMMY_UUID_OID, 0, 1, 0, 0);
         
         List<PrismObject<UserType>> users = modelService.searchObjects(UserType.class, null, null, task, result);
         display("Users after import", users);
@@ -390,7 +383,7 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
         
         assertEquals("Unexpected number of users", 6, users.size());
         
-        display("Dummy resource", dummyResource.debugDump());
+        display("Dummy resource", getDummyResource().debugDump());
                 
         assertReconAuditModifications(1, TASK_RECONCILE_DUMMY_UUID_OID);
         
@@ -476,24 +469,24 @@ public class TestUuid extends AbstractInitializedModelIntegrationTest {
     	assertTrue("Unexpected delta in reconStopRecord audit record "+reconStopRecord, reconStopRecord.getDeltas() == null || reconStopRecord.getDeltas().isEmpty());
 	}
 
-	private void assertNoImporterUserByUsername(String username) throws SchemaException, ObjectNotFoundException, SecurityViolationException, CommunicationException, ConfigurationException {
+	private void assertNoImporterUserByUsername(String username) throws SchemaException, ObjectNotFoundException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException {
 		PrismObject<UserType> user = findUserByUsername(username);
         assertNull("User "+username+" sneaked in", user);
 	}
 
-	private void assertImportedUserByOid(String userOid, String... resourceOids) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException {
+	private void assertImportedUserByOid(String userOid, String... resourceOids) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException {
 		PrismObject<UserType> user = getUser(userOid);
 		assertNotNull("No user "+userOid, user);
 		assertImportedUser(user, resourceOids);
 	}
 		
-	private void assertImportedUserByUsername(String username, String... resourceOids) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException {
+	private void assertImportedUserByUsername(String username, String... resourceOids) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException {
 		PrismObject<UserType> user = findUserByUsername(username);
 		assertNotNull("No user "+username, user);
 		assertImportedUser(user, resourceOids);
 	}
 		
-	private void assertImportedUser(PrismObject<UserType> user, String... resourceOids) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException {
+	private void assertImportedUser(PrismObject<UserType> user, String... resourceOids) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException {
         assertLinks(user, resourceOids.length);
         for (String resourceOid: resourceOids) {
         	assertAccount(user, resourceOid);

@@ -17,10 +17,15 @@
 package com.evolveum.midpoint.wf.impl.util;
 
 import com.evolveum.midpoint.prism.*;
+import com.evolveum.midpoint.schema.SchemaConstantsGenerated;
+import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.util.DebugDumpable;
+import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SystemException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ExpressionType;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 
@@ -74,7 +79,7 @@ public class SingleItemSerializationSafeContainerImpl<T> implements Serializatio
         checkPrismContext();
         if (value != null && prismContext.canSerialize(value)) {
             try {
-                this.valueForStorageWhenEncoded = prismContext.serializeAnyData(value, new QName("value"), PrismContext.LANG_XML);
+                this.valueForStorageWhenEncoded = prismContext.xmlSerializer().serializeAnyData(value, new QName("value"));
             } catch (SchemaException e) {
                 throw new SystemException("Couldn't serialize value of type " + value.getClass() + ": " + e.getMessage(), e);
             }
@@ -115,26 +120,8 @@ public class SingleItemSerializationSafeContainerImpl<T> implements Serializatio
 
             if (encodingScheme == EncodingScheme.PRISM) {
                 try {
-                    actualValue = (T) prismContext.parseAnyData(valueForStorageWhenEncoded, PrismContext.LANG_XML);
-                    if (actualValue instanceof Item) {
-                        Item item = (Item) actualValue;
-                        if (item.isEmpty()) {
-                            actualValue = null;
-                        } else if (item.size() == 1) {
-                            PrismValue itemValue = (PrismValue) item.getValues().get(0);
-                            if (itemValue instanceof PrismContainerValue) {
-                                actualValue = (T) ((PrismContainerValue) itemValue).asContainerable();
-                            } else if (itemValue instanceof PrismPropertyValue) {
-                                actualValue = (T) ((PrismPropertyValue) itemValue).getValue();
-                            } else if (itemValue instanceof PrismReferenceValue) {
-                                actualValue = (T) itemValue;   // TODO: ok???
-                            } else {
-                                throw new SchemaException("Unknown itemValue: " + itemValue);
-                            }
-                        } else {
-                            throw new SchemaException("More than one value after deserialization of " + StringUtils.abbreviate(valueForStorageWhenEncoded, MAX_WIDTH) + ": " + item.getValues().size() + " values");
-                        }
-                    }
+                    PrismValue prismValue = prismContext.parserFor(valueForStorageWhenEncoded).xml().parseItemValue();
+                    actualValue = prismValue != null ? prismValue.getRealValue() : null;
                 } catch (SchemaException e) {
                     throw new SystemException("Couldn't deserialize value from JAXB: " + StringUtils.abbreviate(valueForStorageWhenEncoded, MAX_WIDTH), e);
                 }
@@ -175,4 +162,41 @@ public class SingleItemSerializationSafeContainerImpl<T> implements Serializatio
                 ", prismContext " + (prismContext != null ? "SET" : "NOT SET") +
                 '}';
     }
+
+    @Override
+    public String debugDump(int indent) {
+        StringBuilder sb = new StringBuilder();
+        if (actualValue != null) {
+			debugDumpValue(indent, sb, actualValue);
+		} else if (valueForStorageWhenNotEncoded != null) {
+			debugDumpValue(indent, sb, valueForStorageWhenNotEncoded);
+		} else if (valueForStorageWhenEncoded != null) {
+			DebugUtil.debugDumpWithLabel(sb, "encoded value", valueForStorageWhenEncoded, indent);
+		} else {
+			DebugUtil.debugDumpWithLabel(sb, "value", "null", indent);
+		}
+        return sb.toString();
+    }
+
+	private void debugDumpValue(int indent, StringBuilder sb, T value) {
+		if (value instanceof DebugDumpable) {
+			DebugUtil.debugDumpWithLabel(sb, "value", (DebugDumpable) value, indent);
+			return;
+		}
+		String stringValue = null;
+		if (value instanceof ExpressionType) {
+			// brutal hack...
+			String xml;
+			try {
+				xml = prismContext.xmlSerializer().serializeRealValue(value, SchemaConstantsGenerated.C_EXPRESSION);
+				stringValue = DebugUtil.fixIndentInMultiline(indent, DebugDumpable.INDENT_STRING, xml);
+			} catch (SchemaException e) {
+				LOGGER.warn("Couldn't serialize an expression: {}", value, e);
+			}
+		}
+		if (stringValue == null) {
+			stringValue = String.valueOf(value);
+		}
+		DebugUtil.debugDumpWithLabel(sb, "value", stringValue, indent);
+	}
 }

@@ -1,14 +1,20 @@
 package com.evolveum.midpoint.web.page.admin.certification.dto;
 
-import com.evolveum.midpoint.schema.constants.ObjectTypes;
+import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.prism.PrismReference;
+import com.evolveum.midpoint.prism.PrismReferenceDefinition;
 import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
-import com.evolveum.midpoint.web.page.admin.dto.ObjectViewDto;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationApprovalStrategyType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
+import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.web.component.prism.ReferenceWrapper;
+import com.evolveum.midpoint.web.component.prism.ValueStatus;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+
+import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationReviewerSpecificationType.F_ADDITIONAL_REVIEWER_REF;
+import static com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationReviewerSpecificationType.F_DEFAULT_REVIEWER_REF;
 
 /**
  * Created by Kate on 15.12.2015.
@@ -21,29 +27,56 @@ public class AccessCertificationReviewerDto implements Serializable {
     public static final String F_USE_OBJECT_OWNER =  "useObjectOwner";
     public static final String F_USE_OBJECT_APPROVER =  "useObjectApprover";
     public static final String F_USE_OBJECT_MANAGER =  "useObjectManager";
+	public static final String F_USE_OBJECT_MANAGER_PRESENT = "useObjectManagerPresent";
     public static final String F_REVIEWER_EXPRESSION =  "reviewerExpression";
-    public static final String F_DEF_REVIEWER_REF =  "defaultReviewerRef";
-    public static final String F_ADDITIONAL_REVIEWER_REF =  "additionalReviewerRef";
-    public static final String F_FIRST_DEF_REVIEWER_REF =  "firstDefaultReviewerRef";
-    public static final String F_FIRST_ADDITIONAL_REVIEWER_REF =  "firstAdditionalReviewerRef";
-    public static final String F_APPROVAL_STRATEGY =  "approvalStrategy";
+    public static final String F_DEFAULT_REVIEWERS =  "defaultReviewers";
+    public static final String F_ADDITIONAL_REVIEWERS =  "additionalReviewers";
 
-    private String name;
+	private String name;
     private String description;
     private boolean useTargetOwner;
     private boolean useTargetApprover;
     private boolean useObjectOwner;
     private boolean useObjectApprover;
     private ManagerSearchDto useObjectManager;
-    private List<ObjectReferenceType> defaultReviewerRef;
-    private List<ObjectReferenceType> additionalReviewerRef;
-    private AccessCertificationApprovalStrategyType approvalStrategy;
-    private ObjectViewDto firstDefaultReviewerRef;                    //first default and addition reviewer references are temporary decision
-    private ObjectViewDto firstAdditionalReviewerRef;                 //until multivalue chooser component will be implemented
-                                                                            //for now display just single value for defaultReviewerRef and additionalReviewerRef
+    private boolean useObjectManagerPresent;
+    private ReferenceWrapper defaultReviewers;
+    private ReferenceWrapper additionalReviewers;
+    private List<ExpressionType> reviewerExpressionList;
 
+	public AccessCertificationReviewerDto(AccessCertificationReviewerSpecificationType reviewerType, PrismContext prismContext) throws SchemaException {
+		final PrismReference defaultReviewersReference;
+		final PrismReference additionalReviewersReference;
+		if (reviewerType != null) {
+			name = reviewerType.getName();
+			description = reviewerType.getDescription();
+			useTargetOwner = Boolean.TRUE.equals(reviewerType.isUseTargetOwner());
+			useTargetApprover = Boolean.TRUE.equals(reviewerType.isUseTargetApprover());
+			useObjectOwner = Boolean.TRUE.equals(reviewerType.isUseObjectOwner());
+			useObjectApprover = Boolean.TRUE.equals(reviewerType.isUseObjectApprover());
+			useObjectManager = new ManagerSearchDto(reviewerType.getUseObjectManager());
+			useObjectManagerPresent = reviewerType.getUseObjectManager() != null;
+			reviewerExpressionList = reviewerType.getReviewerExpression();
+			defaultReviewersReference = reviewerType.asPrismContainerValue().findOrCreateReference(AccessCertificationReviewerSpecificationType.F_DEFAULT_REVIEWER_REF);
+			additionalReviewersReference = reviewerType.asPrismContainerValue().findOrCreateReference(AccessCertificationReviewerSpecificationType.F_ADDITIONAL_REVIEWER_REF);
+		} else {
+			useObjectManager = new ManagerSearchDto(null);
+			useObjectManagerPresent = false;
+			PrismReferenceDefinition defReviewerDef = prismContext.getSchemaRegistry().findItemDefinitionByFullPath(AccessCertificationDefinitionType.class,
+					PrismReferenceDefinition.class,
+					AccessCertificationDefinitionType.F_STAGE_DEFINITION, AccessCertificationStageDefinitionType.F_REVIEWER_SPECIFICATION, F_DEFAULT_REVIEWER_REF);
+			defaultReviewersReference = defReviewerDef.instantiate();
+			PrismReferenceDefinition additionalReviewerDef = prismContext.getSchemaRegistry().findItemDefinitionByFullPath(AccessCertificationDefinitionType.class,
+					PrismReferenceDefinition.class,
+					AccessCertificationDefinitionType.F_STAGE_DEFINITION, AccessCertificationStageDefinitionType.F_REVIEWER_SPECIFICATION, F_ADDITIONAL_REVIEWER_REF);
+			additionalReviewersReference = additionalReviewerDef.instantiate();
+			reviewerExpressionList = new ArrayList<>();
+		}
+		setDefaultReviewers(new ReferenceWrapper(null, defaultReviewersReference, false, ValueStatus.NOT_CHANGED));
+		setAdditionalReviewers(new ReferenceWrapper(null, additionalReviewersReference, false, ValueStatus.NOT_CHANGED));
+	}
 
-    public String getName() {
+	public String getName() {
         return name;
     }
 
@@ -91,7 +124,15 @@ public class AccessCertificationReviewerDto implements Serializable {
         this.useObjectApprover = useObjectApprover;
     }
 
-    public ManagerSearchDto getUseObjectManager() {
+	public boolean isUseObjectManagerPresent() {
+		return useObjectManagerPresent;
+	}
+
+	public void setUseObjectManagerPresent(boolean useObjectManagerPresent) {
+		this.useObjectManagerPresent = useObjectManagerPresent;
+	}
+
+	public ManagerSearchDto getUseObjectManager() {
         return useObjectManager;
     }
 
@@ -99,43 +140,37 @@ public class AccessCertificationReviewerDto implements Serializable {
         this.useObjectManager = useObjectManager;
     }
 
-    public List<ObjectReferenceType> getDefaultReviewerRef() {
-        return defaultReviewerRef;
+	public List<ExpressionType> getReviewerExpressionList() {
+		return reviewerExpressionList;
+	}
+
+	public void setReviewerExpressionList(
+			List<ExpressionType> reviewerExpressionList) {
+		this.reviewerExpressionList = reviewerExpressionList;
+	}
+
+	public ReferenceWrapper getDefaultReviewers() {
+        return defaultReviewers;
     }
 
-    public void setDefaultReviewerRef(List<ObjectReferenceType> defaultReviewerRef) {
-        this.defaultReviewerRef = defaultReviewerRef;
+    public void setDefaultReviewers(ReferenceWrapper defaultReviewers) {
+        this.defaultReviewers = defaultReviewers;
     }
 
-    public List<ObjectReferenceType> getAdditionalReviewerRef() {
-        return additionalReviewerRef;
+    public ReferenceWrapper getAdditionalReviewers() {
+        return additionalReviewers;
     }
 
-    public void setAdditionalReviewerRef(List<ObjectReferenceType> additionalReviewerRef) {
-        this.additionalReviewerRef = additionalReviewerRef;
+    public void setAdditionalReviewers(ReferenceWrapper additionalReviewers) {
+        this.additionalReviewers = additionalReviewers;
     }
 
-    public AccessCertificationApprovalStrategyType getApprovalStrategy() {
-        return approvalStrategy;
+    public List<ObjectReferenceType> getDefaultReviewersAsObjectReferenceList(PrismContext prismContext) throws SchemaException {
+        return ObjectTypeUtil.getAsObjectReferenceTypeList(defaultReviewers.getUpdatedItem(prismContext));
     }
 
-    public void setApprovalStrategy(AccessCertificationApprovalStrategyType approvalStrategy) {
-        this.approvalStrategy = approvalStrategy;
+    public List<ObjectReferenceType> getAdditionalReviewersAsObjectReferenceList(PrismContext prismContext) throws SchemaException {
+        return ObjectTypeUtil.getAsObjectReferenceTypeList(additionalReviewers.getUpdatedItem(prismContext));
     }
 
-    public ObjectViewDto getFirstAdditionalReviewerRef() {
-        return firstAdditionalReviewerRef;
-    }
-
-    public void setFirstAdditionalReviewerRef(ObjectViewDto firstAdditionalReviewerRef) {
-        this.firstAdditionalReviewerRef = firstAdditionalReviewerRef;
-    }
-
-    public ObjectViewDto getFirstDefaultReviewerRef() {
-        return firstDefaultReviewerRef;
-    }
-
-    public void setFirstDefaultReviewerRef(ObjectViewDto firstDefaultReviewerRef) {
-        this.firstDefaultReviewerRef = firstDefaultReviewerRef;
-    }
 }

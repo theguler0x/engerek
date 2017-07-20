@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,20 +16,25 @@
 
 package com.evolveum.midpoint.web.component.data.column;
 
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
+import com.evolveum.midpoint.web.component.util.SelectableBean;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.extensions.markup.html.repeater.data.grid.ICellPopulator;
 import org.apache.wicket.extensions.markup.html.repeater.data.table.AbstractColumn;
+import org.apache.wicket.extensions.markup.html.repeater.data.table.export.IExportableColumn;
 import org.apache.wicket.markup.repeater.Item;
 import org.apache.wicket.model.IModel;
+import org.apache.wicket.model.Model;
 import org.apache.wicket.model.PropertyModel;
 
 /**
  * @author lazyman
  */
-public class LinkColumn<T> extends AbstractColumn<T, String> {
+public class LinkColumn<T> extends AbstractColumn<T, String> implements IExportableColumn<T, String>  {
+	private static final long serialVersionUID = 1L;
 
-    private String propertyExpression;
-
+	private String propertyExpression;
+        
     public LinkColumn(IModel<String> displayModel) {
         super(displayModel);
     }
@@ -47,14 +52,17 @@ public class LinkColumn<T> extends AbstractColumn<T, String> {
         return propertyExpression;
     }
 
-    protected IModel<String> createLinkModel(IModel<T> rowModel) {
+    protected IModel createLinkModel(IModel<T> rowModel) {
         return new PropertyModel<String>(rowModel, propertyExpression);
     }
-
+    
     @Override
     public void populateItem(Item<ICellPopulator<T>> cellItem, String componentId,
                              final IModel<T> rowModel) {
-        cellItem.add(new LinkPanel(componentId, createLinkModel(rowModel)) {
+    	
+    	IModel model = createLinkModel(rowModel);
+        cellItem.add(new LinkPanel(componentId, model) {
+        	private static final long serialVersionUID = 1L;
 
             @Override
             public void onClick(AjaxRequestTarget target) {
@@ -74,4 +82,10 @@ public class LinkColumn<T> extends AbstractColumn<T, String> {
 
     public void onClick(AjaxRequestTarget target, IModel<T> rowModel) {
     }
+
+    @Override
+    public IModel<String> getDataModel(IModel<T> rowModel) {
+        return new PropertyModel<String>(rowModel, propertyExpression);
+    }
+
 }

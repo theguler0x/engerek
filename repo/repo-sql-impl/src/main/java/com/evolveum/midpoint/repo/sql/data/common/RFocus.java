@@ -16,7 +16,7 @@
 
 package com.evolveum.midpoint.repo.sql.data.common;
 
-import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.repo.sql.data.RepositoryContext;
 import com.evolveum.midpoint.repo.sql.data.common.container.RAssignment;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.RActivation;
 import com.evolveum.midpoint.repo.sql.data.common.other.RAssignmentOwner;
@@ -28,15 +28,16 @@ import com.evolveum.midpoint.repo.sql.query.definition.VirtualQueryParam;
 import com.evolveum.midpoint.repo.sql.query2.definition.NotQueryable;
 import com.evolveum.midpoint.repo.sql.util.DtoTranslationException;
 import com.evolveum.midpoint.repo.sql.util.IdGeneratorResult;
+import com.evolveum.midpoint.repo.sql.util.MidPointJoinedPersister;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
 import org.hibernate.annotations.*;
+import org.hibernate.annotations.ForeignKey;
+import org.hibernate.annotations.Index;
 
-import javax.persistence.Embedded;
+import javax.persistence.*;
 import javax.persistence.Entity;
-import javax.persistence.OneToMany;
-import javax.persistence.Transient;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
@@ -54,12 +55,16 @@ import java.util.Set;
 @org.hibernate.annotations.Table(appliesTo = "m_focus",
         indexes = {@Index(name = "iFocusAdministrative", columnNames = "administrativeStatus"),
                 @Index(name = "iFocusEffective", columnNames = "effectiveStatus")})
+@Persister(impl = MidPointJoinedPersister.class)
 public abstract class RFocus<T extends FocusType> extends RObject<T> {
 
     private Set<RObjectReference<RShadow>> linkRef;
     private Set<RObjectReference<RAbstractRole>> roleMembershipRef;
+    private Set<RObjectReference<RFocus>> delegatedRef;
+    private Set<RObjectReference<RFocus>> personaRef;
     private Set<RAssignment> assignments;
     private RActivation activation;
+    private Set<String> policySituation;
     //photo
     private boolean hasPhoto;
     private Set<RFocusPhoto> jpegPhoto;
@@ -84,6 +89,28 @@ public abstract class RFocus<T extends FocusType> extends RObject<T> {
             roleMembershipRef = new HashSet<>();
         }
         return roleMembershipRef;
+    }
+
+    @Where(clause = RObjectReference.REFERENCE_TYPE + "= 9")
+    @OneToMany(mappedBy = "owner", orphanRemoval = true)
+    @ForeignKey(name = "none")
+    @Cascade({org.hibernate.annotations.CascadeType.ALL})
+    public Set<RObjectReference<RFocus>> getDelegatedRef() {
+        if (delegatedRef == null) {
+            delegatedRef = new HashSet<>();
+        }
+        return delegatedRef;
+    }
+
+    @Where(clause = RObjectReference.REFERENCE_TYPE + "= 10")
+    @OneToMany(mappedBy = "owner", orphanRemoval = true)
+    @ForeignKey(name = "none")
+    @Cascade({org.hibernate.annotations.CascadeType.ALL})
+    public Set<RObjectReference<RFocus>> getPersonaRef() {
+        if (personaRef == null) {
+            personaRef = new HashSet<>();
+        }
+        return personaRef;
     }
 
     @Transient
@@ -126,6 +153,20 @@ public abstract class RFocus<T extends FocusType> extends RObject<T> {
         return activation;
     }
 
+    @ElementCollection
+    @ForeignKey(name = "fk_focus_policy_situation")
+    @CollectionTable(name = "m_focus_policy_situation", joinColumns = {
+            @JoinColumn(name = "focus_oid", referencedColumnName = "oid")
+    })
+    @Cascade({org.hibernate.annotations.CascadeType.ALL})
+    public Set<String> getPolicySituation() {
+        return policySituation;
+    }
+
+    public void setPolicySituation(Set<String> policySituation) {
+        this.policySituation = policySituation;
+    }
+
     public void setAssignments(Set<RAssignment> assignments) {
         this.assignments = assignments;
     }
@@ -136,6 +177,14 @@ public abstract class RFocus<T extends FocusType> extends RObject<T> {
 
     public void setRoleMembershipRef(Set<RObjectReference<RAbstractRole>> roleMembershipRef) {
         this.roleMembershipRef = roleMembershipRef;
+    }
+
+    public void setDelegatedRef(Set<RObjectReference<RFocus>> delegatedRef) {
+        this.delegatedRef = delegatedRef;
+    }
+
+    public void setPersonaRef(Set<RObjectReference<RFocus>> personaRef) {
+        this.personaRef = personaRef;
     }
 
     public void setActivation(RActivation activation) {
@@ -154,6 +203,7 @@ public abstract class RFocus<T extends FocusType> extends RObject<T> {
         if (linkRef != null ? !linkRef.equals(other.linkRef) : other.linkRef != null) return false;
         if (roleMembershipRef != null ? !roleMembershipRef.equals(other.roleMembershipRef) : other.roleMembershipRef != null) return false;
         if (activation != null ? !activation.equals(other.activation) : other.activation != null) return false;
+        if (policySituation != null ? !policySituation.equals(other.policySituation) : other.policySituation != null) return false;
 
         return true;
     }
@@ -166,27 +216,35 @@ public abstract class RFocus<T extends FocusType> extends RObject<T> {
         return result;
     }
 
-    public static <T extends FocusType> void copyFromJAXB(FocusType jaxb, RFocus<T> repo, PrismContext prismContext,
-                                                          IdGeneratorResult generatorResult)
+    public static <T extends FocusType> void copyFromJAXB(FocusType jaxb, RFocus<T> repo, RepositoryContext repositoryContext,
+            IdGeneratorResult generatorResult)
             throws DtoTranslationException {
-        RObject.copyFromJAXB(jaxb, repo, prismContext, generatorResult);
+        RObject.copyFromJAXB(jaxb, repo, repositoryContext, generatorResult);
 
         repo.getLinkRef().addAll(
-                RUtil.safeListReferenceToSet(jaxb.getLinkRef(), prismContext, repo, RReferenceOwner.USER_ACCOUNT));
+                RUtil.safeListReferenceToSet(jaxb.getLinkRef(), repositoryContext.prismContext, repo, RReferenceOwner.USER_ACCOUNT));
 
         repo.getRoleMembershipRef().addAll(
-                RUtil.safeListReferenceToSet(jaxb.getRoleMembershipRef(), prismContext, repo, RReferenceOwner.ROLE_MEMBER));
+                RUtil.safeListReferenceToSet(jaxb.getRoleMembershipRef(), repositoryContext.prismContext, repo, RReferenceOwner.ROLE_MEMBER));
+
+        repo.getDelegatedRef().addAll(
+                RUtil.safeListReferenceToSet(jaxb.getDelegatedRef(), repositoryContext.prismContext, repo, RReferenceOwner.DELEGATED));
+
+        repo.getPersonaRef().addAll(
+                RUtil.safeListReferenceToSet(jaxb.getPersonaRef(), repositoryContext.prismContext, repo, RReferenceOwner.PERSONA));
+
+        repo.setPolicySituation(RUtil.listToSet(jaxb.getPolicySituation()));
 
         for (AssignmentType assignment : jaxb.getAssignment()) {
             RAssignment rAssignment = new RAssignment(repo, RAssignmentOwner.FOCUS);
-            RAssignment.copyFromJAXB(assignment, rAssignment, jaxb, prismContext, generatorResult);
+            RAssignment.copyFromJAXB(assignment, rAssignment, jaxb, repositoryContext, generatorResult);
 
             repo.getAssignments().add(rAssignment);
         }
 
         if (jaxb.getActivation() != null) {
             RActivation activation = new RActivation();
-            RActivation.copyFromJAXB(jaxb.getActivation(), activation, prismContext);
+            RActivation.copyFromJAXB(jaxb.getActivation(), activation, repositoryContext);
             repo.setActivation(activation);
         }
 

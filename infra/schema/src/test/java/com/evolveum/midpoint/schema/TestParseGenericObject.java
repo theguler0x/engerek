@@ -33,7 +33,6 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.GenericObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
 
-import org.testng.AssertJUnit;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 import org.w3c.dom.Document;
@@ -51,7 +50,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
-import static com.evolveum.midpoint.prism.util.PrismAsserts.assertPropertyValue;
 import static org.testng.AssertJUnit.assertEquals;
 import static org.testng.AssertJUnit.assertNotNull;
 
@@ -78,7 +76,7 @@ public class TestParseGenericObject {
 		PrismContext prismContext = PrismTestUtil.getPrismContext();
 		
 		// WHEN
-		PrismObject<GenericObjectType> generic = prismContext.parseObject(GENERIC_FILE, PrismContext.LANG_XML);
+		PrismObject<GenericObjectType> generic = prismContext.parserFor(GENERIC_FILE).xml().parse();
 		
 		// THEN
 		System.out.println("Parsed generic object:");
@@ -98,7 +96,7 @@ public class TestParseGenericObject {
 		Element resourceElement = DOMUtil.getFirstChildElement(document);
 		
 		// WHEN
-		PrismObject<GenericObjectType> generic = prismContext.parseObject(resourceElement);
+		PrismObject<GenericObjectType> generic = prismContext.parserFor(resourceElement).parse();
 		
 		// THEN
 		System.out.println("Parsed generic object:");
@@ -138,7 +136,7 @@ public class TestParseGenericObject {
         JaxbTestUtil jaxbProcessor = JaxbTestUtil.getInstance();
 		
 		// WHEN
-		ObjectType genericType = jaxbProcessor.unmarshalObject(GENERIC_FILE, ObjectType.class);
+		GenericObjectType genericType = jaxbProcessor.unmarshalObject(GENERIC_FILE, GenericObjectType.class);
 		
 		// THEN
 		assertGenericObject(genericType.asPrismObject());
@@ -179,8 +177,8 @@ public class TestParseGenericObject {
         JaxbTestUtil jaxbProcessor = JaxbTestUtil.getInstance();
 		
 		// WHEN
-		JAXBElement<ObjectType> jaxbElement = jaxbProcessor.unmarshalElement(GENERIC_FILE, ObjectType.class);
-		ObjectType genericType = jaxbElement.getValue();
+		JAXBElement<GenericObjectType> jaxbElement = jaxbProcessor.unmarshalElement(GENERIC_FILE, GenericObjectType.class);
+		GenericObjectType genericType = jaxbElement.getValue();
 		
 		// THEN
 		assertGenericObject(genericType.asPrismObject());

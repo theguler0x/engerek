@@ -18,23 +18,22 @@ package com.evolveum.midpoint.schema.util;
 
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.PrismReferenceValue;
-import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.prism.xnode.PrimitiveXNode;
 import com.evolveum.midpoint.prism.xnode.XNode;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.util.PrettyPrinter;
 import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ApprovalSchemaType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ConstructionType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.LoginEventType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectFactory;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceAttributeDefinitionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ScheduleType;
 import com.evolveum.prism.xml.ns._public.types_3.ItemPathType;
 import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
 import com.evolveum.prism.xml.ns._public.types_3.RawType;
-import org.apache.commons.lang.StringUtils;
 
 import javax.xml.bind.JAXBElement;
 import javax.xml.datatype.XMLGregorianCalendar;
@@ -43,6 +42,8 @@ import javax.xml.namespace.QName;
 import java.util.Date;
 
 /**
+ * TODO unify with PrettyPrinter somehow
+ *
  * @author mederly
  */
 public class ValueDisplayUtil {
@@ -69,6 +70,8 @@ public class ValueDisplayUtil {
             } else {
                 return "";
             }
+        } else if (value instanceof ScheduleType) {
+        	return SchemaDebugUtil.prettyPrint((ScheduleType) value);
         } else if (value instanceof ApprovalSchemaType) {
             ApprovalSchemaType approvalSchemaType = (ApprovalSchemaType) value;
             return approvalSchemaType.getName() + (approvalSchemaType.getDescription() != null ? (": " + approvalSchemaType.getDescription()) : "") + " (...)";
@@ -127,22 +130,37 @@ public class ValueDisplayUtil {
             return sb.toString();
         } else if (value instanceof QName) {
             QName qname = (QName) value;
-            if (StringUtils.isNotEmpty(qname.getNamespaceURI())) {
-                return qname.getLocalPart() + " (in " + qname.getNamespaceURI() + ")";
-            } else {
-                return qname.getLocalPart();
-            }
+            return qname.getLocalPart();
+//            if (StringUtils.isNotEmpty(qname.getNamespaceURI())) {
+//                return qname.getLocalPart() + " (in " + qname.getNamespaceURI() + ")";
+//            } else {
+//                return qname.getLocalPart();
+//            }
+        } else if (value instanceof Number) {
+			return String.valueOf(value);
+        } else if (value instanceof byte[]) {
+            return "(binary data)";
+        } else if (value instanceof RawType) {
+            return PrettyPrinter.prettyPrint(value);
         } else {
-            return "(a value of type " + value.getClass().getName() + ")";  // todo i18n
+            return "(a value of type " + value.getClass().getSimpleName() + ")";  // todo i18n
         }
     }
 
     public static String toStringValue(PrismReferenceValue ref) {
+        String rv = getReferredObjectInformation(ref);
+        if (ref.getRelation() != null) {
+        	rv += " [" + ref.getRelation().getLocalPart() + "]";
+		}
+		return rv;
+    }
 
+    private static String getReferredObjectInformation(PrismReferenceValue ref) {
         if (ref.getObject() != null) {
             return ref.getObject().toString();
         } else {
-            return (ref.getTargetType() != null ? (ref.getTargetType().getLocalPart()+":") : "") + ref.getOid();
+            return (ref.getTargetType() != null ? ref.getTargetType().getLocalPart()+":" : "")
+					+ (ref.getTargetName() != null ? ref.getTargetName() : ref.getOid());
         }
     }
 }

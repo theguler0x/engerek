@@ -17,13 +17,13 @@ package com.evolveum.midpoint.model.impl.lens.projector;
 
 import java.util.Collection;
 
-import com.evolveum.midpoint.model.common.mapping.Mapping;
 import com.evolveum.midpoint.model.common.mapping.PrismValueDeltaSetTripleProducer;
 import com.evolveum.midpoint.model.impl.lens.Construction;
 import com.evolveum.midpoint.prism.ItemDefinition;
 import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
 
+@FunctionalInterface
 public interface MappingExtractor<V extends PrismValue, D extends ItemDefinition, F extends FocusType> {
 
 	Collection<? extends PrismValueDeltaSetTripleProducer<V,D>> getMappings(Construction<F> construction);

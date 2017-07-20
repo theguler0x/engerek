@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import com.evolveum.midpoint.prism.query.builder.QueryBuilder;
+import com.evolveum.midpoint.prism.query.builder.S_AtomicFilterEntry;
+import com.evolveum.midpoint.prism.query.builder.S_FilterEntryOrEmpty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -44,6 +47,7 @@ import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
@@ -63,18 +67,24 @@ public class ObjectAlreadyExistHandler extends ErrorHandler {
 	private static final Trace LOGGER = TraceManager.getTrace(ObjectAlreadyExistHandler.class);
 
 	@Override
-	public <T extends ShadowType> T handleError(T shadow, FailedOperation op, Exception ex, boolean compensate, 
+	public <T extends ShadowType> T handleError(T shadow, FailedOperation op, Exception ex, 
+			boolean doDiscovery, boolean compensate, 
 			Task task, OperationResult parentResult) throws SchemaException, GenericFrameworkException, CommunicationException,
-			ObjectNotFoundException, ObjectAlreadyExistsException, ConfigurationException, SecurityViolationException {
+			ObjectNotFoundException, ObjectAlreadyExistsException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
 
-		if (!isDoDiscovery(shadow.getResource())){
-			throw new ObjectAlreadyExistsException();
+		if (!doDiscovery) {
+			parentResult.recordFatalError(ex);
+			if (ex instanceof ObjectAlreadyExistsException) {
+				throw (ObjectAlreadyExistsException)ex;
+			} else {
+				throw new ObjectAlreadyExistsException(ex.getMessage(), ex);
+			}
 		}
 		
 		LOGGER.trace("Start to hanlde ObjectAlreadyExitsException.");
 		
 		OperationResult operationResult = parentResult
-				.createSubresult("Discovery for object already exists situation. Operation: " + op.name());
+				.createSubresult("com.evolveum.midpoint.provisioning.consistency.impl.ObjectAlreadyExistHandler.handleError." + op.name());
 		operationResult.addParam("shadow", shadow);
 		operationResult.addParam("currentOperation", op);
 		operationResult.addParam("exception", ex.getMessage());
@@ -113,7 +123,7 @@ public class ObjectAlreadyExistHandler extends ErrorHandler {
 		}
 		
 		if (compensate){
-		throw new ObjectAlreadyExistsException(ex.getMessage(), ex);
+			throw new ObjectAlreadyExistsException(ex.getMessage(), ex);
 		}
 	
 		return shadow;
@@ -122,28 +132,27 @@ public class ObjectAlreadyExistHandler extends ErrorHandler {
 	private ObjectQuery createQueryByIcfName(ShadowType shadow) throws SchemaException {
 		// TODO: error handling TODO TODO TODO set matching rule instead of null in equlas filter
 		Collection<ResourceAttribute<?>> secondaryIdentifiers = ShadowUtil.getSecondaryIdentifiers(shadow);
-		
-		List<EqualFilter> secondaryIdentifierFilters = new ArrayList<EqualFilter>();
-		
-		for (ResourceAttribute<?> secondaryIdentifier : secondaryIdentifiers){
-			EqualFilter equal = EqualFilter.createEqual(new ItemPath(ShadowType.F_ATTRIBUTES, secondaryIdentifier.getElementName()), secondaryIdentifier);
-			secondaryIdentifierFilters.add(equal);
+		S_AtomicFilterEntry q = QueryBuilder.queryFor(ShadowType.class, prismContext);
+		q = q.block();
+		if (secondaryIdentifiers.isEmpty()) {
+			for (ResourceAttribute<?> primaryIdentifier: ShadowUtil.getPrimaryIdentifiers(shadow)) {
+				q = q.itemAs(primaryIdentifier).or();
+			}
+		} else {
+			// secondary identifiers connected by 'or' clause
+			for (ResourceAttribute<?> secondaryIdentifier : secondaryIdentifiers) {
+				q = q.itemAs(secondaryIdentifier).or();
+			}
 		}
-		OrFilter orSecondary = OrFilter.createOr((List)secondaryIdentifierFilters);
-		RefFilter resourceRefFilter = RefFilter.createReferenceEqual(ShadowType.F_RESOURCE_REF, ShadowType.class,
-				prismContext, shadow.getResourceRef().getOid());
-		EqualFilter objectClassFilter = EqualFilter.createEqual(ShadowType.F_OBJECT_CLASS, ShadowType.class, prismContext,
-				null, shadow.getObjectClass());
-
-		ObjectQuery query = ObjectQuery.createObjectQuery(AndFilter.createAnd(orSecondary, resourceRefFilter,
-				objectClassFilter));
-
-		return query;
+		q = q.none().endBlock().and();
+		// resource + object class
+		q = q.item(ShadowType.F_RESOURCE_REF).ref(shadow.getResourceRef().getOid()).and();
+		return q.item(ShadowType.F_OBJECT_CLASS).eq(shadow.getObjectClass()).build();
 	}
 
 	private List<PrismObject<ShadowType>> getExistingAccount(ObjectQuery query, Task task, OperationResult parentResult)
 			throws ObjectNotFoundException, CommunicationException, ConfigurationException, SchemaException,
-			SecurityViolationException {
+			SecurityViolationException, ExpressionEvaluationException {
 		final List<PrismObject<ShadowType>> foundAccount = new ArrayList<PrismObject<ShadowType>>();
 		ResultHandler<ShadowType> handler = new ResultHandler() {
 

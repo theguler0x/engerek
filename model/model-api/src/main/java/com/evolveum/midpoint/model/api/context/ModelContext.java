@@ -18,6 +18,7 @@ package com.evolveum.midpoint.model.api.context;
 import java.io.Serializable;
 import java.util.Collection;
 
+import com.evolveum.midpoint.model.api.ModelExecuteOptions;
 import com.evolveum.midpoint.model.api.ProgressInformation;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
@@ -25,7 +26,9 @@ import com.evolveum.midpoint.prism.delta.DeltaSetTriple;
 import com.evolveum.midpoint.schema.ResourceShadowDiscriminator;
 import com.evolveum.midpoint.util.DebugDumpable;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.PartialProcessingOptionsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * @author semancik
@@ -33,23 +36,32 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationT
  */
 public interface ModelContext<F extends ObjectType> extends Serializable, DebugDumpable {
 
-	public ModelState getState();
+	ModelState getState();
 	
-	public ModelElementContext<F> getFocusContext();
+	ModelElementContext<F> getFocusContext();
 	
-	public Collection<? extends ModelProjectionContext> getProjectionContexts();
+	Collection<? extends ModelProjectionContext> getProjectionContexts();
 	
-	public ModelProjectionContext findProjectionContext(ResourceShadowDiscriminator rat);
+	ModelProjectionContext findProjectionContext(ResourceShadowDiscriminator rat);
 
-    Class<F> getFocusClass();
+	ModelExecuteOptions getOptions();
 
-    void reportProgress(ProgressInformation progress);
+	@NotNull
+	PartialProcessingOptionsType getPartialProcessingOptions();
+
+	Class<F> getFocusClass();
+
+	void reportProgress(ProgressInformation progress);
     
-    DeltaSetTriple<? extends EvaluatedAssignment> getEvaluatedAssignmentTriple();
+    DeltaSetTriple<? extends EvaluatedAssignment<?>> getEvaluatedAssignmentTriple();
 
     PrismContext getPrismContext();       // use with care
 
     PrismObject<SystemConfigurationType> getSystemConfiguration();  // beware, may be null - use only as a performance optimization
 
     String getChannel();
+
+	// For diagnostic purposes (this is more detailed than rule-related part of LensContext debugDump,
+	// while less detailed than that part of detailed LensContext debugDump).
+	String dumpPolicyRules(int indent);
 }

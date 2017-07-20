@@ -15,6 +15,7 @@
  */
 package com.evolveum.midpoint.schema;
 
+import static com.evolveum.midpoint.prism.util.PrismTestUtil.getPrismContext;
 import static org.testng.AssertJUnit.assertTrue;
 import static org.testng.AssertJUnit.assertFalse;
 import static org.testng.AssertJUnit.assertEquals;
@@ -28,10 +29,12 @@ import java.util.List;
 import javax.xml.bind.JAXBException;
 import javax.xml.namespace.QName;
 
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismPropertyDefinition;
+import com.evolveum.midpoint.prism.*;
+import com.evolveum.midpoint.prism.delta.builder.DeltaBuilder;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
+import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
+import com.evolveum.midpoint.prism.xnode.RootXNode;
 import com.evolveum.midpoint.prism.xnode.XNode;
 import com.evolveum.midpoint.util.QNameUtil;
 import com.evolveum.midpoint.xml.ns._public.common.api_types_3.ObjectModificationType;
@@ -44,7 +47,6 @@ import org.testng.annotations.Test;
 import org.w3c.dom.Element;
 import org.xml.sax.SAXException;
 
-import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ChangeType;
 import com.evolveum.midpoint.prism.delta.DiffUtil;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
@@ -287,7 +289,7 @@ public class TestParseDiffPatch {
 
         // WHEN
 
-        ObjectDelta<UserType> userDelta = DiffUtil.diff(userBeforeXml, userAfterXml, UserType.class, PrismTestUtil.getPrismContext());
+        ObjectDelta<UserType> userDelta = DiffUtil.diff(userBeforeXml, userAfterXml, UserType.class, getPrismContext());
 
         // THEN
 
@@ -312,7 +314,7 @@ public class TestParseDiffPatch {
 		System.out.println("===[ testAddDelta ]===");
 
         // WHEN
-        ObjectDelta<UserType> userDelta = DiffUtil.diff(null,new File(TEST_DIR, "user-jack-after.xml"), UserType.class, PrismTestUtil.getPrismContext());
+        ObjectDelta<UserType> userDelta = DiffUtil.diff(null,new File(TEST_DIR, "user-jack-after.xml"), UserType.class, getPrismContext());
 
         //THEN
         System.out.println("DELTA:");
@@ -332,7 +334,7 @@ public class TestParseDiffPatch {
         // WHEN
 
         ObjectDelta<TaskType> diffDelta = DiffUtil.diff(new File(TEST_DIR, "task-before.xml"),
-        		new File(TEST_DIR, "task-after.xml"), TaskType.class, PrismTestUtil.getPrismContext());
+        		new File(TEST_DIR, "task-after.xml"), TaskType.class, getPrismContext());
 
         // THEN
 
@@ -345,7 +347,7 @@ public class TestParseDiffPatch {
         Collection<? extends ItemDelta> modifications = diffDelta.getModifications();
         assertEquals("Unexpected number of modifications", 1, modifications.size());
         // there is only one property in the container. after deleting this property, all container will be deleted, isn't it right?
-        PrismAsserts.assertContainerDelete(diffDelta, new ItemPath(TaskType.F_EXTENSION));
+        PrismAsserts.assertContainerDeleteGetContainerDelta(diffDelta, new ItemPath(TaskType.F_EXTENSION));
 //        PrismAsserts.assertPropertyDelete(diffDelta, new ItemPath(TaskType.F_EXTENSION,
 //        		new QName("http://midpoint.evolveum.com/xml/ns/public/provisioning/liveSync-1.xsd","token")), 480);
 
@@ -429,7 +431,7 @@ public class TestParseDiffPatch {
         assertEquals("Wrong change type", ChangeType.MODIFY, resourceDelta.getChangeType());
         Collection<? extends ItemDelta> modifications = resourceDelta.getModifications();
         assertEquals("Unexpected number of modifications", 7, modifications.size());
-        PrismAsserts.assertContainerDelete(resourceDelta, ResourceType.F_SCHEMA);
+        PrismAsserts.assertContainerDeleteGetContainerDelta(resourceDelta, ResourceType.F_SCHEMA);
         PrismAsserts.assertPropertyReplace(resourceDelta, pathTimeouts("update"), 3);
         PrismAsserts.assertPropertyReplace(resourceDelta, pathTimeouts("scriptOnResource"), 4);
         PrismAsserts.assertPropertyDelete(resourceDelta,
@@ -606,7 +608,7 @@ public class TestParseDiffPatch {
             resourceFixed.checkConsistence();
 
             // WHEN
-            String xmlBroken = PrismTestUtil.getPrismContext().serializeObjectToString(resourceBroken, PrismContext.LANG_XML);
+            String xmlBroken = getPrismContext().serializeObjectToString(resourceBroken, PrismContext.LANG_XML);
             ObjectDelta<ResourceType> resourceDelta = resourceBroken.diff(resourceFixed, true, true);
 
             // THEN
@@ -628,13 +630,13 @@ public class TestParseDiffPatch {
             PrismObject<ResourceType> resourceUpdated = resourceBroken.clone();
             resourceDelta.applyTo(resourceUpdated);
 
-            String xmlUpdated = PrismTestUtil.getPrismContext().serializeObjectToString(resourceUpdated, PrismContext.LANG_XML);
+            String xmlUpdated = getPrismContext().serializeObjectToString(resourceUpdated, PrismContext.LANG_XML);
             System.out.println("UPDATED RESOURCE:");
             System.out.println(xmlUpdated);
             assertFalse("__UNDECLARED__ flag in updated resource", xmlUpdated.contains("__UNDECLARED__"));
 
             QNameUtil.setTolerateUndeclaredPrefixes(false);
-            PrismTestUtil.getPrismContext().parseObject(xmlUpdated);        //should be without exceptions
+            getPrismContext().parseObject(xmlUpdated);        //should be without exceptions
 
         } finally {
             QNameUtil.setTolerateUndeclaredPrefixes(orig);
@@ -656,7 +658,7 @@ public class TestParseDiffPatch {
      *
      * MidPoint uses an approximation there - it compares XNode serializations of values. Sometimes they match,
      * sometimes they do not. In this particular case they fail to match on serialization of c:ObjectReferenceType,
-     * because PrismBeanConverter is used, and ObjectReferenceType.getFilter() returns empty filter instead of null.
+     * because BeanMarshaller is used, and ObjectReferenceType.getFilter() returns empty filter instead of null.
      * This could be fixed; however, it would not help much, because it is almost sure that other similar problems
      * would sooner or later emerge.
      */
@@ -666,7 +668,7 @@ public class TestParseDiffPatch {
 
         // WHEN
 
-        PrismContext prismContext = PrismTestUtil.getPrismContext();
+        PrismContext prismContext = getPrismContext();
         PrismObject<ShadowType> oldObject = getParsedShadowBefore(prismContext);
         PrismObject<ShadowType> newObject = getShadowAfter(oldObject);
 
@@ -730,7 +732,7 @@ public class TestParseDiffPatch {
         for (ItemDeltaType itemDeltaType : objectChange.getItemDelta()) {
             for (RawType rawType : itemDeltaType.getValue()) {
                 rawType.getParsedItem(
-                        new PrismPropertyDefinition(itemDeltaType.getPath().getItemPath().lastNamed().getName(),
+                        new PrismPropertyDefinitionImpl(itemDeltaType.getPath().getItemPath().lastNamed().getName(),
                                 rawType.getXnode().getTypeQName(),
                                 prismContext));
             }
@@ -760,14 +762,7 @@ public class TestParseDiffPatch {
     private void assertModificationPolyStringValue(RawType value, PolyStringType... expectedValues) throws SchemaException {
     	XNode xnode = value.serializeToXNode();
         assertFalse(xnode.isEmpty());
-//        Object first = elements.get(0);
-//        QName elementQName = JAXBUtil.getElementQName(first);
-//        if (!propertyName.equals(elementQName)) {
-//            continue;
-//        }
-
-       
-        PolyStringType valueAsPoly = value.getPrismContext().getXnodeProcessor().parseAtomicValue(xnode, PolyStringType.COMPLEX_TYPE);
+        PolyStringType valueAsPoly = value.getPrismContext().parserFor(new RootXNode(new QName("dummy"), xnode)).parseRealValue(PolyStringType.class);
         boolean found = false;
         for (PolyStringType expectedValue: expectedValues) {
             if (expectedValue.getOrig().equals(valueAsPoly.getOrig()) && expectedValue.getNorm().equals(valueAsPoly.getNorm())) {
@@ -816,5 +811,33 @@ public class TestParseDiffPatch {
 //		}
 //	}
 
+    // this is a simple test of applying delta (don't know where to put it)
+	// MID-3828
+    @Test
+    public void testCampaign() throws SchemaException, SAXException, IOException, JAXBException {
+        System.out.println("===[ testCampaign ]===");
+
+        PrismObject<AccessCertificationCampaignType> campaign = PrismTestUtil.parseObject(new File(TEST_DIR, "campaign-1.xml"));
+        campaign.checkConsistence();
+        assertEquals("Wrong # of triggers", 2, campaign.asObjectable().getTrigger().size());
+
+		// WHEN
+		TriggerType triggerToDelete = new TriggerType(getPrismContext());
+		triggerToDelete.setId(3L);			// non-existing ID
+		triggerToDelete.setTimestamp(XmlTypeConverter.createXMLGregorianCalendar("2017-03-17T23:43:49.705+01:00"));
+		triggerToDelete.setHandlerUri("http://midpoint.evolveum.com/xml/ns/public/certification/trigger/close-stage/handler-3");
+
+		@SuppressWarnings({"unchecked", "raw"})
+        ObjectDelta<AccessCertificationCampaignType> delta = (ObjectDelta<AccessCertificationCampaignType>)
+				DeltaBuilder.deltaFor(AccessCertificationCampaignType.class, getPrismContext())
+				.item(AccessCertificationCampaignType.F_TRIGGER).delete(triggerToDelete)
+				.asObjectDelta(campaign.getOid());
+
+        // THEN
+		delta.applyTo(campaign);
+		System.out.println("Campaign after:\n" + campaign.debugDump());
+
+		assertEquals("Wrong # of triggers", 2, campaign.asObjectable().getTrigger().size());
+	}
 
 }

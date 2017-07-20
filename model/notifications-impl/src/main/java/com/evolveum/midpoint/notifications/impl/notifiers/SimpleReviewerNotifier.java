@@ -17,13 +17,13 @@
 package com.evolveum.midpoint.notifications.impl.notifiers;
 
 import com.evolveum.midpoint.model.api.expr.MidpointFunctions;
-import com.evolveum.midpoint.notifications.api.events.CertCampaignEvent;
 import com.evolveum.midpoint.notifications.api.events.CertReviewEvent;
 import com.evolveum.midpoint.notifications.api.events.Event;
 import com.evolveum.midpoint.notifications.impl.helpers.CertHelper;
 import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.CertCampaignTypeUtil;
+import com.evolveum.midpoint.schema.util.WfContextUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
@@ -31,14 +31,12 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationC
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationStageDefinitionType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationStageType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.GeneralNotifierType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SimpleCampaignNotifierType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.SimpleReviewerNotifierType;
 import org.apache.commons.lang.time.DurationFormatUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
-import java.util.Date;
 
 /**
  * Various reviewer-level notifications.
@@ -81,7 +79,7 @@ public class SimpleReviewerNotifier extends GeneralNotifier {
         if (Boolean.FALSE.equals(stageDef.isNotifyOnlyWhenNoDecision())) {
             return true;
         }
-        if (reviewEvent.getCasesWithoutResponse().isEmpty()) {
+        if (reviewEvent.getCasesAwaitingResponseFromRequestee().isEmpty()) {
             return false;
         }
         return true;
@@ -112,10 +110,13 @@ public class SimpleReviewerNotifier extends GeneralNotifier {
         body.append("\n\n");
         AccessCertificationStageType stage = CertCampaignTypeUtil.getCurrentStage(campaign);
         if (stage != null) {
-            body.append("Stage start time: ").append(XmlTypeConverter.toDate(stage.getStart()));
-            body.append("\nStage end time: ").append(XmlTypeConverter.toDate(stage.getEnd()));
-            if (stage.getEnd() != null) {
-                long delta = XmlTypeConverter.toMillis(stage.getEnd()) - System.currentTimeMillis();
+            body.append("Stage start time: ").append(XmlTypeConverter.toDate(stage.getStartTimestamp()));
+            body.append("\nStage deadline: ").append(XmlTypeConverter.toDate(stage.getDeadline()));
+            if (stage.getEscalationLevel() != null) {
+            	body.append("\nEscalation level: ").append(WfContextUtil.getEscalationLevelInfo(stage.getEscalationLevel()));
+			}
+            if (stage.getDeadline() != null) {
+                long delta = XmlTypeConverter.toMillis(stage.getDeadline()) - System.currentTimeMillis();
                 if (delta > 0) {
                     if (reviewEvent.isModify()) {
                         body.append("\n\nThis is to notify you that the stage ends in ");
@@ -124,14 +125,14 @@ public class SimpleReviewerNotifier extends GeneralNotifier {
                     }
                     body.append(DurationFormatUtils.formatDurationWords(delta, true, true));
                 } else if (delta < 0) {
-                    body.append("\n\nThe stage ended ");
+                    body.append("\n\nThe stage should have ended ");
                     body.append(DurationFormatUtils.formatDurationWords(-delta, true, true));
                     body.append(" ago");
                 }
             }
             body.append("\n\n");
             body.append("There are ").append(reviewEvent.getCases().size()).append(" cases assigned to you. ");
-            body.append("Out of them, ").append(reviewEvent.getCasesWithoutResponse().size()).append(" have no response from you yet.");
+            body.append("Out of them, ").append(reviewEvent.getCasesAwaitingResponseFromRequestee().size()).append(" have no response from you yet.");
         }
 
         return body.toString();

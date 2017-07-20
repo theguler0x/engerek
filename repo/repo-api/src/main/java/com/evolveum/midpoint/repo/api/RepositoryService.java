@@ -18,29 +18,20 @@ package com.evolveum.midpoint.repo.api;
 import java.util.Collection;
 import java.util.List;
 
-import javax.xml.namespace.QName;
-
 import com.evolveum.midpoint.prism.Containerable;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
-import com.evolveum.midpoint.prism.query.ObjectPaging;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
-import com.evolveum.midpoint.schema.GetOperationOptions;
-import com.evolveum.midpoint.schema.RelationalValueSearchType;
-import com.evolveum.midpoint.schema.RepositoryDiag;
-import com.evolveum.midpoint.schema.ResultHandler;
-import com.evolveum.midpoint.schema.SearchResultList;
-import com.evolveum.midpoint.schema.SearchResultMetadata;
-import com.evolveum.midpoint.schema.SelectorOptions;
+import com.evolveum.midpoint.schema.*;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.LookupTableType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
+import com.evolveum.midpoint.util.logging.Trace;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
+import org.jetbrains.annotations.NotNull;
+
+import javax.xml.namespace.QName;
 
 /**
  * <p>Identity Repository Interface.</p>
@@ -128,7 +119,6 @@ public interface RepositoryService {
 
     String CLASS_NAME_WITH_DOT = RepositoryService.class.getName() + ".";
     String GET_OBJECT = CLASS_NAME_WITH_DOT + "getObject";
-    String LIST_OBJECTS = CLASS_NAME_WITH_DOT + "listObjects";
     @Deprecated
     String LIST_ACCOUNT_SHADOW = CLASS_NAME_WITH_DOT + "listAccountShadowOwner";
     String ADD_OBJECT = CLASS_NAME_WITH_DOT + "addObject";
@@ -139,16 +129,18 @@ public interface RepositoryService {
     String RELEASE_TASK = CLASS_NAME_WITH_DOT + "releaseTask";
     String SEARCH_OBJECTS = CLASS_NAME_WITH_DOT + "searchObjects";
 	String SEARCH_CONTAINERS = CLASS_NAME_WITH_DOT + "searchContainers";
+	String COUNT_CONTAINERS = CLASS_NAME_WITH_DOT + "countContainers";
     String LIST_RESOURCE_OBJECT_SHADOWS = CLASS_NAME_WITH_DOT + "listResourceObjectShadows";
     String MODIFY_OBJECT = CLASS_NAME_WITH_DOT + "modifyObject";
     String COUNT_OBJECTS = CLASS_NAME_WITH_DOT + "countObjects";
     String GET_VERSION = CLASS_NAME_WITH_DOT + "getVersion";
     String SEARCH_OBJECTS_ITERATIVE = CLASS_NAME_WITH_DOT + "searchObjectsIterative";
-    String CLEANUP_TASKS = CLASS_NAME_WITH_DOT + "cleanupTasks";
     String SEARCH_SHADOW_OWNER = CLASS_NAME_WITH_DOT + "searchShadowOwner";
 	String ADVANCE_SEQUENCE = CLASS_NAME_WITH_DOT + "advanceSequence";
 	String RETURN_UNUSED_VALUES_TO_SEQUENCE = CLASS_NAME_WITH_DOT + "returnUnusedValuesToSequence";
-	String EXECUTE_ARBITRARY_QUERY = CLASS_NAME_WITH_DOT + "executeArbitraryQuery";
+	String EXECUTE_QUERY_DIAGNOSTICS = CLASS_NAME_WITH_DOT + "executeQueryDiagnostics";
+
+	String KEY_DIAG_DATA = "repositoryDiagData";			// see GetOperationOptions.attachDiagData
 
 	/**
 	 * Returns object for provided OID.
@@ -200,6 +192,9 @@ public interface RepositoryService {
 	 */
 	<T extends ObjectType> String getVersion(Class<T> type,String oid, OperationResult parentResult)
 			throws ObjectNotFoundException, SchemaException;
+
+	<T extends Containerable> int countContainers(Class<T> type, ObjectQuery query,
+			Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult);
 
 	/**
 	 * <p>Add new object.</p>
@@ -259,8 +254,6 @@ public interface RepositoryService {
 	 *
 	 * @param query
 	 *            search query
-	 * @param paging
-	 *            paging specification to limit operation result (optional)
 	 * @param parentResult
 	 *            parent OperationResult (in/out)
 	 * @return all objects of specified type that match search criteria (subject
@@ -272,25 +265,17 @@ public interface RepositoryService {
 	 *             unknown property used in search query
 	 */
 
-	<T extends ObjectType> SearchResultList<PrismObject<T>>  searchObjects(Class<T> type, ObjectQuery query,
+	@NotNull
+	<T extends ObjectType> SearchResultList<PrismObject<T>> searchObjects(Class<T> type, ObjectQuery query,
 			Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult)
 			throws SchemaException;
 
 	/**
 	 * Search for "sub-object" structures, i.e. containers.
 	 * Currently, only one type of search is available: certification case search.
-	 *
-	 * @param type
-	 * @param query
-	 * @param options
-	 * @param parentResult
-	 * @param <T>
-	 * @return
-	 * @throws SchemaException
 	 */
 	<T extends Containerable> SearchResultList<T> searchContainers(Class<T> type, ObjectQuery query,
-																   Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult)
-			throws SchemaException;
+			Collection<SelectorOptions<GetOperationOptions>> options, OperationResult parentResult) throws SchemaException;
 
 	/**
 	 * <p>Search for objects in the repository in an iterative fashion.</p>
@@ -341,8 +326,6 @@ public interface RepositoryService {
 	 *
 	 * @param query
 	 *            search query
-	 * @param paging
-	 *            paging specification to limit operation result (optional)
 	 * @param parentResult
 	 *            parent OperationResult (in/out)
 	 * @return count of objects of specified type that match search criteria (subject
@@ -356,7 +339,15 @@ public interface RepositoryService {
 	<T extends ObjectType> int countObjects(Class<T> type, ObjectQuery query, OperationResult parentResult)
 			throws SchemaException;
 
+	<T extends ObjectType> int countObjects(Class<T> type, ObjectQuery query,
+			Collection<SelectorOptions<GetOperationOptions>> options,
+			OperationResult parentResult) throws SchemaException;
+
 	boolean isAnySubordinate(String upperOrgOid, Collection<String> lowerObjectOids) throws SchemaException;
+	
+	<O extends ObjectType> boolean isDescendant(PrismObject<O> object, String orgOid) throws SchemaException;
+	
+	<O extends ObjectType> boolean isAncestor(PrismObject<O> object, String oid) throws SchemaException;
 	
 	/**
 	 * <p>Modifies object using relative change description.</p>
@@ -389,6 +380,9 @@ public interface RepositoryService {
 	 *             wrong OID format, described change is not applicable
 	 */
 	<T extends ObjectType> void modifyObject(Class<T> type, String oid, Collection<? extends ItemDelta> modifications, OperationResult parentResult)
+			throws ObjectNotFoundException, SchemaException, ObjectAlreadyExistsException;
+
+	<T extends ObjectType> void modifyObject(Class<T> type, String oid, Collection<? extends ItemDelta> modifications, RepoModifyOptions options, OperationResult parentResult)
 			throws ObjectNotFoundException, SchemaException, ObjectAlreadyExistsException;
 
 	/**
@@ -514,7 +508,7 @@ public interface RepositoryService {
 	 * the same sequence at the same time then different values will be returned.
 	 * 
 	 * @param oid sequence OID
-	 * @param parentResult
+	 * @param parentResult Operation result
 	 * @return next unallocated counter value
 	 * @throws ObjectNotFoundException the sequence does not exist
 	 * @throws SchemaException the sequence cannot produce a value (e.g. maximum counter reached)
@@ -526,10 +520,9 @@ public interface RepositoryService {
 	 * The sequence may ignore the values, e.g. if value re-use is disabled or when the list of
 	 * unused values is full. In such a case the values will be ignored silently and no error is indicated.
 	 * 
-	 * @param oid
-	 * @param unusedValues
-	 * @param parentResult
-	 * @throws ObjectNotFoundException
+	 * @param oid sequence OID
+	 * @param unusedValues values to return
+	 * @param parentResult Operation result
 	 */
 	void returnUnusedValuesToSequence(String oid, Collection<Long> unusedValues, OperationResult parentResult) throws ObjectNotFoundException, SchemaException;
 	
@@ -572,10 +565,38 @@ public interface RepositoryService {
 	 * A bit of hack - execute arbitrary query, e.g. hibernate query in case of SQL repository.
 	 * Use with all the care!
 	 *
-	 * @param query
-	 * @param result
-	 * @return
+	 * @param request Diagnostics request
+	 * @param result Operation result
+	 * @return diagnostics response
 	 */
-	String executeArbitraryQuery(String query, OperationResult result);
+	RepositoryQueryDiagResponse executeQueryDiagnostics(RepositoryQueryDiagRequest request, OperationResult result);
 
+	<O extends ObjectType> boolean selectorMatches(ObjectSelectorType objectSelector, PrismObject<O> object,
+			Trace logger, String logMessagePrefix) throws SchemaException;
+
+	/**
+	 * Returns matching rule supported by the repository for a given data type (String, PolyString, ...), for
+	 * originally intended matching rule.
+	 *
+	 * New matching rule must NOT be less selective than the original one. I.e. if values V1, V2 would not match
+	 * under the original one, they must not also match under the replacement. Therefore it is safe to replace
+	 * distinguishedName with stringIgnoreCase (but not e.g. the other way around; nor exchangeEmailAddresses
+	 * can be replaced by stringIgnoreCase, because the prefix part is case sensitive).
+	 *
+	 * The assumption is that for unsupported matching rules the repository will store normalized values. And it
+	 * will normalize any values that are used in queries. This is the obligation of the client. So, theoretically,
+	 * it is safe to replace any such matching rule with default (exact) matching rule. But if we replace it with
+	 * something that does not return false positives (i.e. something that is not less sensitive), we get some
+	 * resiliency w.r.t. non-normalized values in repository. TODO TODO TODO think again
+	 *
+	 * If the original matching rule is not supported by the given data type (e.g. trying to use exchangeEmailAddress
+	 * on PolyString), the result may be arbitrary. TODO think again also about this
+	 */
+	QName getApproximateSupportedMatchingRule(Class<?> dataType, QName originalMatchingRule);
+
+	void applyFullTextSearchConfiguration(FullTextSearchConfigurationType fullTextSearch);
+
+	FullTextSearchConfigurationType getFullTextSearchConfiguration();
+
+	void postInit(OperationResult result) throws SchemaException;
 }

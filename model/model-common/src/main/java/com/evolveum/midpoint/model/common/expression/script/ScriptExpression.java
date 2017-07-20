@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,42 +15,28 @@
  */
 package com.evolveum.midpoint.model.common.expression.script;
 
-import com.evolveum.midpoint.common.monitor.InternalMonitor;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
-import com.evolveum.midpoint.model.common.expression.ObjectDeltaObject;
-import com.evolveum.midpoint.model.common.expression.functions.BasicExpressionFunctions;
+import java.util.Collection;
+import java.util.List;
+import java.util.function.Function;
+
 import com.evolveum.midpoint.model.common.expression.functions.FunctionLibrary;
-import com.evolveum.midpoint.prism.Item;
 import com.evolveum.midpoint.prism.ItemDefinition;
-import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.PrismValue;
-import com.evolveum.midpoint.prism.parser.XPathHolder;
 import com.evolveum.midpoint.prism.path.ItemPath;
-import com.evolveum.midpoint.prism.xml.XsdTypeMapper;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.schema.util.SchemaDebugUtil;
 import com.evolveum.midpoint.schema.util.ObjectResolver;
+import com.evolveum.midpoint.schema.util.SchemaDebugUtil;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.util.DOMUtil;
-import com.evolveum.midpoint.util.DebugDumpable;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ExpressionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ScriptExpressionEvaluatorType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ScriptExpressionReturnTypeType;
 import com.evolveum.prism.xml.ns._public.types_3.ItemPathType;
-
-import org.w3c.dom.Element;
-
-import javax.xml.namespace.QName;
-
-import java.util.*;
-import java.util.Map.Entry;
 
 /**
  * The expressions should be created by ExpressionFactory. They expect correct setting of
@@ -63,6 +49,7 @@ public class ScriptExpression {
     private ScriptExpressionEvaluatorType scriptType;
     private ScriptEvaluator evaluator;
     private ItemDefinition outputDefinition;
+	private Function<Object, Object> additionalConvertor;
     private ObjectResolver objectResolver;
     private Collection<FunctionLibrary> functions;
 
@@ -98,8 +85,16 @@ public class ScriptExpression {
 		this.functions = functions;
 	}
 
+	public Function<Object, Object> getAdditionalConvertor() {
+		return additionalConvertor;
+	}
+
+	public void setAdditionalConvertor(Function<Object, Object> additionalConvertor) {
+		this.additionalConvertor = additionalConvertor;
+	}
+
 	public <V extends PrismValue> List<V> evaluate(ExpressionVariables variables, ScriptExpressionReturnTypeType suggestedReturnType,
-												   boolean useNew, String contextDescription, Task task, OperationResult result)
+			boolean useNew, String contextDescription, Task task, OperationResult result)
 			throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException {
 
 		ScriptExpressionEvaluationContext context = new ScriptExpressionEvaluationContext(variables, contextDescription, result, this);
@@ -108,21 +103,12 @@ public class ScriptExpression {
 		try {
 			context.setupThreadLocal();
 			
-			List<V> expressionResult = evaluator.evaluate(scriptType, variables, outputDefinition, suggestedReturnType, objectResolver, functions, contextDescription, task, result);
+			List<V> expressionResult = evaluator.evaluate(scriptType, variables, outputDefinition, additionalConvertor, suggestedReturnType, objectResolver, functions, contextDescription, task, result);
 			
 			traceExpressionSuccess(variables, contextDescription, expressionResult);
 	        return expressionResult;
 
-		} catch (ExpressionEvaluationException ex) {
-			traceExpressionFailure(variables, contextDescription, ex);
-			throw ex;
-		} catch (ObjectNotFoundException ex) {
-			traceExpressionFailure(variables, contextDescription, ex);
-			throw ex;
-		} catch (SchemaException ex) {
-			traceExpressionFailure(variables, contextDescription, ex);
-			throw ex;
-		} catch (RuntimeException ex) {
+		} catch (ExpressionEvaluationException | ObjectNotFoundException | SchemaException | RuntimeException ex) {
 			traceExpressionFailure(variables, contextDescription, ex);
 			throw ex;
 		} finally {
@@ -131,35 +117,45 @@ public class ScriptExpression {
 	}
 
     private void traceExpressionSuccess(ExpressionVariables variables, String shortDesc, Object returnValue) {
-        if (LOGGER.isTraceEnabled()) {
-        	LOGGER.trace("Script expression trace:\n"+
-            		"---[ SCRIPT expression {}]---------------------------\n"+
-            		"Language: {}\n"+
-            		"Relativity mode: {}\n"+
-            		"Variables:\n{}\n"+
-            		"Code:\n{}\n"+
-            		"Result: {}", new Object[]{
-                    shortDesc, evaluator.getLanguageName(), scriptType.getRelativityMode(), formatVariables(variables), formatCode(),
-                    SchemaDebugUtil.prettyPrint(returnValue)
-            });
-        }
+    	if (!isTrace()) {
+    		return;
+    	}
+        trace("Script expression trace:\n"+
+        		"---[ SCRIPT expression {}]---------------------------\n"+
+        		"Language: {}\n"+
+        		"Relativity mode: {}\n"+
+        		"Variables:\n{}\n"+
+        		"Code:\n{}\n"+
+        		"Result: {}", shortDesc, evaluator.getLanguageName(), scriptType.getRelativityMode(), formatVariables(variables),
+				formatCode(), SchemaDebugUtil.prettyPrint(returnValue));
     }
 
     private void traceExpressionFailure(ExpressionVariables variables, String shortDesc, Exception exception) {
         LOGGER.error("Expression error: {}", exception.getMessage(), exception);
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("Script expression failure:\n"+
-            		"---[ SCRIPT expression {}]---------------------------\n"+
-            		"Language: {}\n"+
-            		"Relativity mode: {}\n"+
-            		"Variables:\n{}\n"+
-            		"Code:\n{}\n"+
-            		"Error: {}", new Object[]{
-                    shortDesc, evaluator.getLanguageName(), scriptType.getRelativityMode(), formatVariables(variables), formatCode(),
-                    SchemaDebugUtil.prettyPrint(exception)
-            });
-        }
+        if (!isTrace()) {
+    		return;
+    	}
+        trace("Script expression failure:\n"+
+        		"---[ SCRIPT expression {}]---------------------------\n"+
+        		"Language: {}\n"+
+        		"Relativity mode: {}\n"+
+        		"Variables:\n{}\n"+
+        		"Code:\n{}\n"+
+        		"Error: {}", shortDesc, evaluator.getLanguageName(), scriptType.getRelativityMode(), formatVariables(variables),
+				formatCode(), SchemaDebugUtil.prettyPrint(exception));
     }
+    
+    private boolean isTrace() {
+		return LOGGER.isTraceEnabled() || (scriptType != null && scriptType.isTrace() == Boolean.TRUE); 
+	}
+	
+	private void trace(String msg, Object... args) {
+		if (scriptType != null && scriptType.isTrace() == Boolean.TRUE) {
+			LOGGER.info(msg, args);
+		} else {
+			LOGGER.trace(msg, args);
+		}
+	}
 
 	private String formatVariables(ExpressionVariables variables) {
 		if (variables == null) {

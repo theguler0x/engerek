@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,13 +21,10 @@ import java.util.Collection;
 import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.prism.Item;
-import com.evolveum.midpoint.prism.ItemDefinition;
 import com.evolveum.midpoint.prism.Objectable;
-import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.PrismObjectDefinition;
-import com.evolveum.midpoint.prism.PrismProperty;
 import com.evolveum.midpoint.prism.PrismReference;
 import com.evolveum.midpoint.prism.PrismReferenceDefinition;
 import com.evolveum.midpoint.prism.PrismReferenceValue;
@@ -113,11 +110,25 @@ public class ReferenceDelta extends ItemDelta<PrismReferenceValue,PrismReference
 		return createModificationReplace(path, objectDefinition, new PrismReferenceValue(oid));
 	}
 
+    public static <O extends Objectable> ReferenceDelta createModificationReplace(QName refName, Class<O> type, PrismContext ctx , String oid) {
+    	PrismObjectDefinition<O> objectDefinition = ctx.getSchemaRegistry().findObjectDefinitionByCompileTimeClass(type);
+		return createModificationReplace(refName, objectDefinition, oid==null?null:new PrismReferenceValue(oid));
+	}
+    
+    public static <O extends Objectable> ReferenceDelta createModificationReplace(ItemPath path, Class<O> type, PrismContext ctx, String oid) {
+    	PrismObjectDefinition<O> objectDefinition = ctx.getSchemaRegistry().findObjectDefinitionByCompileTimeClass(type);
+		return createModificationReplace(path, objectDefinition, oid==null?null:new PrismReferenceValue(oid));
+	}
+
     public static ReferenceDelta createModificationReplace(ItemPath path, PrismObjectDefinition<?> objectDefinition,
     		PrismReferenceValue refValue) {
     	PrismReferenceDefinition referenceDefinition = objectDefinition.findItemDefinition(path, PrismReferenceDefinition.class);
     	ReferenceDelta referenceDelta = new ReferenceDelta(path, referenceDefinition, objectDefinition.getPrismContext());             // hoping the prismContext is there
-    	referenceDelta.setValueToReplace(refValue);
+    	if (refValue == null) {
+    		referenceDelta.setValueToReplace();
+    	} else {
+    		referenceDelta.setValueToReplace(refValue);
+    	}
     	return referenceDelta;
     }
 
@@ -133,7 +144,11 @@ public class ReferenceDelta extends ItemDelta<PrismReferenceValue,PrismReference
     		PrismReferenceValue refValue) {
     	PrismReferenceDefinition referenceDefinition = objectDefinition.findItemDefinition(refName, PrismReferenceDefinition.class);
     	ReferenceDelta referenceDelta = new ReferenceDelta(refName, referenceDefinition, objectDefinition.getPrismContext());              // hoping the prismContext is there
-    	referenceDelta.setValueToReplace(refValue);
+    	if (refValue == null) {
+    		referenceDelta.setValueToReplace();
+    	} else {
+    		referenceDelta.setValueToReplace(refValue);
+    	}
     	return referenceDelta;
     }
 

@@ -22,8 +22,9 @@ import com.evolveum.midpoint.schema.DeltaConvertor;
 import com.evolveum.midpoint.schema.ObjectDeltaOperation;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.LensObjectDeltaOperationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.model.model_context_3.LensObjectDeltaOperationType;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.Serializable;
 
@@ -65,6 +66,7 @@ public class LensObjectDeltaOperation<T extends ObjectType> extends ObjectDeltaO
         return "LensObjectDeltaOperation";
     }
 
+    @NotNull
     public LensObjectDeltaOperationType toLensObjectDeltaOperationType() throws SchemaException {
         LensObjectDeltaOperationType retval = new LensObjectDeltaOperationType();
         retval.setObjectDeltaOperation(DeltaConvertor.toObjectDeltaOperationType(this, DeltaConversionOptions.createSerializeReferenceNames()));

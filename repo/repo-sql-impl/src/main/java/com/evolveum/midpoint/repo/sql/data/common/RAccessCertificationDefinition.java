@@ -17,26 +17,28 @@
 package com.evolveum.midpoint.repo.sql.data.common;
 
 import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.repo.sql.data.RepositoryContext;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.REmbeddedReference;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.RPolyString;
+import com.evolveum.midpoint.repo.sql.query.definition.JaxbName;
 import com.evolveum.midpoint.repo.sql.util.DtoTranslationException;
 import com.evolveum.midpoint.repo.sql.util.IdGeneratorResult;
+import com.evolveum.midpoint.repo.sql.util.MidPointJoinedPersister;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationDefinitionType;
 import org.hibernate.annotations.ForeignKey;
+import org.hibernate.annotations.Persister;
 
-import javax.persistence.Embedded;
-import javax.persistence.Entity;
-import javax.persistence.Table;
-import javax.persistence.UniqueConstraint;
+import javax.persistence.*;
 import javax.xml.datatype.XMLGregorianCalendar;
 import java.util.Collection;
 
 @Entity
 @Table(name = RAccessCertificationDefinition.TABLE_NAME,
         uniqueConstraints = @UniqueConstraint(name = "uc_acc_cert_definition_name", columnNames = {"name_norm"}))
+@Persister(impl = MidPointJoinedPersister.class)
 @ForeignKey(name = "fk_acc_cert_definition")
 public class RAccessCertificationDefinition extends RObject<AccessCertificationDefinitionType> {
 
@@ -44,7 +46,7 @@ public class RAccessCertificationDefinition extends RObject<AccessCertificationD
 
     private RPolyString name;
     private String handlerUri;
-    private REmbeddedReference ownerRef;
+    private REmbeddedReference ownerRefDefinition;
     private XMLGregorianCalendar lastCampaignStartedTimestamp;
     private XMLGregorianCalendar lastCampaignClosedTimestamp;
 //    private String campaignSchedulingInterval;
@@ -62,9 +64,15 @@ public class RAccessCertificationDefinition extends RObject<AccessCertificationD
         return handlerUri;
     }
 
+    @JaxbName(localPart = "ownerRef")
     @Embedded
-    public REmbeddedReference getOwnerRef() {
-        return ownerRef;
+    @AttributeOverrides({
+            @AttributeOverride(name = "relation", column = @Column(name = "ownerRef_relation", length = RUtil.COLUMN_LENGTH_QNAME)),
+            @AttributeOverride(name = "targetOid", column = @Column(name = "ownerRef_targetOid", length = RUtil.COLUMN_LENGTH_OID)),
+            @AttributeOverride(name = "type", column = @Column(name = "ownerRef_type"))
+    })
+    public REmbeddedReference getOwnerRefDefinition() {
+        return ownerRefDefinition;
     }
 
     public XMLGregorianCalendar getLastCampaignStartedTimestamp() {
@@ -83,8 +91,8 @@ public class RAccessCertificationDefinition extends RObject<AccessCertificationD
         this.handlerUri = handlerUri;
     }
 
-    public void setOwnerRef(REmbeddedReference ownerRef) {
-        this.ownerRef = ownerRef;
+    public void setOwnerRefDefinition(REmbeddedReference ownerRefDefinition) {
+        this.ownerRefDefinition = ownerRefDefinition;
     }
 
     public void setLastCampaignStartedTimestamp(XMLGregorianCalendar lastCampaignStartedTimestamp) {
@@ -109,7 +117,7 @@ public class RAccessCertificationDefinition extends RObject<AccessCertificationD
 
         if (name != null ? !name.equals(that.name) : that.name != null) return false;
         if (handlerUri != null ? !handlerUri.equals(that.handlerUri) : that.handlerUri != null) return false;
-        if (ownerRef != null ? !ownerRef.equals(that.ownerRef) : that.ownerRef != null) return false;
+        if (ownerRefDefinition != null ? !ownerRefDefinition.equals(that.ownerRefDefinition) : that.ownerRefDefinition != null) return false;
         if (lastCampaignStartedTimestamp != null ? !lastCampaignStartedTimestamp.equals(that.lastCampaignStartedTimestamp) : that.lastCampaignStartedTimestamp != null)
             return false;
         if (lastCampaignClosedTimestamp != null ? !lastCampaignClosedTimestamp.equals(that.lastCampaignClosedTimestamp) : that.lastCampaignClosedTimestamp != null)
@@ -128,12 +136,16 @@ public class RAccessCertificationDefinition extends RObject<AccessCertificationD
     }
 
     public static void copyFromJAXB(AccessCertificationDefinitionType jaxb, RAccessCertificationDefinition repo,
-                                    PrismContext prismContext, IdGeneratorResult generatorResult)
+            RepositoryContext repositoryContext, IdGeneratorResult generatorResult)
             throws DtoTranslationException {
 
-        RObject.copyFromJAXB(jaxb, repo, prismContext, generatorResult);
+        RObject.copyFromJAXB(jaxb, repo, repositoryContext, generatorResult);
 
         repo.setName(RPolyString.copyFromJAXB(jaxb.getName()));
+        repo.setHandlerUri(jaxb.getHandlerUri());
+        repo.setOwnerRefDefinition(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getOwnerRef(), repositoryContext.prismContext));
+        repo.setLastCampaignStartedTimestamp(jaxb.getLastCampaignStartedTimestamp());
+        repo.setLastCampaignClosedTimestamp(jaxb.getLastCampaignClosedTimestamp());
     }
 
     @Override

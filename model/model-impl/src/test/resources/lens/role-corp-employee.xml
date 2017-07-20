@@ -1,5 +1,5 @@
 <!--
-  ~ Copyright (c) 2010-2015 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -15,16 +15,28 @@
   -->
 
 <role oid="12345678-d34d-b33f-f00d-55555555a001"
-        xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-3">
+	  xmlns:ext="http://midpoint.evolveum.com/xml/ns/samples/piracy"
+	  xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-3">
     <name>Employee</name>
     <description>Universal role for all (internal) employees in the company</description>
+	<extension>
+		<ext:resourceName>Dummy Resource</ext:resourceName>
+		<ext:resourceRef oid="10000000-0000-0000-0000-000000000004" type="ResourceType" />
+	</extension>
     <assignment id="1">
         <targetRef oid="12345678-d34d-b33f-f00d-55555555a010" type="RoleType"/>     <!-- job metarole -->
     </assignment>
-    <assignment id="2">
-        <targetRef oid="12345678-d34d-b33f-f00d-55555555a020" type="RoleType"/>     <!-- generic metarole (see comment in that role) -->
-    </assignment>
-    <authorization>
+	<assignment id="4">
+		<policyRule>
+			<name>employee-excludes-contractor</name>
+			<policyConstraints>
+				<exclusion>
+					<targetRef oid="12345678-d34d-b33f-f00d-55555555a004" type="RoleType"/>	<!-- contractor -->
+				</exclusion>
+			</policyConstraints>
+		</policyRule>
+	</assignment>
+	<authorization>
     	<action>http://midpoint.evolveum.com/xml/ns/test/authorization#work</action>
     </authorization>
     <requestable>true</requestable>

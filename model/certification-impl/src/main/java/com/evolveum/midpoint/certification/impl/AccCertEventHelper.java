@@ -21,11 +21,10 @@ import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCaseType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationWorkItemType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -36,9 +35,6 @@ import java.util.Set;
  */
 @Component
 public class AccCertEventHelper implements AccessCertificationEventListener {
-
-    @Autowired
-    private CertificationManagerImpl certificationManager;
 
     private Set<AccessCertificationEventListener> listeners = new HashSet<>();
 
@@ -95,14 +91,17 @@ public class AccCertEventHelper implements AccessCertificationEventListener {
         }
     }
 
-    public Collection<String> getCurrentReviewers(AccessCertificationCampaignType campaign, List<AccessCertificationCaseType> caseList) {
+    // returns reviewers for non-closed work items
+    public Collection<String> getCurrentActiveReviewers(List<AccessCertificationCaseType> caseList) {
         Set<String> oids = new HashSet<>();
         for (AccessCertificationCaseType aCase : caseList) {
-            if (aCase.getCurrentStageNumber() == campaign.getStageNumber()) {
-                for (ObjectReferenceType reviewerRef : aCase.getReviewerRef()) {
-                    oids.add(reviewerRef.getOid());
-                }
-            }
+			for (AccessCertificationWorkItemType workItem : aCase.getWorkItem()) {
+				if (workItem.getCloseTimestamp() == null) {
+					for (ObjectReferenceType reviewerRef : workItem.getAssigneeRef()) {
+						oids.add(reviewerRef.getOid());
+					}
+				}
+			}
         }
         return oids;
     }

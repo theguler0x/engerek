@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -16,8 +16,9 @@
   -->
 
 <systemConfiguration oid="00000000-0000-0000-0000-000000000001" version="0"
-	xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
-	xmlns:c="http://midpoint.evolveum.com/xml/ns/public/common/common-3">
+					 xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+					 xmlns:c="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+					 xmlns:q="http://prism.evolveum.com/xml/ns/public/query-3">
     <name>SystemConfiguration</name>
     <logging>
     	<rootLoggerAppender>File Appender</rootLoggerAppender>
@@ -32,4 +33,65 @@
             <append>true</append>
         </appender>
     </logging>
+    <globalSecurityPolicyRef oid="28bf845a-b107-11e3-85bc-001e8c717e5b"/>
+	<globalPolicyRule>
+		<name>global-assignment-notification-for-judge</name>
+		<policyConstraints>
+			<assignment>
+				<operation>add</operation>
+			</assignment>
+		</policyConstraints>
+		<policyActions>
+			<notification/>
+		</policyActions>
+		<focusSelector>
+			<type>UserType</type>
+		</focusSelector>
+		<targetSelector>
+			<type>RoleType</type>
+			<filter>
+				<q:equal>
+					<q:path>name</q:path>
+					<q:value>Judge</q:value>
+				</q:equal>
+			</filter>
+		</targetSelector>
+	</globalPolicyRule>
+	<globalPolicyRule>
+		<name>global-assignment-disabled</name>
+		<policyConstraints>
+			<assignment>
+				<operation>add</operation>
+			</assignment>
+		</policyConstraints>
+		<policyActions>
+			<enforcement/>
+		</policyActions>
+		<focusSelector>
+			<type>UserType</type>
+		</focusSelector>
+		<targetSelector>
+			<type>RoleType</type>
+		</targetSelector>
+		<condition>
+			<expression>
+				<value>false</value>
+			</expression>
+		</condition>
+	</globalPolicyRule>
+    <adminGuiConfiguration>
+	    <userDashboardLink>
+	    	<targetUrl>/foo</targetUrl>
+	    	<label>Foo</label>
+	    </userDashboardLink>
+	    <objectForms>
+    		<objectForm>
+    			<type>RoleType</type>
+    			<formSpecification>
+    				<panelClass>com.piracy.form.PirateRolePanel</panelClass>
+    			</formSpecification>
+    		</objectForm>
+    	</objectForms>
+    	<defaultTimezone>Jamaica</defaultTimezone>
+    </adminGuiConfiguration>
 </systemConfiguration>

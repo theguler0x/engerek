@@ -16,7 +16,9 @@
 
 package com.evolveum.midpoint.wf.impl.processors.primary.assignments;
 
+import com.evolveum.midpoint.model.api.context.ModelContext;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.wf.impl.processes.itemApproval.ApprovalRequest;
@@ -41,11 +43,6 @@ public abstract class AddResourceAssignmentAspect<F extends FocusType> extends A
     protected ResourceAssignmentHelper specificAssignmentHelper;
 
     @Override
-    public boolean isEnabledByDefault() {
-        return true;
-    }
-
-    @Override
     protected boolean isAssignmentRelevant(AssignmentType assignmentType) {
         return specificAssignmentHelper.isResourceAssignment(assignmentType);
     }
@@ -56,8 +53,11 @@ public abstract class AddResourceAssignmentAspect<F extends FocusType> extends A
     }
 
     @Override
-    protected ApprovalRequest<AssignmentType> createApprovalRequest(PcpAspectConfigurationType config, AssignmentType assignmentType, ResourceType resourceType) {
-        return specificAssignmentHelper.createApprovalRequest(config, assignmentType, resourceType);
+    protected ApprovalRequest<AssignmentType> createApprovalRequest(PcpAspectConfigurationType config,
+			AssignmentType assignmentType, ResourceType resourceType, ModelContext<?> modelContext, Task taskFromModel,
+			OperationResult result) {
+        return specificAssignmentHelper.createApprovalRequest(config, assignmentType, resourceType,
+                createRelationResolver(resourceType, result), createReferenceResolver(modelContext, taskFromModel, result));
     }
 
     @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,24 +16,31 @@
 
 package com.evolveum.midpoint.task.quartzimpl.execution;
 
+import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
+import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.schema.result.OperationResultStatus;
 import com.evolveum.midpoint.task.api.*;
+import com.evolveum.midpoint.task.api.TaskRunResult.TaskRunResultStatus;
 import com.evolveum.midpoint.task.quartzimpl.TaskManagerQuartzImpl;
 import com.evolveum.midpoint.task.quartzimpl.TaskQuartzImpl;
-import com.evolveum.midpoint.util.exception.SystemException;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ThreadStopActionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
-
-import org.apache.commons.lang.Validate;
-import org.quartz.*;
-
-import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.task.api.TaskRunResult.TaskRunResultStatus;
+import com.evolveum.midpoint.task.quartzimpl.TaskQuartzImplUtil;
+import com.evolveum.midpoint.task.quartzimpl.cluster.ClusterStatusInformation;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.util.exception.SystemException;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
+import org.apache.commons.lang.Validate;
+import org.quartz.*;
+
+import javax.xml.datatype.Duration;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @DisallowConcurrentExecution
 public class JobExecutor implements InterruptableJob {
@@ -51,7 +58,10 @@ public class JobExecutor implements InterruptableJob {
 	private static final transient Trace LOGGER = TraceManager.getTrace(JobExecutor.class);
 
     private static final long WATCHFUL_SLEEP_INCREMENT = 500;
-	
+
+    private static final int DEFAULT_RESCHEDULE_TIME_FOR_GROUP_LIMIT = 60;
+    private static final int RESCHEDULE_TIME_FOR_NO_SUITABLE_NODE = 60;
+
 	/*
 	 * JobExecutor is instantiated at each execution of the task, so we can store
 	 * the task here.
@@ -82,10 +92,10 @@ public class JobExecutor implements InterruptableJob {
             taskManagerImpl.getExecutionManager().removeTaskFromQuartz(oid, executionResult);
             return;
         } catch (SchemaException e) {
-            LoggingUtils.logException(LOGGER, "Task with OID {} cannot be retrieved because of schema exception. Please correct the problem or resynchronize midPoint repository with Quartz job store using 'xxxxxxx' function. Now exiting the execution routine.", e, oid);
+            LoggingUtils.logUnexpectedException(LOGGER, "Task with OID {} cannot be retrieved because of schema exception. Please correct the problem or resynchronize midPoint repository with Quartz job store using 'xxxxxxx' function. Now exiting the execution routine.", e, oid);
             return;
-        } catch (Exception e) {
-			LoggingUtils.logException(LOGGER, "Task with OID {} could not be retrieved, exiting the execution routine.", e, oid);
+        } catch (RuntimeException e) {
+			LoggingUtils.logUnexpectedException(LOGGER, "Task with OID {} could not be retrieved, exiting the execution routine.", e, oid);
 			return;
 		}
 
@@ -94,7 +104,7 @@ public class JobExecutor implements InterruptableJob {
             try {
                 context.getScheduler().unscheduleJob(context.getTrigger().getKey());
             } catch (SchedulerException e) {
-                LoggingUtils.logException(LOGGER, "Cannot unschedule job for a non-RUNNABLE task {}", e, task);
+                LoggingUtils.logUnexpectedException(LOGGER, "Cannot unschedule job for a non-RUNNABLE task {}", e, task);
             }
             return;
         }
@@ -117,23 +127,23 @@ public class JobExecutor implements InterruptableJob {
                 if (task.getNode() != null) {
                     task.setNodeImmediate(null, executionResult);
                 }
-            } catch (ObjectNotFoundException e) {
-                LoggingUtils.logException(LOGGER, "Cannot reset executing-at-node information for recovering task {}", e, task);
-            } catch (SchemaException e) {
-                LoggingUtils.logException(LOGGER, "Cannot reset executing-at-node information for recovering task {}", e, task);
+            } catch (ObjectNotFoundException | SchemaException e) {
+                LoggingUtils.logUnexpectedException(LOGGER, "Cannot reset executing-at-node information for recovering task {}", e, task);
             }
 
-            if (!processTaskRecovery(executionResult)) {
+			if (!processTaskRecovery(executionResult)) {
                 return;
             }
             isRecovering = true;
         }
-		
+
+		if (!checkExecutionConstraints(task, context, executionResult)) {
+			return;			// rescheduling is done within the checker method
+		}
+
         executingThread = Thread.currentThread();
 
-        if (LOGGER.isTraceEnabled()) {
-		    LOGGER.trace("execute called; task = {}, thread = {}, isRecovering = {}", new Object[] {task, executingThread, isRecovering});
-        }
+		LOGGER.trace("execute called; task = {}, thread = {}, isRecovering = {}", task, executingThread, isRecovering);
 
         TaskHandler handler = null;
 		try {
@@ -156,7 +166,12 @@ public class JobExecutor implements InterruptableJob {
 			
 			// Setup Spring Security context
 			PrismObject<UserType> taskOwner = task.getOwner();
-			taskManagerImpl.getSecurityEnforcer().setupPreAuthenticatedSecurityContext(taskOwner);
+			try {
+				taskManagerImpl.getSecurityEnforcer().setupPreAuthenticatedSecurityContext(taskOwner);
+			} catch (SchemaException e) {
+	            LoggingUtils.logUnexpectedException(LOGGER, "Task with OID {} cannot be executed: error setting security context", e, oid);
+	            return;
+			}
 		
 			if (task.isCycle()) {
 				executeRecurrentTask(handler);
@@ -184,7 +199,167 @@ public class JobExecutor implements InterruptableJob {
 
 	}
 
-    private void waitForTransientChildrenAndCloseThem(OperationResult result) {
+	// returns false if constraints are not met (i.e. execution should finish immediately)
+	private boolean checkExecutionConstraints(TaskQuartzImpl task, JobExecutionContext context, OperationResult result) throws JobExecutionException {
+		TaskExecutionConstraintsType executionConstraints = task.getExecutionConstraints();
+		if (executionConstraints == null) {
+			return true;
+		}
+
+		// group limit
+		String group = executionConstraints.getGroup();
+		if (group != null) {
+			List<Task> tasksInGroup = new ArrayList<>();
+			ClusterStatusInformation clusterStatusInformation = taskManagerImpl.getExecutionManager()
+					.getClusterStatusInformation(true, false, result);
+			for (ClusterStatusInformation.TaskInfo taskInfo : clusterStatusInformation.getTasks()) {
+				Task runningTask;
+				try {
+					runningTask = taskManagerImpl.getTask(taskInfo.getOid(), result);
+				} catch (ObjectNotFoundException e) {
+					LOGGER.debug("Couldn't find running task {} when checking execution constraints: {}", taskInfo.getOid(), e.getMessage());
+					continue;
+				} catch (SchemaException e) {
+					LoggingUtils.logUnexpectedException(LOGGER,
+							"Couldn't retrieve running task {} when checking execution constraints", e, taskInfo.getOid());
+					continue;
+				}
+				if (group.equals(runningTask.getGroup()) && !task.getOid().equals(runningTask.getOid())) {
+					tasksInGroup.add(runningTask);
+				}
+			}
+			int limit = executionConstraints.getGroupTaskLimit() != null ? executionConstraints.getGroupTaskLimit() : 1;
+			LOGGER.trace("Tasks in group {}: {}", group, tasksInGroup);
+			if (tasksInGroup.size() >= limit) {
+				RescheduleTime rescheduleTime = getRescheduleTime(executionConstraints,
+						DEFAULT_RESCHEDULE_TIME_FOR_GROUP_LIMIT, task.getNextRunStartTime(result));
+				LOGGER.info("Limit of {} task(s) in group {} would be exceeded if task {} would start. Existing tasks: {}."
+								+ " Will try again at {}{}.", limit, group, task, tasksInGroup, rescheduleTime.asDate(),
+						rescheduleTime.regular ? " (i.e. at the next regular run time)" : "");
+				if (!rescheduleTime.regular) {
+					rescheduleLater(task, rescheduleTime.timestamp);
+				}
+				return false;
+			}
+		}
+
+		// node restrictions
+		String currentNode = taskManagerImpl.getNodeId();
+		List<String> allowedNodes = executionConstraints.getAllowedNode();
+		List<String> disallowedNodes = executionConstraints.getDisallowedNode();
+		if (!passesAllowed(currentNode, allowedNodes)) {
+			rescheduleToAllowedNode(task, "is not among allowed nodes (" + allowedNodes + ")", allowedNodes,
+					disallowedNodes, context, result);
+			return false;
+		}
+		if (!passesDisallowed(currentNode, disallowedNodes)) {
+			rescheduleToAllowedNode(task, "is among disallowed nodes (" + disallowedNodes + ")", allowedNodes,
+					disallowedNodes, context, result);
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean passesAllowed(String currentNode, List<String> allowedNodes) {
+		return allowedNodes.isEmpty() || allowedNodes.contains(currentNode);
+	}
+
+	private boolean passesDisallowed(String currentNode, List<String> disallowedNodes) {
+		return !disallowedNodes.contains(currentNode);
+	}
+
+	private boolean passes(String node, List<String> allowedNodes, List<String> disallowedNodes) {
+		return passesAllowed(node, allowedNodes) && passesDisallowed(node, disallowedNodes);
+	}
+
+	private void rescheduleToAllowedNode(TaskQuartzImpl task, String reason, List<String> allowedNodes,
+			List<String> disallowedNodes, JobExecutionContext context, OperationResult result) throws JobExecutionException {
+		String currentNode = taskManagerImpl.getNodeId();
+		NodeType node = getAvailableNode(allowedNodes, disallowedNodes, result);
+		if (node == null) {
+			RescheduleTime rescheduleTime = getRescheduleTime(null,
+					RESCHEDULE_TIME_FOR_NO_SUITABLE_NODE, task.getNextRunStartTime(result));
+			LOGGER.info("Task {} cannot be executed on current node ({}) because it {}. But there is currently no suitable"
+					+ " node to run it on. Will try again at {}{}.", task, currentNode, reason, rescheduleTime.asDate(),
+					rescheduleTime.regular ? " (i.e. at the next regular run time)" : "");
+			if (!rescheduleTime.regular) {
+				rescheduleLater(task, rescheduleTime.timestamp);
+			}
+			return;
+		}
+		LOGGER.debug("Task {} cannot be executed on current node ({}) because it {}, trying to run it at {}.",
+				task, currentNode, reason, node.getNodeIdentifier());
+		taskManagerImpl.getExecutionManager().redirectTaskToNode(task, node, result);
+	}
+
+	private NodeType getAvailableNode(List<String> allowedNodes, List<String> disallowedNodes, OperationResult result) {
+		ClusterStatusInformation clusterStatusInformation = taskManagerImpl.getExecutionManager()
+				.getClusterStatusInformation(true, false, result);
+		List<NodeType> matching = clusterStatusInformation.getNodes().stream()
+				.filter(node -> passes(node.getNodeIdentifier(), allowedNodes, disallowedNodes)
+						&& node.getExecutionStatus() == NodeExecutionStatusType.RUNNING)
+				.collect(Collectors.toList());
+		if (matching.isEmpty()) {
+			return null;
+		} else {
+			return matching.get((int) (Math.random() * matching.size()));
+		}
+	}
+
+	private class RescheduleTime {
+		private final long timestamp;
+		private final boolean regular;
+		private RescheduleTime(long timestamp, boolean regular) {
+			this.timestamp = timestamp;
+			this.regular = regular;
+		}
+		public Date asDate() {
+			return new Date(timestamp);
+		}
+	}
+
+	private RescheduleTime getRescheduleTime(TaskExecutionConstraintsType executionConstraints, int defaultInterval, Long nextTaskRunTime) {
+		long retryAt;
+		Duration retryAfter = executionConstraints != null ? executionConstraints.getRetryAfter() : null;
+		if (retryAfter != null) {
+			retryAt = XmlTypeConverter.toMillis(
+							XmlTypeConverter.addDuration(
+									XmlTypeConverter.createXMLGregorianCalendar(new Date()), retryAfter));
+		} else {
+			retryAt = System.currentTimeMillis() + defaultInterval * 1000L;
+		}
+		if (nextTaskRunTime != null && nextTaskRunTime < retryAt) {
+			return new RescheduleTime(nextTaskRunTime, true);
+		} else {
+			return new RescheduleTime(retryAt, false);
+		}
+	}
+
+	private void rescheduleLater(TaskQuartzImpl task, long startAt) throws JobExecutionException {
+		Trigger trigger = TaskQuartzImplUtil.createTriggerForTask(task, startAt);
+		try {
+			taskManagerImpl.getExecutionManager().getQuartzScheduler().scheduleJob(trigger);
+		} catch (SchedulerException e) {
+			// TODO or handle it somehow?
+			throw new JobExecutionException("Couldn't reschedule task " + task + " (rescheduled because" +
+					" of execution constraints): " + e.getMessage(), e);
+		}
+	}
+
+//	private void rescheduleElsewhere(TaskQuartzImpl task, String node) throws JobExecutionException {
+//		Trigger trigger = TaskQuartzImplUtil.createTriggerNowForTask(task);
+//		try {
+//			taskManagerImpl.getExecutionManager().scheduleTaskNow(task, node, );
+//			//taskManagerImpl.getExecutionManager().getQuartzScheduler().scheduleJob(trigger);
+//		} catch (SchedulerException e) {
+//			// TODO or handle it somehow?
+//			throw new JobExecutionException("Couldn't reschedule task " + task + " (rescheduled because" +
+//					" of execution constraints): " + e.getMessage(), e);
+//		}
+//	}
+
+	private void waitForTransientChildrenAndCloseThem(OperationResult result) {
         taskManagerImpl.waitForTransientChildren(task, result);
 
         // at this moment, there should be no executing child tasks... we just clean-up all runnables that had not started
@@ -235,7 +410,7 @@ public class JobExecutor implements InterruptableJob {
             LoggingUtils.logException(LOGGER, "ThreadStopAction cannot be applied, because the task no longer exists: " + task, e);
             return;
         } catch (SchemaException e) {
-            LoggingUtils.logException(LOGGER, "ThreadStopAction cannot be applied, because of schema exception. Task = " + task, e);
+            LoggingUtils.logUnexpectedException(LOGGER, "ThreadStopAction cannot be applied, because of schema exception. Task = " + task, e);
             return;
         }
 
@@ -255,7 +430,7 @@ public class JobExecutor implements InterruptableJob {
             taskManagerImpl.scheduleRunnableTaskNow(task, executionResult);
         } else if (task.getThreadStopAction() == ThreadStopActionType.RESCHEDULE) {
             if (task.getRecurrenceStatus() == TaskRecurrence.RECURRING && task.isLooselyBound()) {
-                ; // nothing to do, task will be automatically started by Quartz on next trigger fire time
+				// nothing to do, task will be automatically started by Quartz on next trigger fire time
             } else {
                 taskManagerImpl.scheduleRunnableTaskNow(task, executionResult);     // for tightly-bound tasks we do not know next schedule time, so we run them immediately
             }
@@ -268,12 +443,12 @@ public class JobExecutor implements InterruptableJob {
         LOGGER.info("Closing flawed task {}", task);
         try {
             task.setResultImmediate(result, result);
-        } catch (ObjectNotFoundException e) {
+        } catch (ObjectNotFoundException  e) {
             LoggingUtils.logException(LOGGER, "Couldn't store operation result into the task {}", e, task);
         } catch (SchemaException e) {
-            LoggingUtils.logException(LOGGER, "Couldn't store operation result into the task {}", e, task);
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't store operation result into the task {}", e, task);
         }
-        closeTask(task, result);
+		closeTask(task, result);
     }
 
     private void closeTask(TaskQuartzImpl task, OperationResult result) {
@@ -282,9 +457,9 @@ public class JobExecutor implements InterruptableJob {
         } catch (ObjectNotFoundException e) {
             LoggingUtils.logException(LOGGER, "Cannot close task {}, because it does not exist in repository.", e, task);
         } catch (SchemaException e) {
-            LoggingUtils.logException(LOGGER, "Cannot close task {} due to schema exception", e, task);
+            LoggingUtils.logUnexpectedException(LOGGER, "Cannot close task {} due to schema exception", e, task);
         } catch (SystemException e) {
-            LoggingUtils.logException(LOGGER, "Cannot close task {} due to system exception", e, task);
+            LoggingUtils.logUnexpectedException(LOGGER, "Cannot close task {} due to system exception", e, task);
         }
     }
 
@@ -294,7 +469,7 @@ public class JobExecutor implements InterruptableJob {
 
 		try {
 			
-			TaskRunResult runResult = null;
+			TaskRunResult runResult;
 
 			recordCycleRunStart(executionResult, handler);
             runResult = executeHandler(handler, executionResult);        // exceptions thrown by handler are handled in executeHandler()
@@ -330,7 +505,7 @@ public class JobExecutor implements InterruptableJob {
             }
 
 		} catch (Throwable t) {
-			LoggingUtils.logException(LOGGER, "An exception occurred during processing of task {}", t, task);
+			LoggingUtils.logUnexpectedException(LOGGER, "An exception occurred during processing of task {}", t, task);
 			//throw new JobExecutionException("An exception occurred during processing of task " + task, t);
 		}
 	}
@@ -419,7 +594,7 @@ mainCycle:
 				}
 
                 long lastRunStartTime = task.getLastRunStartTimestamp() == null ? 0 : task.getLastRunStartTimestamp();
-				long sleepFor = lastRunStartTime + (interval.intValue() * 1000) - System.currentTimeMillis();
+				long sleepFor = lastRunStartTime + (interval * 1000) - System.currentTimeMillis();
 				if (sleepFor < 0)
 					sleepFor = 0;
 				
@@ -457,10 +632,10 @@ mainCycle:
 			// This is supposed to run in a thread, so this kind of heavy artillery is needed. If throwable won't be
 			// caught here, nobody will catch it and it won't even get logged.
 			if (task.canRun()) {
-				LOGGER.error("CycleRunner got unexpected exception: {}: {}; task = {}",new Object[] { t.getClass().getName(),t.getMessage(),task,t});
+				LOGGER.error("CycleRunner got unexpected exception: {}: {}; task = {}", t.getClass().getName(), t.getMessage(), task, t);
 			} else {
-				LOGGER.info("CycleRunner got unexpected exception while shutting down: {}: {}; task = {}",new Object[] { t.getClass().getName(),t.getMessage(), task});
-				LOGGER.trace("CycleRunner got unexpected exception while shutting down: {}: {}; task = {}",new Object[] { t.getClass().getName(),t.getMessage(),task,t});
+				LOGGER.info("CycleRunner got unexpected exception while shutting down: {}: {}; task = {}", t.getClass().getName(), t.getMessage(), task);
+				LOGGER.trace("CycleRunner got unexpected exception while shutting down: {}: {}; task = {}", t.getClass().getName(), t.getMessage(), task, t);
 			}
 			//throw new JobExecutionException("An exception occurred during processing of task " + task, t);
 		}
@@ -470,19 +645,14 @@ mainCycle:
 
     	TaskRunResult runResult;
     	try {
-            if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace("Executing handler " + handler.getClass().getName());
-            }
-            if (task.getResult() == null) {
-                task.setResult(new OperationResult("run"));
-            }
+			LOGGER.trace("Executing handler {}", handler.getClass().getName());
     		runResult = handler.run(task);
     		if (runResult == null) {				// Obviously an error in task handler
                 LOGGER.error("Unable to record run finish: task returned null result");
 				runResult = createFailureTaskRunResult("Unable to record run finish: task returned null result", null);
 			}
     	} catch (Throwable t) {
-			LOGGER.error("Task handler threw unexpected exception: {}: {}; task = {}", new Object[] { t.getClass().getName(), t.getMessage(), task, t});
+			LOGGER.error("Task handler threw unexpected exception: {}: {}; task = {}", t.getClass().getName(), t.getMessage(), task, t);
             runResult = createFailureTaskRunResult("Task handler threw unexpected exception: " + t.getMessage(), t);
     	}
 
@@ -532,10 +702,12 @@ mainCycle:
                 task.setCategory(task.getCategoryFromHandler());
             }
             task.setNode(taskManagerImpl.getNodeId());
+            OperationResult newResult = new OperationResult("run");
+			newResult.setStatus(OperationResultStatus.IN_PROGRESS);
+            task.setResult(newResult);										// MID-4033
             task.savePendingModifications(result);
-
         } catch (Exception e) {	// TODO: implement correctly after clarification
-			LoggingUtils.logException(LOGGER, "Cannot record run start for task {}", e, task);
+			LoggingUtils.logUnexpectedException(LOGGER, "Cannot record run start for task {}", e, task);
 		}
 	}
 
@@ -549,13 +721,15 @@ mainCycle:
             task.setProgress(runResult.getProgress());
             task.setLastRunFinishTimestamp(System.currentTimeMillis());
             if (runResult.getOperationResult() != null) {
-                OperationResult taskResult = runResult.getOperationResult().clone();
                 try {
+					OperationResult taskResult = runResult.getOperationResult().clone();
                     taskResult.cleanupResult();
+					taskResult.summarize(true);
+					task.setResult(taskResult);
                 } catch (Throwable ex) {
-                    LoggingUtils.logUnexpectedException(LOGGER, "Problem with task result cleanup - continuing", ex);
+                    LoggingUtils.logUnexpectedException(LOGGER, "Problem with task result cleanup/summarize - continuing with raw result", ex);
+					task.setResult(runResult.getOperationResult());
                 }
-                task.setResult(taskResult);
             }
             task.setNode(null);
             task.savePendingModifications(result);
@@ -565,10 +739,10 @@ mainCycle:
 			LoggingUtils.logException(LOGGER, "Cannot record run finish for task {}", ex, task);
 			return false;
         } catch (com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException ex) {
-            LoggingUtils.logException(LOGGER, "Cannot record run finish for task {}", ex, task);
+            LoggingUtils.logUnexpectedException(LOGGER, "Cannot record run finish for task {}", ex, task);
             return true;
 		} catch (SchemaException ex) {
-			LOGGER.error("Unable to record run finish and close the task: {}", ex.getMessage(), ex);
+			LoggingUtils.logUnexpectedException(LOGGER, "Unable to record run finish and close the task: {}", ex, task);
 			return true;
 		}
 	}
@@ -594,12 +768,12 @@ mainCycle:
         }
 	}
 
-    public void sendThreadInterrupt() {
+    void sendThreadInterrupt() {
         sendThreadInterrupt(true);
     }
 
     // beware: Do not touch task prism here, because this method can be called asynchronously
-    public void sendThreadInterrupt(boolean alsoSubtasks) {
+	private void sendThreadInterrupt(boolean alsoSubtasks) {
         if (executingThread != null) {			// in case this method would be (mistakenly?) called after the execution is over
             LOGGER.trace("Calling Thread.interrupt on thread {}.", executingThread);
             executingThread.interrupt();

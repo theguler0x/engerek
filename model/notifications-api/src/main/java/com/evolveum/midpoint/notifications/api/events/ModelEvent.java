@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.schema.ObjectDeltaOperation;
 import com.evolveum.midpoint.task.api.LightweightIdentifierGenerator;
+import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
@@ -34,9 +35,11 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.EventOperationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.EventStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
+import org.apache.commons.lang.StringUtils;
 
 import javax.xml.namespace.QName;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -49,8 +52,9 @@ public class ModelEvent extends BaseEvent {
     // we can expect that modelContext != null and focus context != null as well
     private ModelContext modelContext;
 
-    public ModelEvent(LightweightIdentifierGenerator lightweightIdentifierGenerator) {
+    public ModelEvent(LightweightIdentifierGenerator lightweightIdentifierGenerator, ModelContext modelContext) {
         super(lightweightIdentifierGenerator);
+        this.modelContext = modelContext;
     }
 
     public ModelContext getModelContext() {
@@ -60,9 +64,9 @@ public class ModelEvent extends BaseEvent {
     public ModelElementContext getFocusContext() {
         return modelContext.getFocusContext();
     }
-
-    public void setModelContext(ModelContext modelContext) {
-        this.modelContext = modelContext;
+    
+    public Collection<ModelElementContext> getProjectionContexts() {
+        return modelContext.getProjectionContexts();
     }
 
     public List<? extends ObjectDeltaOperation> getFocusExecutedDeltas() {
@@ -192,4 +196,28 @@ public class ModelEvent extends BaseEvent {
     public boolean isUserRelated() {
         return hasFocusOfType(UserType.class);
     }
+
+	public String getFocusTypeName() {
+		if (getFocusContext() == null || getFocusContext().getObjectTypeClass() == null) {
+			return null;
+		}
+		String simpleName = getFocusContext().getObjectTypeClass().getSimpleName();
+		return StringUtils.substringBeforeLast(simpleName, "Type");         // should usually work ;)
+	}
+
+	public String getContentAsFormattedList() {
+		return getContentAsFormattedList(false, false);
+	}
+
+	public String getContentAsFormattedList(boolean showSynchronizationItems, boolean showAuxiliaryAttributes) {
+		return getNotificationFunctions().getContentAsFormattedList(this, showSynchronizationItems, showAuxiliaryAttributes);
+	}
+
+	@Override
+	public String debugDump(int indent) {
+		StringBuilder sb = DebugUtil.createTitleStringBuilderLn(this.getClass(), indent);
+		debugDumpCommon(sb, indent);
+		DebugUtil.debugDumpWithLabelToString(sb, "modelContext", modelContext, indent + 1);
+		return sb.toString();
+	}
 }

@@ -16,11 +16,15 @@
 
 package com.evolveum.midpoint.model.impl.scripting;
 
+import com.evolveum.midpoint.model.api.PipelineItem;
 import com.evolveum.midpoint.model.api.ScriptExecutionResult;
 import com.evolveum.midpoint.prism.Item;
+import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.task.api.Task;
+import com.evolveum.midpoint.util.exception.SystemException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
+import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ScriptingExpressionEvaluationOptionsType;
 
 import java.util.HashMap;
 import java.util.List;
@@ -34,33 +38,38 @@ import java.util.Map;
 public class ExecutionContext {
     private static final Trace LOGGER = TraceManager.getTrace(ExecutionContext.class);
 
-    private Task task;
-    private StringBuilder consoleOutput = new StringBuilder();
-    private Map<String, Data> variables = new HashMap<>();
-    private Data finalOutput;                                        // used only when passing result to external clients (TODO do this more cleanly)
+    private final Task task;
+    private final ScriptingExpressionEvaluationOptionsType options;
+    private final StringBuilder consoleOutput = new StringBuilder();
+    private final Map<String, PipelineData> variables = new HashMap<>();
+    private PipelineData finalOutput;                                        // used only when passing result to external clients (TODO do this more cleanly)
 
-    public ExecutionContext(Task task) {
+    public ExecutionContext(ScriptingExpressionEvaluationOptionsType options, Task task) {
         this.task = task;
+        this.options = options;
     }
 
     public Task getTask() {
         return task;
     }
 
-    public void setTask(Task task) {
-        this.task = task;
+	public ScriptingExpressionEvaluationOptionsType getOptions() {
+		return options;
+	}
+
+	public boolean isContinueOnAnyError() {
+    	return options != null && Boolean.TRUE.equals(options.isContinueOnAnyError());
+	}
+
+	public boolean isHideOperationResults() {
+        return options != null && Boolean.TRUE.equals(options.isHideOperationResults());
     }
 
-
-    public Data getVariable(String variableName) {
+	public PipelineData getVariable(String variableName) {
         return variables.get(variableName);
     }
 
-    public void setVariable(String variableName, Item item) {
-        variables.put(variableName, Data.create(item));
-    }
-
-    public void setVariable(String variableName, Data value) {
+    public void setVariable(String variableName, PipelineData value) {
         variables.put(variableName, value);
     }
 
@@ -71,24 +80,44 @@ public class ExecutionContext {
     public void println(Object o) {
         consoleOutput.append(o).append("\n");
         if (o != null) {
-            LOGGER.info(o.toString());          // temporary, until some better way of logging bulk action executions is found
+            LOGGER.info("Script console message: {}", o);          // temporary, until some better way of logging bulk action executions is found
         }
     }
 
-    public Data getFinalOutput() {
+    public PipelineData getFinalOutput() {
         return finalOutput;
     }
 
-    public void setFinalOutput(Data finalOutput) {
+    public void setFinalOutput(PipelineData finalOutput) {
         this.finalOutput = finalOutput;
     }
 
     public ScriptExecutionResult toExecutionResult() {
-        List<Item> items = null;
+        List<PipelineItem> items = null;
         if (getFinalOutput() != null) {
             items = getFinalOutput().getData();
         }
-        ScriptExecutionResult result = new ScriptExecutionResult(getConsoleOutput(), items);
-        return result;
+        return new ScriptExecutionResult(getConsoleOutput(), items);
+    }
+
+    public String getChannel() {
+        return task != null ? task.getChannel() : null;
+    }
+
+    public boolean canRun() {
+        return task == null || task.canRun();
+    }
+
+    public void checkTaskStop() {
+        if (!canRun()) {
+            // TODO do this is a nicer way
+            throw new SystemException("Stopping execution of a script because the task is stopping: " + task);
+        }
+    }
+
+    public void computeResults() {
+        if (finalOutput != null) {
+            finalOutput.getData().forEach(i -> i.computeResult());
+        }
     }
 }

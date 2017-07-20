@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,10 @@
  */
 package com.evolveum.midpoint.model.impl;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
+import java.util.function.Function;
 
 import javax.xml.namespace.QName;
 
@@ -23,12 +26,17 @@ import com.evolveum.midpoint.model.api.hooks.HookRegistry;
 import com.evolveum.midpoint.model.api.hooks.ReadHook;
 import com.evolveum.midpoint.task.api.TaskManager;
 
+import com.evolveum.midpoint.wf.api.WorkflowManager;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
+
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.prism.PrismReference;
 import com.evolveum.midpoint.prism.PrismReferenceDefinition;
 import com.evolveum.midpoint.prism.PrismReferenceValue;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
@@ -44,6 +52,7 @@ import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.CommonException;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
@@ -51,10 +60,6 @@ import com.evolveum.midpoint.util.exception.SystemException;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemObjectsType;
 
 /**
  * @author semancik
@@ -75,6 +80,9 @@ public class ModelObjectResolver implements ObjectResolver {
 
     @Autowired
     private transient TaskManager taskManager;
+
+	@Autowired(required = false)
+	private transient WorkflowManager workflowManager;
 
     @Autowired(required = false)
     private transient HookRegistry hookRegistry;
@@ -124,7 +132,7 @@ public class ModelObjectResolver implements ObjectResolver {
 		if (typeQName != null) {
 			typeClass = prismContext.getSchemaRegistry().determineCompileTimeClass(typeQName);
 		}
-		return (getObjectSimple((Class<O>)typeClass, oid, options, task, result)).asPrismObject();
+		return (PrismObject<O>) (getObjectSimple((Class<O>)typeClass, oid, options, task, result)).asPrismObject();
 	}
 	
 	public <T extends ObjectType> T getObjectSimple(Class<T> clazz, String oid, GetOperationOptions options, Task task, 
@@ -145,11 +153,12 @@ public class ModelObjectResolver implements ObjectResolver {
 	}
 	
 	public <T extends ObjectType> T getObject(Class<T> clazz, String oid, Collection<SelectorOptions<GetOperationOptions>> options, Task task,
-			OperationResult result) throws ObjectNotFoundException, CommunicationException, SchemaException, ConfigurationException, SecurityViolationException {
+			OperationResult result) throws ObjectNotFoundException, CommunicationException, SchemaException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
 		T objectType = null;
 		try {
 			PrismObject<T> object = null;
             ObjectTypes.ObjectManager manager = ObjectTypes.getObjectManagerForClass(clazz);
+			final GetOperationOptions rootOptions = SelectorOptions.findRootOptions(options);
             switch (manager) {
                 case PROVISIONING:
                     object = provisioning.getObject(clazz, oid, options, task, result);
@@ -164,6 +173,9 @@ public class ModelObjectResolver implements ObjectResolver {
                         throw new SystemException("Got null result from taskManager.getObject while looking for "+clazz.getSimpleName()
                                 +" with OID "+oid+"; using task manager implementation "+taskManager.getClass().getName());
                     }
+					if (workflowManager != null && TaskType.class.isAssignableFrom(clazz) && !GetOperationOptions.isRaw(rootOptions) && !GetOperationOptions.isNoFetch(rootOptions)) {
+						workflowManager.augmentTaskObject(object, options, task, result);
+					}
                     break;
                 default:
                     object = cacheRepositoryService.getObject(clazz, oid, options, result);
@@ -184,25 +196,10 @@ public class ModelObjectResolver implements ObjectResolver {
                     hook.invoke(object, options, task, result);
                 }
             }
-		} catch (SystemException ex) {
+		} catch (SystemException | ObjectNotFoundException | CommunicationException | ConfigurationException | SecurityViolationException | ExpressionEvaluationException ex) {
 			result.recordFatalError(ex);
 			throw ex;
-		} catch (ObjectNotFoundException ex) {
-			result.recordFatalError(ex);
-			throw ex;
-		} catch (CommunicationException e) {
-			result.recordFatalError(e);
-			throw e;
-		} catch (SchemaException e) {
-			result.recordFatalError(e);
-			throw e;
-		} catch (ConfigurationException e) {
-			result.recordFatalError(e);
-			throw e;
-		} catch (SecurityViolationException e) {
-			result.recordFatalError(e);
-			throw e;
-		} catch (RuntimeException ex) {
+		} catch (RuntimeException | Error ex) {
 			LoggingUtils.logException(LOGGER, "Error resolving object with oid {}, expected type was {}.", ex,
 					oid, clazz);
 			throw new SystemException("Error resolving object with oid '" + oid + "': "+ex.getMessage(), ex);
@@ -213,8 +210,9 @@ public class ModelObjectResolver implements ObjectResolver {
 		return objectType;
 	}
 	
+	@Override
 	public <O extends ObjectType> void searchIterative(Class<O> type, ObjectQuery query, Collection<SelectorOptions<GetOperationOptions>> options, ResultHandler<O> handler, Object task, OperationResult parentResult)
-			throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException {
+			throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
 		if (ObjectTypes.isClassManagedByProvisioning(type)) {
 			provisioning.searchObjectsIterative(type, query, options, handler, (Task) task, parentResult);
 		} else {
@@ -222,7 +220,7 @@ public class ModelObjectResolver implements ObjectResolver {
 		}
 	}
 	
-	public <O extends ObjectType> Integer countObjects(Class<O> type, ObjectQuery query, Collection<SelectorOptions<GetOperationOptions>> options, Task task, OperationResult parentResult) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException {
+	public <O extends ObjectType> Integer countObjects(Class<O> type, ObjectQuery query, Collection<SelectorOptions<GetOperationOptions>> options, Task task, OperationResult parentResult) throws SchemaException, ObjectNotFoundException, CommunicationException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
 		if (ObjectTypes.isClassManagedByProvisioning(type)) {
 			return provisioning.countObjects(type, query, options, task, parentResult);
 		} else {
@@ -243,5 +241,110 @@ public class ModelObjectResolver implements ObjectResolver {
         }
         return config;
     }
+	
+	public <O extends ObjectType, R extends ObjectType> PrismObject<R> searchOrgTreeWidthFirstReference(PrismObject<O> object,
+			Function<PrismObject<OrgType>, ObjectReferenceType> function, String shortDesc, Task task, OperationResult result) throws SchemaException {
+		if (object == null) {
+			LOGGER.trace("No object provided. Cannost find security policy specific for an object.");
+			return null;
+		}
+		PrismReference orgRef = object.findReference(ObjectType.F_PARENT_ORG_REF);
+		if (orgRef == null) {
+			return null;
+		}
+		List<PrismReferenceValue> orgRefValues = orgRef.getValues();
+		List<PrismObject<OrgType>> orgs = new ArrayList<PrismObject<OrgType>>();
+		PrismObject<R> resultObject = null;
+
+		for (PrismReferenceValue orgRefValue : orgRefValues) {
+			if (orgRefValue != null) {
+
+				try {
+					PrismObject<OrgType> org = resolve(orgRefValue, "resolving parent org ref", null, null, result);
+					orgs.add(org);
+					ObjectReferenceType ref = function.apply(org);
+
+					if (ref != null) {
+						PrismObject<R> resolvedObject;
+						try {
+							resolvedObject = resolve(ref.asReferenceValue(), shortDesc, task, result);
+						} catch (ObjectNotFoundException ex) {
+							// Just log the error, but do not fail on that. Failing would prohibit login
+							// and that may mean the misconfiguration could not be easily fixed.
+							LOGGER.warn("Cannot find object {} referenced in {} while resolving {}", orgRefValue.getOid(), object, shortDesc);
+							continue;
+						}			
+						if (resolvedObject != null) {
+							if (resultObject == null) {
+								resultObject = resolvedObject;
+							} else if (!StringUtils.equals(resolvedObject.getOid(), resultObject.getOid())) {
+								throw new SchemaException(
+										"Found more than one object (" + resolvedObject + ", " + resultObject + ") while " + shortDesc);
+							}
+						}
+					}
+					
+				} catch (ObjectNotFoundException ex) {
+					// Just log the error, but do not fail on that. Failing would prohibit login
+					// and that may mean the misconfiguration could not be easily fixed.
+					LOGGER.warn("Cannot find organization {} referenced in {}", orgRefValue.getOid(), object);
+					result.muteLastSubresultError();
+				}
+			}
+		}
+		
+		if (resultObject != null) {
+			return resultObject;
+		}
+		
+		// go deeper
+		for (PrismObject<OrgType> org : orgs) {
+			PrismObject<R> val = searchOrgTreeWidthFirstReference((PrismObject<O>) org, function, shortDesc, task, result);
+			if (val != null) {
+				return val;
+			}
+		}
+		
+		return null;
+	}
+	
+	public <R,O extends ObjectType> R searchOrgTreeWidthFirst(PrismObject<O> object,
+			Function<PrismObject<OrgType>, R> function, Task task, OperationResult result) {
+		PrismReference orgRef = object.findReference(ObjectType.F_PARENT_ORG_REF);
+		if (orgRef == null) {
+			return null;
+		}
+		List<PrismReferenceValue> orgRefValues = orgRef.getValues();
+		List<PrismObject<OrgType>> orgs = new ArrayList<PrismObject<OrgType>>();
+
+		for (PrismReferenceValue orgRefValue : orgRefValues) {
+			if (orgRefValue != null) {
+
+				try {
+					PrismObject<OrgType> org = resolve(orgRefValue, "resolving parent org ref", null, null, result);
+					orgs.add(org);
+					R val = function.apply(org);
+
+					if (val != null) {
+						return val;
+					}
+				} catch (ObjectNotFoundException ex) {
+					// Just log the error, but do not fail on that. Failing would prohibit login
+					// and that may mean the misconfiguration could not be easily fixed.
+					LOGGER.warn("Cannot find organization {} referenced in {}", orgRefValue.getOid(), object);
+				}
+			}
+		}
+		
+		// go deeper
+		for (PrismObject<OrgType> orgType : orgs) {
+			R val = searchOrgTreeWidthFirst((PrismObject<O>) orgType, function, task, result);
+			if (val != null) {
+				return val;
+			}
+		}
+		
+		return null;
+	}
 	
 }

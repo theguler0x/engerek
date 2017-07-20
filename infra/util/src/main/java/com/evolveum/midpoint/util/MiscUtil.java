@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,36 +15,22 @@
  */
 package com.evolveum.midpoint.util;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.IOException;
-import java.nio.channels.FileChannel;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Scanner;
-import java.util.Set;
+import org.jetbrains.annotations.NotNull;
+
+import com.evolveum.midpoint.util.logging.Trace;
+import com.evolveum.midpoint.util.logging.TraceManager;
 
 import javax.xml.datatype.DatatypeConfigurationException;
 import javax.xml.datatype.DatatypeConstants;
 import javax.xml.datatype.DatatypeFactory;
 import javax.xml.datatype.XMLGregorianCalendar;
-
-import org.apache.commons.collections.CollectionUtils;
+import java.io.*;
+import java.nio.channels.FileChannel;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 /**
  * @author semancik
@@ -53,6 +39,9 @@ import org.apache.commons.collections.CollectionUtils;
 public class MiscUtil {
 	
 	private static final int BUFFER_SIZE = 2048; 
+	
+	private static final Trace LOGGER = TraceManager.getTrace(MiscUtil.class);
+	
 	private static DatatypeFactory df = null;
 
     static {
@@ -62,9 +51,10 @@ public class MiscUtil {
             throw new IllegalStateException("Exception while obtaining Datatype Factory instance", dce);
         }
     }
-	
+
+    @NotNull
 	public static <T> Collection<T> union(Collection<T>... sets) {
-		Set<T> resultSet = new HashSet<T>();
+		Set<T> resultSet = new HashSet<>();
 		for (Collection<T> set: sets) {
 			if (set != null) {
 				resultSet.addAll(set);
@@ -102,21 +92,22 @@ public class MiscUtil {
 	}
 	
 	public static boolean unorderedCollectionEquals(Collection a, Collection b) {
-		Comparator<?> comparator = new Comparator<Object>() {
-			@Override
-			public int compare(Object o1, Object o2) {
-				return o1.equals(o2) ? 0 : 1;
-			}
-		};
-		return unorderedCollectionEquals(a, b, comparator);
+		return unorderedCollectionEquals(a, b, (xa, xb) -> xa.equals(xb));
 	}
 	
 	/**
 	 * Only zero vs non-zero value of comparator is important. 
 	 */
-	public static boolean unorderedCollectionEquals(Collection a, Collection b, Comparator comparator) {
+	public static <T> boolean unorderedCollectionCompare(Collection<T> a, Collection<T> b, final Comparator<T> comparator) {
+		return unorderedCollectionEquals(a, b, (xa, xb) -> comparator.compare(xa, xb) == 0);
+	}
+	
+	/**
+	 * Only zero vs non-zero value of comparator is important. 
+	 */
+	public static <A,B> boolean unorderedCollectionEquals(Collection<A> a, Collection<B> b, HeteroComparator<A,B> comparator) {
 		if (a == null && b == null) {
-			return true;
+ 			return true;
 		}
 		if (a == null || b == null) {
 			return false;
@@ -124,14 +115,14 @@ public class MiscUtil {
 		if (a.size() != b.size()) {
 			return false;
 		}
-		Collection outstanding = new ArrayList(b.size());
+		Collection<B> outstanding = new ArrayList<>(b.size());
 		outstanding.addAll(b);
-		for (Object ao: a) {
+		for (A ao: a) {
 			boolean found = false;
-			Iterator iterator = outstanding.iterator();
+			Iterator<B> iterator = outstanding.iterator();
 			while(iterator.hasNext()) {
-				Object oo = iterator.next();
-				if (comparator.compare(ao, oo) == 0) {
+				B oo = iterator.next();
+				if (comparator.isEquivalent(ao, oo)) {
 					iterator.remove();
 					found = true;
 				}
@@ -190,11 +181,15 @@ public class MiscUtil {
 		return true;
 	}
 	
-	public static int unorderedCollectionHashcode(Collection collection) {
+	public static <T> int unorderedCollectionHashcode(Collection<T> collection, Predicate<T> filter) {
 		// Stupid implmentation, just add all the hashcodes
 		int hashcode = 0;
-		for (Object item: collection) {
-			hashcode += item.hashCode();
+		for (T item: collection) {
+			if (filter != null && !filter.test(item)) {
+				continue;
+			}
+			int itemHash = item.hashCode();
+			hashcode += itemHash;
 		}
 		return hashcode;
 	}
@@ -504,5 +499,108 @@ public class MiscUtil {
 					+ Character.digit(hex.charAt(i + 1), 16));
 		}
 		return bytes;
+	}
+
+	public static <T> void addAllIfNotPresent(List<T> receivingList, List<T> supplyingList) {
+		if (supplyingList == null) {
+			return;
+		}
+		for (T supplyingElement: supplyingList) {
+			addIfNotPresent(receivingList, supplyingElement);
+		}
+	}
+	
+	public static <T> void addIfNotPresent(List<T> receivingList, T supplyingElement) {
+		if (!receivingList.contains(supplyingElement)) {
+			receivingList.add(supplyingElement);
+		}
+	}
+
+	public static boolean nullableCollectionsEqual(Collection<?> c1, Collection<?> c2) {
+		boolean empty1 = c1 == null || c1.isEmpty();
+		boolean empty2 = c2 == null || c2.isEmpty();
+		if (empty1) {
+			return empty2;
+		} else if (empty2) {
+			return false;
+		} else {
+			return c1.equals(c2);
+		}
+	}
+
+	public static String getObjectName(Object o) {
+		return o != null ? "an instance of " + o.getClass().getName() : "null value";
+	}
+
+	// @pre: at least of o1, o2 is null
+	public static Integer compareNullLast(Object o1, Object o2) {
+		if (o1 == null && o2 == null) {
+			return 0;
+		} else if (o1 == null) {
+			return 1;
+		} else if (o2 == null) {
+			return -1;
+		} else {
+			throw new IllegalArgumentException("Both objects are non-null");
+		}
+	}
+
+	@SafeVarargs
+	public static <T> T getFirstNonNull(T... values) {
+		for (T value : values) {
+			if (value != null) {
+				return value;
+			}
+		}
+		return null;
+	}
+
+	public static String getFirstNonNullString(Object... values) {
+		Object value = getFirstNonNull(values);
+		return value != null ? value.toString() : null;
+	}
+
+	public static <T> T extractSingleton(Collection<T> collection) {
+		if (collection == null || collection.isEmpty()) {
+			return null;
+		} else if (collection.size() == 1) {
+			return collection.iterator().next();
+		} else {
+			throw new IllegalArgumentException("Expected a collection with at most one item; got the one with " + collection.size() + " items");
+		}
+	}
+
+	public static boolean isCollectionOf(Object object, @NotNull Class<?> memberClass) {
+		return object instanceof Collection
+				&& ((Collection<?>) object).stream().allMatch(member -> member != null && memberClass.isAssignableFrom(member.getClass()));
+	}
+
+	public static <E> Function<Object, Stream<E>> instancesOf(Class<E> cls) {
+		return o -> cls.isInstance(o)
+				? Stream.of(cls.cast(o))
+				: Stream.empty();
+	}
+
+	// CollectionUtils does not provide this
+	// @pre: !list.isEmpty()
+	public static <T> T last(List<T> list) {
+		return list.get(list.size() - 1);
+	}
+
+	public static String emptyIfNull(String s) {
+		return s == null ? "" : s;
+	}
+
+	/**
+	 * Returns true if the collection contains at leat one pair of equals elements.
+	 */
+	public static <T> boolean hasDuplicates(Collection<T> collection) {
+		Set<T> set = new HashSet<>();
+		for (T e: collection) {
+			if (!set.add(e)) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

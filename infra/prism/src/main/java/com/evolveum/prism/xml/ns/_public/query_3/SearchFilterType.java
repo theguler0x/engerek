@@ -41,8 +41,8 @@ import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.prism.PrismConstants;
 import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.parser.DomParser;
-import com.evolveum.midpoint.prism.parser.QueryConvertor;
+import com.evolveum.midpoint.prism.lex.dom.DomLexicalProcessor;
+import com.evolveum.midpoint.prism.marshaller.QueryConvertor;
 import com.evolveum.midpoint.prism.util.PrismUtil;
 import com.evolveum.midpoint.prism.xnode.MapXNode;
 import com.evolveum.midpoint.prism.xnode.PrimitiveXNode;
@@ -57,6 +57,7 @@ import com.evolveum.midpoint.util.xml.DomAwareEqualsStrategy;
 import com.evolveum.midpoint.util.xml.DomAwareHashCodeStrategy;
 
 import org.apache.commons.lang.builder.ToStringBuilder;
+import org.jetbrains.annotations.NotNull;
 import org.jvnet.jaxb2_commons.lang.Equals;
 import org.jvnet.jaxb2_commons.lang.EqualsStrategy;
 import org.jvnet.jaxb2_commons.lang.HashCode;
@@ -163,11 +164,11 @@ public class SearchFilterType implements Serializable, Cloneable, Equals, HashCo
         return new RootXNode(singleEntry.getKey(), singleEntry.getValue());
     }
 
-    public Element getFilterClauseAsElement() throws SchemaException {
+    public Element getFilterClauseAsElement(@NotNull PrismContext prismContext) throws SchemaException {
         if (filterClauseXNode == null) {
             return null;
         }
-        DomParser domParser = PrismUtil.getDomParser(null);
+        DomLexicalProcessor domParser = PrismUtil.getDomParser(prismContext);
         return domParser.serializeSingleElementMapToElement(filterClauseXNode);
     }
 
@@ -189,7 +190,7 @@ public class SearchFilterType implements Serializable, Cloneable, Equals, HashCo
     		XNode xdesc = xmap.get(SearchFilterType.F_DESCRIPTION);
     		if (xdesc != null) {
     			if (xdesc instanceof PrimitiveXNode<?>) {
-    				String desc = ((PrimitiveXNode<String>)xdesc).getParsedValue(DOMUtil.XSD_STRING);
+    				String desc = ((PrimitiveXNode<String>)xdesc).getParsedValue(DOMUtil.XSD_STRING, String.class);
     				setDescription(desc);
     			} else {
                     throw new SchemaException("Description must have a primitive value");

@@ -15,11 +15,14 @@
  */
 package com.evolveum.midpoint.report.impl;
 
+import com.evolveum.midpoint.certification.api.OutcomeUtils;
 import com.evolveum.midpoint.prism.Containerable;
 import com.evolveum.midpoint.prism.Item;
 import com.evolveum.midpoint.prism.PrismContainerValue;
+import com.evolveum.midpoint.prism.PrismObjectValue;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.PrismReferenceValue;
+import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.path.ItemPathSegment;
 import com.evolveum.midpoint.prism.path.NameItemPathSegment;
 
@@ -34,27 +37,27 @@ import java.util.ResourceBundle;
 import javax.xml.datatype.XMLGregorianCalendar;
 import javax.xml.namespace.QName;
 
+import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import org.apache.commons.lang.StringUtils;
 
 import com.evolveum.midpoint.util.PrettyPrinter;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.MetadataType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportType;
 import com.evolveum.prism.xml.ns._public.types_3.ItemDeltaType;
 import com.evolveum.prism.xml.ns._public.types_3.ItemPathType;
 import com.evolveum.prism.xml.ns._public.types_3.ModificationTypeType;
 import com.evolveum.prism.xml.ns._public.types_3.ObjectDeltaType;
 import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
 import com.evolveum.prism.xml.ns._public.types_3.RawType;
+import org.jetbrains.annotations.NotNull;
+
 import java.lang.reflect.Method;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.MissingResourceException;
+import java.util.stream.Collectors;
 
 /**
  * Utility methods for report. Mostly pretty print functions. Do not use any
@@ -84,12 +87,78 @@ public class ReportUtils {
         return timestamp;
     }
 
+    public static String prettyPrintPerformerOrAssigneesForReport(PrismContainerValue<AbstractWorkItemType> workItemPcv) {
+        if (workItemPcv == null) {      // should not occur
+            return "";
+        }
+        AbstractWorkItemType workItem = workItemPcv.asContainerable();
+        if (workItem.getPerformerRef() != null && workItem.getOutput() != null
+                && (workItem.getOutput().getOutcome() != null || StringUtils.isNotBlank(workItem.getOutput().getComment()))) {
+            // performer is shown only if there's a real outcome (either result or comment)
+            return prettyPrintForReport(workItem.getPerformerRef(), false);
+        } else {
+            return "(" + prettyPrintReferencesForReport(workItem.getAssigneeRef(), false) + ")";
+        }
+    }
+
+    public static String prettyPrintOutputChangeForReport(PrismContainerValue<AccessCertificationWorkItemType> workItemPcv) {
+        if (workItemPcv == null) {      // should not occur
+            return "";
+        }
+        AccessCertificationWorkItemType workItem = workItemPcv.asContainerable();
+        if (workItem.getOutputChangeTimestamp() != null && workItem.getOutput() != null
+                && (workItem.getOutput().getOutcome() != null || StringUtils.isNotBlank(workItem.getOutput().getComment()))) {
+            // output change timestamp is shown only if there's a real outcome (either result or comment)
+            return prettyPrintForReport(workItem.getOutputChangeTimestamp());
+        } else {
+            return "";
+        }
+    }
+
+    public static String prettyPrintReferencesForReport(@NotNull List<ObjectReferenceType> references, boolean showType) {
+        return references.stream()
+                .map(ref -> prettyPrintForReport(ref, showType))
+                .collect(Collectors.joining(", "));
+    }
+
+    public static String prettyPrintCertOutcomeForReport(String uri, boolean noResponseIfEmpty) {
+        return prettyPrintForReport(OutcomeUtils.fromUri(uri), noResponseIfEmpty);
+    }
+
+    public static String prettyPrintCertOutcomeForReport(String uri) {
+        return prettyPrintCertOutcomeForReport(uri, false);
+    }
+
+    public static String prettyPrintCertOutcomeForReport(AbstractWorkItemOutputType output) {
+        return prettyPrintCertOutcomeForReport(output, false);
+    }
+
+    public static String prettyPrintCertOutcomeForReport(AbstractWorkItemOutputType output, boolean noResponseIfEmpty) {
+        String outcome = output != null ? output.getOutcome() : null;
+        if (noResponseIfEmpty && outcome == null) {
+            outcome = SchemaConstants.MODEL_CERTIFICATION_OUTCOME_NO_RESPONSE;
+        }
+        return prettyPrintCertOutcomeForReport(outcome, noResponseIfEmpty);
+    }
+
+    public static String prettyPrintCertCommentForReport(AbstractWorkItemOutputType output) {
+        return output != null ? output.getComment() : null;
+    }
+
     public static String prettyPrintForReport(XMLGregorianCalendar dateTime) {
         if (dateTime == null) {
             return "";
         }
         SimpleDateFormat formatDate = new SimpleDateFormat();
         return formatDate.format(new Date(dateTime.toGregorianCalendar().getTimeInMillis()));
+    }
+
+    public static String prettyPrintForReport(Date date) {
+        if (date == null) {
+            return "";
+        }
+        SimpleDateFormat formatDate = new SimpleDateFormat();
+        return formatDate.format(date);
     }
 
     public static String getDateTime() {
@@ -157,14 +226,14 @@ public class ReportUtils {
     }
 
     public static String getPropertyString(String key) {
-        return getPropertyString(key, null);
+        return getPropertyString(key, (String) null);
     }
 
     public static String getPropertyString(String key, String defaultValue) {
         String val = (defaultValue == null) ? key : defaultValue;
         ResourceBundle bundle;
         try {
-            bundle = ResourceBundle.getBundle("localization/Midpoint", new Locale("en", "US"));
+            bundle = ResourceBundle.getBundle("localization/schema", new Locale("en", "US"));
         } catch (MissingResourceException e) {
             return (defaultValue != null) ? defaultValue : key; //workaround for Jasper Studio
         }
@@ -173,6 +242,50 @@ public class ReportUtils {
         }
         return val;
     }
+    
+	public static String getPropertyString(String key, Object values, String defaultValue) {
+		if (key == null || values == null) {
+			return defaultValue;
+		}
+		
+		if (!List.class.isAssignableFrom(values.getClass())) {
+			return getPropertyString((key.endsWith(".") ? key + values.toString() : key + "." + values.toString()), defaultValue);
+		}
+		List listValues=  (List) values;
+		StringBuilder builder = new StringBuilder();
+		Iterator<Object> objects = listValues.iterator();
+		ResourceBundle bundle;
+		try {
+			bundle = ResourceBundle.getBundle("localization/schema", new Locale("en", "US"));
+		} catch (MissingResourceException e) {
+			return defaultValue.toString() != null ? defaultValue.toString() : key; // workaround for Jasper Studio
+		}
+
+		while (objects.hasNext()) {
+			Object o = objects.next();
+			if (o.getClass().isEnum()) {
+				String constructedKey = (key.endsWith(".")) ? key + ((Enum) o).name(): key +"." + ((Enum) o).name();
+				if (bundle != null && bundle.containsKey(constructedKey)) {
+					builder.append(bundle.getString(constructedKey));
+				} else {
+					builder.append(prettyPrintForReport(o));
+				}
+			} else {
+				String constructedKey = (key.endsWith(".")) ? key + o.toString() : key + "." + o.toString();
+				if (bundle != null && bundle.containsKey(key)) {
+					builder.append(bundle.getString(constructedKey));
+				} else {
+					builder.append(prettyPrintForReport(o));
+				}
+			}
+			if (objects.hasNext()) {
+				builder.append(", ");
+			}
+		}
+		
+		return builder.toString();
+
+	}
 
     public static String prettyPrintForReport(QName qname) {
         String ret = "";
@@ -186,7 +299,7 @@ public class ReportUtils {
         return "*****";
     }
 
-    public static String prettyPrintForReport(PrismPropertyValue ppv) {
+    public static String prettyPrintForReport(PrismPropertyValue<?> ppv) {
         String retPPV;
         try {
             retPPV = prettyPrintForReport(ppv.getValue());
@@ -196,18 +309,16 @@ public class ReportUtils {
         return retPPV;
     }
 
-    public static String prettyPrintForReport(PrismContainerValue pcv) {
+    public static String prettyPrintForReport(PrismContainerValue<?> pcv) {
         StringBuilder sb = new StringBuilder();
-        for (Iterator<Item> iter = pcv.getItems().iterator(); iter.hasNext();) {
-            Item item = iter.next();
+        for (Item<?, ?> item : pcv.getItems()) {
             if ("metadata".equals(item.getElementName().getLocalPart())) {
                 continue;
             }
             sb.append(prettyPrintForReport(item.getElementName()));
             sb.append("=");
             sb.append("{");
-            for (Iterator iter2 = item.getValues().iterator(); iter2.hasNext();) {
-                Object item2 = iter2.next();
+            for (PrismValue item2 : item.getValues()) {
                 sb.append(prettyPrintForReport(item2));
                 sb.append(", ");
             }
@@ -226,7 +337,7 @@ public class ReportUtils {
     public static String prettyPrintForReport(PrismReferenceValue prv, boolean showType) {
         StringBuilder sb = new StringBuilder();
         if (showType) {
-            sb.append(prettyPrintForReport(prv.getTargetType()));
+            sb.append(getTypeDisplayName(prv.getTargetType()));
             sb.append(": ");
         }
         if (prv.getTargetName() != null) {
@@ -247,13 +358,27 @@ public class ReportUtils {
         }
         StringBuilder sb = new StringBuilder();
         if (showType || prv.getTargetName() == null) {
-            sb.append(prettyPrintForReport(prv.getType()));
+            sb.append(getTypeDisplayName(prv.getType()));
             sb.append(": ");
         }
         if (prv.getTargetName() != null) {
             sb.append(prv.getTargetName());
         } else {
             sb.append(prv.getOid());
+        }
+        return sb.toString();
+    }
+
+    public static String prettyPrintUsersForReport(List<ObjectReferenceType> userRefList) {
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (ObjectReferenceType userRef : userRefList) {
+            if (first) {
+                first = false;
+            } else {
+                sb.append(", ");
+            }
+            sb.append(prettyPrintForReport(userRef, false));
         }
         return sb.toString();
     }
@@ -549,4 +674,89 @@ public class ReportUtils {
         return sb.toString();
     }
 
+    public static String join(Collection<String> strings) {
+        return StringUtils.join(strings, ", ");
+    }
+
+    public static Object getItemRealValue(PrismContainerValue containerValue, String itemName) {
+        Item item = containerValue.findItem(new QName(itemName));
+        if (item == null || item.size() == 0) {
+            return null;
+        }
+        if (item.size() > 1) {
+            throw new IllegalStateException("More than one value in item " + item);
+        }
+        PrismValue value = item.getValue(0);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof PrismPropertyValue) {
+            return ((PrismPropertyValue) value).getValue();
+        } else if (value instanceof PrismReferenceValue) {
+            ObjectReferenceType ort = new ObjectReferenceType();
+            ort.setupReferenceValue((PrismReferenceValue) value);
+            return ort;
+        } else if (value instanceof PrismContainerValue) {
+            return ((PrismContainerValue) value).asContainerable();     // questionable
+        } else {
+            throw new IllegalStateException("Unknown PrismValue: " + value);
+        }
+    }
+
+    public static String prettyPrintForReport(AccessCertificationResponseType response, boolean noResponseIfEmpty) {
+        if (noResponseIfEmpty) {
+            if (response == null) {
+                response = AccessCertificationResponseType.NO_RESPONSE;
+            }
+        } else {
+            if (response == null || response == AccessCertificationResponseType.NO_RESPONSE) {
+                return "";
+            }
+        }
+        return getPropertyString("AccessCertificationResponseType."+response.name());
+    }
+
+    public static String prettyPrintForReport(AccessCertificationResponseType response) {
+        if (response == null || response == AccessCertificationResponseType.NO_RESPONSE) {
+            return "";
+        }
+        return getPropertyString("AccessCertificationResponseType."+response.name());
+    }
+
+    public static String prettyPrintForReport(EvaluatedPolicyRuleTriggerType trigger) {
+        return prettyPrintRuleTriggerForReport(trigger);
+    }    
+    
+    public static String prettyPrintForReport(EvaluatedSituationTriggerType trigger) {
+        return prettyPrintRuleTriggerForReport(trigger);
+    } 
+    
+    public static String prettyPrintForReport(EvaluatedExclusionTriggerType trigger) {
+        return prettyPrintRuleTriggerForReport(trigger);
+    }
+    
+    public static String prettyPrintForReport(PrismObjectValue pov) {
+        return prettyPrintForReport((PrismContainerValue) pov);
+    }
+            
+    private static String prettyPrintRuleTriggerForReport(EvaluatedPolicyRuleTriggerType trigger) {
+        if (trigger == null) {
+            return "";
+        }
+        return "Rule: " + (trigger.getRuleName()!=null?trigger.getRuleName():"N/A");
+    }
+
+    public static String prettyPrintForReport(Enum e) {
+        if (e == null) {
+            return "";
+        }
+        return getPropertyString(e.getClass().getSimpleName()+"."+e.name(), e.name());
+    }
+
+    public static String getTypeDisplayName(QName typeName) {
+        if (typeName == null) {
+            return null;
+        }
+        return getPropertyString("ObjectType." + typeName.getLocalPart(), typeName.getLocalPart());
+    }
 }

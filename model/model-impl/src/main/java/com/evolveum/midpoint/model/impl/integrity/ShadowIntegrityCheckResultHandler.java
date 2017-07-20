@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,17 +18,12 @@ package com.evolveum.midpoint.model.impl.integrity;
 
 import com.evolveum.midpoint.common.refinery.RefinedAttributeDefinition;
 import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
+import com.evolveum.midpoint.common.refinery.RefinedResourceSchemaImpl;
+import com.evolveum.midpoint.model.common.SystemObjectCache;
 import com.evolveum.midpoint.model.impl.sync.SynchronizationService;
 import com.evolveum.midpoint.model.impl.util.AbstractSearchIterativeResultHandler;
 import com.evolveum.midpoint.model.impl.util.Utils;
-import com.evolveum.midpoint.prism.Item;
-import com.evolveum.midpoint.prism.PrismContainer;
-import com.evolveum.midpoint.prism.PrismContainerValue;
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismProperty;
-import com.evolveum.midpoint.prism.PrismPropertyValue;
-import com.evolveum.midpoint.prism.PrismReferenceValue;
+import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.prism.delta.ChangeType;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
@@ -37,7 +32,7 @@ import com.evolveum.midpoint.prism.match.MatchingRule;
 import com.evolveum.midpoint.prism.match.MatchingRuleRegistry;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
-import com.evolveum.midpoint.prism.query.RefFilter;
+import com.evolveum.midpoint.prism.query.builder.QueryBuilder;
 import com.evolveum.midpoint.provisioning.api.ProvisioningService;
 import com.evolveum.midpoint.repo.api.RepositoryService;
 import com.evolveum.midpoint.schema.GetOperationOptions;
@@ -48,49 +43,23 @@ import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.task.api.TaskManager;
 import com.evolveum.midpoint.util.DebugUtil;
-import com.evolveum.midpoint.util.exception.CommonException;
-import com.evolveum.midpoint.util.exception.CommunicationException;
-import com.evolveum.midpoint.util.exception.ConfigurationException;
-import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
-import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
-import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.exception.SecurityViolationException;
-import com.evolveum.midpoint.util.exception.SystemException;
+import com.evolveum.midpoint.util.exception.*;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FailedOperationTypeType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.LayerType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectSynchronizationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowAttributesType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SynchronizationSituationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.SystemConfigurationType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
 import javax.xml.namespace.QName;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * @author mederly
  */
 public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeResultHandler<ShadowType> {
 
-    static final Trace LOGGER = TraceManager.getTrace(ShadowIntegrityCheckResultHandler.class);
+    private static final Trace LOGGER = TraceManager.getTrace(ShadowIntegrityCheckResultHandler.class);
 
     private static final String CLASS_DOT = ShadowIntegrityCheckResultHandler.class.getName() + ".";
     private static final String DEFAULT_DUPLICATE_SHADOWS_RESOLVER_CLASS_NAME = DefaultDuplicateShadowsResolver.class.getName();
@@ -102,6 +71,7 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
     private MatchingRuleRegistry matchingRuleRegistry;
     private RepositoryService repositoryService;
     private SynchronizationService synchronizationService;
+    private SystemObjectCache systemObjectCache;
 
     // derived from task extension diagnose/fix values at instantiation
     private boolean checkIntents;
@@ -114,6 +84,7 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
     private boolean fixUniqueness;
     private boolean fixNormalization;
     private boolean fixExtraData;
+    private boolean fixResourceRef;
 
     private boolean checkDuplicatesOnPrimaryIdentifiersOnly = false;
 
@@ -125,7 +96,9 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
     public static final String OWNERS = "owners";
     public static final String FETCH = "fetch";
     public static final String EXTRA_DATA = "extraData";
-    public static final List<String> KNOWN_KEYS = Arrays.asList(INTENTS, UNIQUENESS, NORMALIZATION, OWNERS, FETCH, EXTRA_DATA);
+    public static final String RESOURCE_REF = "resourceRef";
+    public static final List<String> KNOWN_KEYS =
+            Arrays.asList(INTENTS, UNIQUENESS, NORMALIZATION, OWNERS, FETCH, EXTRA_DATA, RESOURCE_REF);
 
     // resource oid + kind -> ROCD
     // we silently assume that all intents for a given kind share a common attribute definition
@@ -135,23 +108,25 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
 
     private PrismObject<SystemConfigurationType> configuration;
 
-    private Statistics statistics = new Statistics();
+    private ShadowStatistics statistics = new ShadowStatistics();
 
-    DuplicateShadowsResolver duplicateShadowsResolver;
+    private DuplicateShadowsResolver duplicateShadowsResolver;
     private Set<String> duplicateShadowsDetected = new HashSet<>();
     private Set<String> duplicateShadowsDeleted = new HashSet<>();
 
     public ShadowIntegrityCheckResultHandler(Task coordinatorTask, String taskOperationPrefix, String processShortName,
-                                             String contextDesc, TaskManager taskManager, PrismContext prismContext,
-                                             ProvisioningService provisioningService, MatchingRuleRegistry matchingRuleRegistry,
-                                             RepositoryService repositoryService, SynchronizationService synchronizationService,
-                                             OperationResult result) {
+            String contextDesc, TaskManager taskManager, PrismContext prismContext,
+            ProvisioningService provisioningService, MatchingRuleRegistry matchingRuleRegistry,
+            RepositoryService repositoryService, SynchronizationService synchronizationService,
+            SystemObjectCache systemObjectCache,
+            OperationResult result) {
         super(coordinatorTask, taskOperationPrefix, processShortName, contextDesc, taskManager);
         this.prismContext = prismContext;
         this.provisioningService = provisioningService;
         this.matchingRuleRegistry = matchingRuleRegistry;
         this.repositoryService = repositoryService;
         this.synchronizationService = synchronizationService;
+        this.systemObjectCache = systemObjectCache;
         setStopOnError(false);
         setLogErrors(false);            // we do log errors ourselves
 
@@ -183,11 +158,13 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
             fixUniqueness = false;
             fixNormalization = false;
             fixExtraData = false;
+            fixResourceRef = false;
         } else {
             fixIntents = contains(fixPrismProperty, INTENTS);
             fixUniqueness = contains(fixPrismProperty, UNIQUENESS);
             fixNormalization = contains(fixPrismProperty, NORMALIZATION);
             fixExtraData = contains(fixPrismProperty, EXTRA_DATA);
+            fixResourceRef = contains(fixPrismProperty, RESOURCE_REF);
             checkProperty(fixPrismProperty);
         }
 
@@ -225,7 +202,7 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
         }
 
         try {
-            configuration = Utils.getSystemConfiguration(repositoryService, result);
+            configuration = systemObjectCache.getSystemConfiguration(result);
         } catch (SchemaException e) {
             throw new SystemException("Couldn't get system configuration", e);
         }
@@ -239,14 +216,15 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
         logConfiguration("Shadow integrity check is starting with the configuration:");
     }
 
-    protected void logConfiguration(String state) {
+    private void logConfiguration(String state) {
         LOGGER.info("{}\n" +
                         "- normalization  diagnose={},\tfix={}\n" +
                         "- uniqueness     diagnose={},\tfix={} (primary identifiers only = {})\n" +
                         "- intents        diagnose={},\tfix={}\n" +
                         "- extraData      diagnose={},\tfix={}\n" +
                         "- owners         diagnose={}\n" +
-                        "- fetch          diagnose={}\n\n" +
+                        "- fetch          diagnose={}\n" +
+                        "- resourceRef    fix={}\n\n" +
                         "dryRun = {}\n",
                 state,
                 checkNormalization, fixNormalization,
@@ -255,6 +233,7 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
                 checkExtraData, fixExtraData,
                 checkOwners,
                 checkFetch,
+                fixResourceRef,
                 dryRun);
     }
 
@@ -267,7 +246,7 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
     }
 
     private boolean contains(PrismProperty<String> property, String keyword) {
-        return property.containsRealValue(new PrismPropertyValue<String>(keyword));
+        return property.containsRealValue(new PrismPropertyValue<>(keyword));
     }
 
     @Override
@@ -320,12 +299,16 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
         statistics.incrementShadows();
 
         if (resourceRef == null) {
-            checkResult.recordError(Statistics.NO_RESOURCE_OID, new SchemaException("No resourceRef"));
+            checkResult.recordError(ShadowStatistics.NO_RESOURCE_OID, new SchemaException("No resourceRef"));
+            fixNoResourceIfRequested(checkResult, ShadowStatistics.NO_RESOURCE_OID);
+            applyFixes(checkResult, shadow, workerTask, result);
             return;
         }
         String resourceOid = resourceRef.getOid();
         if (resourceOid == null) {
-            checkResult.recordError(Statistics.NO_RESOURCE_OID, new SchemaException("Null resource OID"));
+            checkResult.recordError(ShadowStatistics.NO_RESOURCE_OID, new SchemaException("Null resource OID"));
+            fixNoResourceIfRequested(checkResult, ShadowStatistics.NO_RESOURCE_OID);
+			applyFixes(checkResult, shadow, workerTask, result);
             return;
         }
         PrismObject<ResourceType> resource = resources.get(resourceOid);
@@ -334,13 +317,17 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
             try {
                 resource = provisioningService.getObject(ResourceType.class, resourceOid, null, workerTask, result);
             } catch (ObjectNotFoundException e) {
-                checkResult.recordError(Statistics.CANNOT_GET_RESOURCE, new ObjectNotFoundException("Resource object does not exist: " + e.getMessage(), e));
+                checkResult.recordError(
+						ShadowStatistics.NO_RESOURCE, new ObjectNotFoundException("Resource object does not exist: " + e.getMessage(), e));
+                fixNoResourceIfRequested(checkResult, ShadowStatistics.NO_RESOURCE);
+				applyFixes(checkResult, shadow, workerTask, result);
                 return;
             } catch (SchemaException e) {
-                checkResult.recordError(Statistics.CANNOT_GET_RESOURCE, new ObjectNotFoundException("Resource object has schema problems: " + e.getMessage(), e));
+                checkResult.recordError(
+						ShadowStatistics.CANNOT_GET_RESOURCE, new SchemaException("Resource object has schema problems: " + e.getMessage(), e));
                 return;
             } catch (CommonException|RuntimeException e) {
-                checkResult.recordError(Statistics.CANNOT_GET_RESOURCE, new ObjectNotFoundException("Resource object cannot be fetched for some reason: " + e.getMessage(), e));
+                checkResult.recordError(ShadowStatistics.CANNOT_GET_RESOURCE, new SystemException("Resource object cannot be fetched for some reason: " + e.getMessage(), e));
                 return;
             }
             resources.put(resourceOid, resource);
@@ -350,7 +337,7 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
         ShadowKindType kind = shadowType.getKind();
         if (kind == null) {
             // TODO or simply assume account?
-            checkResult.recordError(Statistics.NO_KIND_SPECIFIED, new SchemaException("No kind specified"));
+            checkResult.recordError(ShadowStatistics.NO_KIND_SPECIFIED, new SchemaException("No kind specified"));
             return;
         }
 
@@ -360,33 +347,33 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
 
         PrismObject<ShadowType> fetchedShadow = null;
         if (checkFetch) {
-            fetchedShadow = fetchShadow(checkResult, shadow, resource, workerTask, result);
+            fetchedShadow = fetchShadow(checkResult, shadow, workerTask, result);
             if (fetchedShadow != null) {
                 shadow.setUserData(KEY_EXISTS_ON_RESOURCE, "true");
             }
         }
 
         if (checkOwners) {
-            List<PrismObject> owners = searchOwners(shadow, result);
+            List<PrismObject<FocusType>> owners = searchOwners(shadow, result);
             if (owners != null) {
                 shadow.setUserData(KEY_OWNERS, owners);
                 if (owners.size() > 1) {
-                    checkResult.recordError(Statistics.MULTIPLE_OWNERS, new SchemaException("Multiple owners: " + owners));
+                    checkResult.recordError(ShadowStatistics.MULTIPLE_OWNERS, new SchemaException("Multiple owners: " + owners));
                 }
             }
 
             if (shadowType.getSynchronizationSituation() == SynchronizationSituationType.LINKED && (owners == null || owners.isEmpty())) {
-                checkResult.recordError(Statistics.LINKED_WITH_NO_OWNER, new SchemaException("Linked shadow with no owner"));
+                checkResult.recordError(ShadowStatistics.LINKED_WITH_NO_OWNER, new SchemaException("Linked shadow with no owner"));
             }
             if (shadowType.getSynchronizationSituation() != SynchronizationSituationType.LINKED && owners != null && !owners.isEmpty()) {
-                checkResult.recordError(Statistics.NOT_LINKED_WITH_OWNER, new SchemaException("Shadow with an owner but not marked as linked (marked as "
+                checkResult.recordError(ShadowStatistics.NOT_LINKED_WITH_OWNER, new SchemaException("Shadow with an owner but not marked as linked (marked as "
                     + shadowType.getSynchronizationSituation() + ")"));
             }
         }
 
         String intent = shadowType.getIntent();
         if (checkIntents && (intent == null || intent.isEmpty())) {
-            checkResult.recordWarning(Statistics.NO_INTENT_SPECIFIED, "None or empty intent");
+            checkResult.recordWarning(ShadowStatistics.NO_INTENT_SPECIFIED, "None or empty intent");
         }
         if (fixIntents && (intent == null || intent.isEmpty())) {
             doFixIntent(checkResult, fetchedShadow, shadow, resource, workerTask, result);
@@ -399,58 +386,61 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
             context.setResource(resource);
             RefinedResourceSchema resourceSchema;
             try {
-                resourceSchema = RefinedResourceSchema.getRefinedSchema(context.getResource(), LayerType.MODEL, prismContext);
+                resourceSchema = RefinedResourceSchemaImpl.getRefinedSchema(context.getResource(), LayerType.MODEL, prismContext);
             } catch (SchemaException e) {
-                checkResult.recordError(Statistics.CANNOT_GET_REFINED_SCHEMA, new SchemaException("Couldn't derive resource schema: " + e.getMessage(), e));
+                checkResult.recordError(
+						ShadowStatistics.CANNOT_GET_REFINED_SCHEMA, new SchemaException("Couldn't derive resource schema: " + e.getMessage(), e));
                 return;
             }
             if (resourceSchema == null) {
-                checkResult.recordError(Statistics.NO_RESOURCE_REFINED_SCHEMA, new SchemaException("No resource schema"));
+                checkResult.recordError(ShadowStatistics.NO_RESOURCE_REFINED_SCHEMA, new SchemaException("No resource schema"));
                 return;
             }
             context.setObjectClassDefinition(resourceSchema.getRefinedDefinition(kind, shadowType));
             if (context.getObjectClassDefinition() == null) {
                 // TODO or warning only?
-                checkResult.recordError(Statistics.NO_OBJECT_CLASS_REFINED_SCHEMA, new SchemaException("No refined object class definition for kind=" + kind + ", intent=" + intent));
+                checkResult.recordError(ShadowStatistics.NO_OBJECT_CLASS_REFINED_SCHEMA, new SchemaException("No refined object class definition for kind=" + kind + ", intent=" + intent));
                 return;
             }
             contextMap.put(key, context);
         }
 
         try {
-            provisioningService.applyDefinition(shadow, result);
-        } catch (SchemaException|ObjectNotFoundException|CommunicationException|ConfigurationException e) {
-            checkResult.recordError(Statistics.OTHER_FAILURE, new SystemException("Couldn't apply definition to shadow from repo", e));
+            provisioningService.applyDefinition(shadow, workerTask, result);
+        } catch (SchemaException|ObjectNotFoundException|CommunicationException|ConfigurationException|ExpressionEvaluationException e) {
+            checkResult.recordError(
+					ShadowStatistics.OTHER_FAILURE, new SystemException("Couldn't apply definition to shadow from repo", e));
             return;
         }
 
         Set<RefinedAttributeDefinition<?>> identifiers = new HashSet<>();
-        Collection<? extends RefinedAttributeDefinition<?>> primaryIdentifiers = context.getObjectClassDefinition().getIdentifiers();
+        Collection<? extends RefinedAttributeDefinition<?>> primaryIdentifiers = context.getObjectClassDefinition().getPrimaryIdentifiers();
         identifiers.addAll(primaryIdentifiers);
         identifiers.addAll(context.getObjectClassDefinition().getSecondaryIdentifiers());
 
         PrismContainer<ShadowAttributesType> attributesContainer = shadow.findContainer(ShadowType.F_ATTRIBUTES);
         if (attributesContainer == null) {
             // might happen on unfinished shadows?
-            checkResult.recordError(Statistics.OTHER_FAILURE, new SchemaException("No attributes container"));
+            checkResult.recordError(ShadowStatistics.OTHER_FAILURE, new SchemaException("No attributes container"));
             return;
         }
 
         for (RefinedAttributeDefinition<?> identifier : identifiers) {
             PrismProperty property = attributesContainer.getValue().findProperty(identifier.getName());
             if (property == null || property.size() == 0) {
-                checkResult.recordWarning(Statistics.OTHER_FAILURE, "No value for identifier " + identifier.getName());
+                checkResult.recordWarning(ShadowStatistics.OTHER_FAILURE, "No value for identifier " + identifier.getName());
                 continue;
             }
             if (property.size() > 1) {
                 // we don't expect multi-valued identifiers
-                checkResult.recordError(Statistics.OTHER_FAILURE, new SchemaException("Multi-valued identifier " + identifier.getName() + " with values " + property.getValues()));
+                checkResult.recordError(
+						ShadowStatistics.OTHER_FAILURE, new SchemaException("Multi-valued identifier " + identifier.getName() + " with values " + property.getValues()));
                 continue;
             }
             // size == 1
             String value = (String) property.getValue().getValue();
             if (value == null) {
-                checkResult.recordWarning(Statistics.OTHER_FAILURE, "Null value for identifier " + identifier.getName());
+                checkResult.recordWarning(ShadowStatistics.OTHER_FAILURE, "Null value for identifier " + identifier.getName());
                 continue;
             }
             if (checkUniqueness) {
@@ -463,41 +453,51 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
             }
         }
 
-        if (checkResult.getFixDeltas().size() > 0) {
-            try {
-                applyFix(checkResult, shadow, workerTask, result);
-                checkResult.setFixApplied(true);
-            } catch (CommonException e) {
-                checkResult.recordError(Statistics.CANNOT_APPLY_FIX, new SystemException("Couldn't apply the shadow fix", e));
-                return;
-            }
+		applyFixes(checkResult, shadow, workerTask, result);
+	}
+
+	private void applyFixes(ShadowCheckResult checkResult, PrismObject<ShadowType> shadow, Task workerTask,
+			OperationResult result) {
+		if (checkResult.isFixByRemovingShadow() || checkResult.getFixDeltas().size() > 0) {
+			try {
+				applyFix(checkResult, shadow, workerTask, result);
+				checkResult.setFixApplied(true);
+			} catch (CommonException e) {
+				checkResult.recordError(ShadowStatistics.CANNOT_APPLY_FIX, new SystemException("Couldn't apply the shadow fix", e));
+			}
+		}
+	}
+
+	private void fixNoResourceIfRequested(ShadowCheckResult checkResult, String problemCode) {
+        if (fixResourceRef) {
+            checkResult.setFixByRemovingShadow(problemCode);
         }
     }
 
-    private List<PrismObject> searchOwners(PrismObject<ShadowType> shadow, OperationResult result) {
+    private List<PrismObject<FocusType>> searchOwners(PrismObject<ShadowType> shadow, OperationResult result) {
         try {
-            PrismReferenceValue refValue = new PrismReferenceValue(shadow.getOid(), ShadowType.COMPLEX_TYPE);
-            RefFilter ownerFilter = RefFilter.createReferenceEqual(new ItemPath(FocusType.F_LINK_REF), FocusType.class, prismContext, refValue);
-            ObjectQuery ownerQuery = ObjectQuery.createObjectQuery(ownerFilter);
-            List owners = repositoryService.searchObjects(FocusType.class, ownerQuery, null, result);
+            ObjectQuery ownerQuery = QueryBuilder.queryFor(FocusType.class, prismContext)
+                    .item(FocusType.F_LINK_REF).ref(shadow.getOid())
+                    .build();
+            List<PrismObject<FocusType>> owners = repositoryService.searchObjects(FocusType.class, ownerQuery, null, result);
             if (LOGGER.isTraceEnabled()) {
                 LOGGER.trace("Owners for {}: {}", ObjectTypeUtil.toShortString(shadow), owners);
             }
             return owners;
-        } catch (SchemaException e) {
-            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't create owners query for shadow {}", e, ObjectTypeUtil.toShortString(shadow));
+        } catch (SchemaException|RuntimeException e) {
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't create/execute owners query for shadow {}", e, ObjectTypeUtil.toShortString(shadow));
             return null;
         }
     }
 
-    private PrismObject<ShadowType> fetchShadow(ShadowCheckResult checkResult, PrismObject<ShadowType> shadow, PrismObject<ResourceType> resource, Task task, OperationResult result) {
+    private PrismObject<ShadowType> fetchShadow(ShadowCheckResult checkResult, PrismObject<ShadowType> shadow,
+			Task task, OperationResult result) {
         try {
-            PrismObject<ShadowType> fullShadow = provisioningService.getObject(ShadowType.class, shadow.getOid(),
-                    SelectorOptions.createCollection(GetOperationOptions.createDoNotDiscovery()),
-                    task, result);
-            return fullShadow;
-        } catch (ObjectNotFoundException | CommunicationException | SchemaException | ConfigurationException | SecurityViolationException | RuntimeException e) {
-            checkResult.recordError(Statistics.CANNOT_FETCH_RESOURCE_OBJECT, new SystemException("The resource object couldn't be fetched", e));
+			return provisioningService.getObject(ShadowType.class, shadow.getOid(),
+					SelectorOptions.createCollection(GetOperationOptions.createDoNotDiscovery()),
+					task, result);
+        } catch (ObjectNotFoundException | CommunicationException | SchemaException | ConfigurationException | SecurityViolationException | ExpressionEvaluationException | RuntimeException | Error e) {
+            checkResult.recordError(ShadowStatistics.CANNOT_FETCH_RESOURCE_OBJECT, new SystemException("The resource object couldn't be fetched", e));
             return null;
         }
     }
@@ -506,12 +506,12 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
         PrismObject<ShadowType> fullShadow;
 
         if (!checkFetch) {
-            fullShadow = fetchShadow(checkResult, shadow, resource, task, result);
+            fullShadow = fetchShadow(checkResult, shadow, task, result);
         } else {
             fullShadow = fetchedShadow;
         }
         if (fullShadow == null) {
-            checkResult.recordError(Statistics.CANNOT_APPLY_FIX, new SystemException("Cannot fix missing intent, because the resource object couldn't be fetched"));
+            checkResult.recordError(ShadowStatistics.CANNOT_APPLY_FIX, new SystemException("Cannot fix missing intent, because the resource object couldn't be fetched"));
             return;
         }
 
@@ -519,7 +519,7 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
         try {
             synchronizationPolicy = synchronizationService.determineSynchronizationPolicy(resource.asObjectable(), fullShadow, configuration, task, result);
         } catch (SchemaException|ObjectNotFoundException|ExpressionEvaluationException|RuntimeException e) {
-            checkResult.recordError(Statistics.CANNOT_APPLY_FIX, new SystemException("Couldn't prepare fix for missing intent, because the synchronization policy couldn't be determined", e));
+            checkResult.recordError(ShadowStatistics.CANNOT_APPLY_FIX, new SystemException("Couldn't prepare fix for missing intent, because the synchronization policy couldn't be determined", e));
             return;
         }
         if (synchronizationPolicy != null) {
@@ -528,7 +528,7 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
                 if (LOGGER.isTraceEnabled()) {
                     LOGGER.trace("Intent fix delta (not executed now) = \n{}", delta.debugDump());
                 }
-                checkResult.addFixDelta(delta, Statistics.NO_INTENT_SPECIFIED);
+                checkResult.addFixDelta(delta, ShadowStatistics.NO_INTENT_SPECIFIED);
             } else {
                 LOGGER.info("Synchronization policy does not contain intent: {}", synchronizationPolicy);
             }
@@ -538,10 +538,17 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
     }
 
     private void applyFix(ShadowCheckResult checkResult, PrismObject<ShadowType> shadow, Task workerTask, OperationResult result) throws CommonException {
-        LOGGER.info("Applying shadow fix{}:\n{}", skippedForDryRun(), DebugUtil.debugDump(checkResult.getFixDeltas()));
+        LOGGER.info("Applying shadow fix{}:\n{}", skippedForDryRun(),
+				checkResult.isFixByRemovingShadow() ?
+						"DELETE " + ObjectTypeUtil.toShortString(shadow)
+						: DebugUtil.debugDump(checkResult.getFixDeltas()));
         if (!dryRun) {
             try {
-                repositoryService.modifyObject(ShadowType.class, shadow.getOid(), checkResult.getFixDeltas(), result);
+            	if (checkResult.isFixByRemovingShadow()) {
+            		repositoryService.deleteObject(ShadowType.class, shadow.getOid(), result);
+				} else {
+					repositoryService.modifyObject(ShadowType.class, shadow.getOid(), checkResult.getFixDeltas(), result);
+				}
                 workerTask.recordObjectActionExecuted(shadow, ChangeType.MODIFY, null);
             } catch (Throwable t) {
                 workerTask.recordObjectActionExecuted(shadow, ChangeType.MODIFY, t);
@@ -568,14 +575,16 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
         try {
             matchingRule = matchingRuleRegistry.getMatchingRule(matchingRuleQName, identifier.getTypeName());
         } catch (SchemaException e) {
-            checkResult.recordError(Statistics.OTHER_FAILURE, new SchemaException("Couldn't retrieve matching rule for identifier " +
+            checkResult.recordError(
+					ShadowStatistics.OTHER_FAILURE, new SchemaException("Couldn't retrieve matching rule for identifier " +
                     identifier.getName() + " (rule name = " + matchingRuleQName + ")"));
             return;
         }
 
         Object normalizedValue = matchingRule.normalize(value);
         if (!(normalizedValue instanceof String)) {
-            checkResult.recordError(Statistics.OTHER_FAILURE, new SchemaException("Normalized value is not a string, it's " + normalizedValue.getClass() +
+            checkResult.recordError(
+					ShadowStatistics.OTHER_FAILURE, new SchemaException("Normalized value is not a string, it's " + normalizedValue.getClass() +
                     " (identifier " + identifier.getName() + ", value " + value));
             return;
         }
@@ -584,55 +593,52 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
         }
         String normalizedStringValue = (String) normalizedValue;
 
-        checkResult.recordError(Statistics.NON_NORMALIZED_IDENTIFIER_VALUE,
+        checkResult.recordError(ShadowStatistics.NON_NORMALIZED_IDENTIFIER_VALUE,
                 new SchemaException("Non-normalized value of identifier " + identifier.getName()
                         + ": " + value + " (normalized form: " + normalizedValue + ")"));
 
         if (fixNormalization) {
             PropertyDelta delta = identifier.createEmptyDelta(new ItemPath(ShadowType.F_ATTRIBUTES, identifier.getName()));
             delta.setValueToReplace(new PrismPropertyValue<>(normalizedStringValue));
-            checkResult.addFixDelta(delta, Statistics.NON_NORMALIZED_IDENTIFIER_VALUE);
+            checkResult.addFixDelta(delta, ShadowStatistics.NON_NORMALIZED_IDENTIFIER_VALUE);
         }
     }
 
     private void addIdentifierValue(ShadowCheckResult checkResult, ObjectTypeContext context, QName identifierName, String identifierValue, PrismObject<ShadowType> shadow) {
 
-        Map<String, List<PrismObject<ShadowType>>> valueMap = context.getIdentifierValueMap().get(identifierName);
-        if (valueMap == null) {
-            valueMap = new HashMap<>();
-            context.getIdentifierValueMap().put(identifierName, valueMap);
-        }
-        List<PrismObject<ShadowType>> existingShadows = valueMap.get(identifierValue);
-        if (existingShadows == null) {
+        Map<String, Set<String>> valueMap = context.getIdentifierValueMap()
+                .computeIfAbsent(identifierName, k -> new HashMap<>());
+        Set<String> existingShadowOids = valueMap.get(identifierValue);
+        if (existingShadowOids == null) {
             // all is well
-            existingShadows = new ArrayList();
-            existingShadows.add(shadow);
-            valueMap.put(identifierValue, existingShadows);
+            existingShadowOids = new HashSet<>();
+            existingShadowOids.add(shadow.getOid());
+            valueMap.put(identifierValue, existingShadowOids);
         } else {
             // duplicate shadows statistics are collected in a special way
             duplicateShadowsDetected.add(shadow.getOid());
             LOGGER.error("Multiple shadows with the value of identifier attribute {} = {}: existing one(s): {}, duplicate: {}",
-                    identifierName, identifierValue, shortDumpList(existingShadows), ObjectTypeUtil.toShortString(shadow.asObjectable()));
-            existingShadows.add(shadow);
+                    identifierName, identifierValue, existingShadowOids, ObjectTypeUtil.toShortString(shadow.asObjectable()));
+            existingShadowOids.add(shadow.getOid());
         }
     }
 
-    private String shortDumpList(List<PrismObject<ShadowType>> list) {
-        StringBuilder sb = new StringBuilder();
-        sb.append('[');
-        boolean first = true;
-        for (PrismObject<ShadowType> object : list) {
-            if (first) {
-                first = false;
-            } else {
-                sb.append(", ");
-            }
-            sb.append(ObjectTypeUtil.toShortString(object.asObjectable()));
-        }
-        return sb.toString();
-    }
+//    private String shortDumpList(List<PrismObject<ShadowType>> list) {
+//        StringBuilder sb = new StringBuilder();
+//        sb.append('[');
+//        boolean first = true;
+//        for (PrismObject<ShadowType> object : list) {
+//            if (first) {
+//                first = false;
+//            } else {
+//                sb.append(", ");
+//            }
+//            sb.append(ObjectTypeUtil.toShortString(object.asObjectable()));
+//        }
+//        return sb.toString();
+//    }
 
-    public Statistics getStatistics() {
+    public ShadowStatistics getStatistics() {
         return statistics;
     }
 
@@ -650,12 +656,12 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
                 LOGGER.error("No resource for {}", resourceOid);        // should not happen
                 continue;
             }
-            for (Map.Entry<QName, Map<String, List<PrismObject<ShadowType>>>> idValEntry : ctx.getIdentifierValueMap().entrySet()) {
+            for (Map.Entry<QName, Map<String, Set<String>>> idValEntry : ctx.getIdentifierValueMap().entrySet()) {
                 QName identifier = idValEntry.getKey();
                 boolean first = true;
-                for (Map.Entry<String, List<PrismObject<ShadowType>>> valListEntry : idValEntry.getValue().entrySet()) {
-                    List<PrismObject<ShadowType>> shadows = valListEntry.getValue();
-                    if (shadows.size() <= 1) {
+                for (Map.Entry<String, Set<String>> valListEntry : idValEntry.getValue().entrySet()) {
+					Set<String> shadowsOids = valListEntry.getValue();
+                    if (shadowsOids.size() <= 1) {
                         continue;
                     }
                     if (first) {
@@ -664,22 +670,35 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
                         details.append(", identifier = ").append(identifier).append(":\n");
                         first = false;
                     }
-                    details.append(" - value: ").append(valListEntry.getKey()).append(", shadows: ").append(shadows.size()).append("\n");
+                    details.append(" - value: ").append(valListEntry.getKey()).append(", shadows: ").append(shadowsOids.size()).append("\n");
                     List<PrismObject<ShadowType>> shadowsToConsider = new ArrayList<>();
-                    for (PrismObject<ShadowType> shadow : shadows) {
-                        details.append("   - ").append(ObjectTypeUtil.toShortString(shadow));
-                        details.append("; sync situation = ").append(shadow.asObjectable().getSynchronizationSituation()).append("\n");
-                        PrismContainer<ShadowAttributesType> attributesContainer = shadow.findContainer(ShadowType.F_ATTRIBUTES);
-                        if (attributesContainer != null && !attributesContainer.isEmpty()) {
-                            for (Item item : attributesContainer.getValue().getItems()) {
-                                details.append("     - ").append(item.getElementName().getLocalPart()).append(" = ");
-                                details.append(((PrismProperty) item).getRealValues());
-                                details.append("\n");
-                            }
-                        }
-                        if (duplicateShadowsDeleted.contains(shadow.getOid())) {
-                            details.append("     (already deleted)\n");
-                        } else {
+                    for (String shadowOid : shadowsOids) {
+						PrismObject<ShadowType> shadow = null;
+						try {
+							shadow = repositoryService.getObject(ShadowType.class, shadowOid, null, result);
+						} catch (ObjectNotFoundException e) {
+							LOGGER.debug("Couldn't fetch shadow with OID {}, it was probably already deleted", shadowOid, e);
+						} catch (SchemaException e) {
+							LoggingUtils.logUnexpectedException(LOGGER, "Couldn't fetch shadow with OID {} from the repository", e, shadowOid);
+							continue;
+						}
+						details.append("   - ").append(shadow != null ? ObjectTypeUtil.toShortString(shadow) : shadowOid);
+						if (shadow != null) {
+							details.append("; sync situation = ").append(shadow.asObjectable().getSynchronizationSituation()).append("\n");
+							PrismContainer<ShadowAttributesType> attributesContainer = shadow.findContainer(ShadowType.F_ATTRIBUTES);
+							if (attributesContainer != null && !attributesContainer.isEmpty()) {
+								for (Item item : attributesContainer.getValue().getItems()) {
+									details.append("     - ").append(item.getElementName().getLocalPart()).append(" = ");
+									details.append(item.getRealValues());
+									details.append("\n");
+								}
+							}
+						}
+                        if (duplicateShadowsDeleted.contains(shadowOid)) {
+							details.append("     (already deleted)\n");
+						} else if (shadow == null) {
+							details.append("     (inaccessible)\n");
+						} else {
                             shadowsToConsider.add(shadow);
                         }
                     }
@@ -717,7 +736,7 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
             sb.append("   --> deleted redundant shadow").append(skippedForDryRun()).append(" ").append(ObjectTypeUtil.toShortString(shadowToDelete)).append("\n");
             String oid = shadowToDelete.getOid();
 
-            List<PrismObject> owners;
+            List<PrismObject<FocusType>> owners;
             if (checkOwners) {
                 owners = (List) shadowToDelete.getUserData(KEY_OWNERS);
             } else {
@@ -826,10 +845,10 @@ public class ShadowIntegrityCheckResultHandler extends AbstractSearchIterativeRe
         if (property == null || property.isEmpty()) {
             return;
         }
-        checkResult.recordWarning(Statistics.EXTRA_ACTIVATION_DATA, "Unexpected activation item: " + property);
+        checkResult.recordWarning(ShadowStatistics.EXTRA_ACTIVATION_DATA, "Unexpected activation item: " + property);
         if (fixExtraData) {
             PropertyDelta delta = PropertyDelta.createReplaceEmptyDelta(shadow.getDefinition(), new ItemPath(ShadowType.F_ACTIVATION, itemName));
-            checkResult.addFixDelta(delta, Statistics.EXTRA_ACTIVATION_DATA);
+            checkResult.addFixDelta(delta, ShadowStatistics.EXTRA_ACTIVATION_DATA);
         }
     }
 

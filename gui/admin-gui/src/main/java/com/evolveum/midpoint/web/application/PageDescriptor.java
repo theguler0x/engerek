@@ -16,8 +16,8 @@
 
 package com.evolveum.midpoint.web.application;
 
-import com.evolveum.midpoint.web.util.MidPointPageParametersEncoder;
 import org.apache.wicket.request.mapper.parameter.IPageParametersEncoder;
+import org.apache.wicket.request.mapper.parameter.PageParametersEncoder;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -28,9 +28,16 @@ import java.lang.annotation.RetentionPolicy;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface PageDescriptor {
 
-    String[] url();
+    /**
+     * Please use {@link PageDescriptor#urls()}
+     * @return
+     */
+    @Deprecated
+    String[] url() default {};
 
-    Class<? extends IPageParametersEncoder> encoder() default MidPointPageParametersEncoder.class;
+    Url[] urls() default {};
+
+    Class<? extends IPageParametersEncoder> encoder() default PageParametersEncoder.class;
 
     AuthorizationAction[] action() default {};
 }

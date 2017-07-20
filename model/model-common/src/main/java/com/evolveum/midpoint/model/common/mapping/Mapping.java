@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,42 +26,33 @@ import javax.xml.datatype.Duration;
 import javax.xml.datatype.XMLGregorianCalendar;
 import javax.xml.namespace.QName;
 
+import com.evolveum.midpoint.prism.*;
+import com.evolveum.midpoint.schema.SchemaConstantsGenerated;
+import com.evolveum.midpoint.schema.constants.ExpressionConstants;
 import com.evolveum.midpoint.security.api.SecurityEnforcer;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import com.evolveum.prism.xml.ns._public.types_3.ItemPathType;
 
-import org.apache.commons.lang.Validate;
+import org.jetbrains.annotations.NotNull;
 import org.w3c.dom.Element;
 
-import com.evolveum.midpoint.common.InternalsConfig;
 import com.evolveum.midpoint.common.filter.Filter;
 import com.evolveum.midpoint.common.filter.FilterManager;
 import com.evolveum.midpoint.common.refinery.RefinedObjectClassDefinition;
-import com.evolveum.midpoint.model.common.expression.Expression;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluationContext;
-import com.evolveum.midpoint.model.common.expression.ExpressionFactory;
-import com.evolveum.midpoint.model.common.expression.ExpressionUtil;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
-import com.evolveum.midpoint.model.common.expression.ItemDeltaItem;
-import com.evolveum.midpoint.model.common.expression.ObjectDeltaObject;
-import com.evolveum.midpoint.model.common.expression.Source;
-import com.evolveum.midpoint.model.common.expression.StringPolicyResolver;
-import com.evolveum.midpoint.prism.Item;
-import com.evolveum.midpoint.prism.ItemDefinition;
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismObjectDefinition;
-import com.evolveum.midpoint.prism.PrismProperty;
-import com.evolveum.midpoint.prism.PrismPropertyDefinition;
-import com.evolveum.midpoint.prism.PrismPropertyValue;
-import com.evolveum.midpoint.prism.PrismValue;
-import com.evolveum.midpoint.prism.OriginType;
-import com.evolveum.midpoint.prism.Visitable;
-import com.evolveum.midpoint.prism.Visitor;
 import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
-import com.evolveum.midpoint.prism.path.NameItemPathSegment;
-import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.repo.common.expression.Expression;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluationContext;
+import com.evolveum.midpoint.repo.common.expression.ExpressionFactory;
+import com.evolveum.midpoint.repo.common.expression.ExpressionUtil;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
+import com.evolveum.midpoint.repo.common.expression.ItemDeltaItem;
+import com.evolveum.midpoint.repo.common.expression.ObjectDeltaObject;
+import com.evolveum.midpoint.repo.common.expression.Source;
+import com.evolveum.midpoint.repo.common.expression.StringPolicyResolver;
+import com.evolveum.midpoint.repo.common.expression.ValueSetDefinition;
+import com.evolveum.midpoint.schema.internals.InternalsConfig;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.SchemaDebugUtil;
 import com.evolveum.midpoint.schema.util.ObjectResolver;
@@ -72,88 +63,104 @@ import com.evolveum.midpoint.util.MiscUtil;
 import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.util.exception.TunnelException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ExpressionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ExpressionVariableDefinitionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingSourceDeclarationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingStrengthType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingTargetDeclarationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingTimeDeclarationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ValueFilterType;
 
 /**
  * 
  * Mapping is non-recyclable single-use object. Once evaluated it should not be evaluated again. It will retain its original
  * inputs and outputs that can be read again and again. But these should not be changed after evaluation.
+ *
+ * Configuration properties are unmodifiable. They are to be set via Mapping.Builder.
  * 
  * @author Radovan Semancik
  *
  */
 public class Mapping<V extends PrismValue,D extends ItemDefinition> implements DebugDumpable, PrismValueDeltaSetTripleProducer<V, D> {
 	
-	private static final QName CONDITION_OUTPUT_NAME = new QName(SchemaConstants.NS_C, "condition");
-	
-	private ExpressionFactory expressionFactory;
-	private ExpressionVariables variables = new ExpressionVariables();
-	private String contextDescription;
-	private String mappingContextDescription = null;
-	private MappingType mappingType;
-	private ObjectResolver objectResolver = null;
-    private SecurityEnforcer securityEnforcer;          // in order to get c:actor variable
-	private Source<?,?> defaultSource = null;
-	private D defaultTargetDefinition = null;
-	private ItemPath defaultTargetPath = null;
-	private ObjectDeltaObject<?> sourceContext = null;
-	private PrismObjectDefinition<?> targetContext = null;
-	private PrismValueDeltaSetTriple<V> outputTriple = null;
+	// configuration properties (unmodifiable)
+	private final MappingType mappingType;
+	private final ExpressionFactory expressionFactory;
+	private final ExpressionVariables variables;
+
+	private final ObjectDeltaObject<?> sourceContext;
+	private final Collection<Source<?,?>> sources;
+	private final Source<?,?> defaultSource;
+
+	private final PrismObjectDefinition<?> targetContext;
+	private final ItemPath defaultTargetPath;
+	private final D defaultTargetDefinition;
+	private final Collection<V> originalTargetValues;
+
+	private final ObjectResolver objectResolver;
+    private final SecurityEnforcer securityEnforcer;          // in order to get c:actor variable
+	private final OriginType originType;
+	private final ObjectType originObject;
+	private final FilterManager<Filter> filterManager;
+	private final StringPolicyResolver stringPolicyResolver;
+	private final boolean conditionMaskOld;
+	private final boolean conditionMaskNew;
+	private final XMLGregorianCalendar defaultReferenceTime;
+	private final XMLGregorianCalendar now;
+	private final boolean profiling;
+	private final String contextDescription;
+
+	private final QName mappingQName;						// This is sometimes used to identify the element that mapping produces
+															// if it is different from itemName. E.g. this happens with associations.
+	private final RefinedObjectClassDefinition refinedObjectClassDefinition;
+
+	// working and output properties
 	private D outputDefinition;
 	private ItemPath outputPath;
-	private Collection<Source<?,?>> sources = new ArrayList<Source<?,?>>();
-	private boolean conditionMaskOld = true;
-	private boolean conditionMaskNew = true;
+	private MappingEvaluationState state = MappingEvaluationState.UNINITIALIZED;
+
+	private PrismValueDeltaSetTriple<V> outputTriple;
 	private PrismValueDeltaSetTriple<PrismPropertyValue<Boolean>> conditionOutputTriple;
-	private OriginType originType = null;
-	private ObjectType originObject = null;
-	private FilterManager<Filter> filterManager;
-	private StringPolicyResolver stringPolicyResolver;
-	private XMLGregorianCalendar now;
-	private XMLGregorianCalendar defaultReferenceTime = null;
 	private Boolean timeConstraintValid = null;
 	private XMLGregorianCalendar nextRecomputeTime = null;
-	private boolean profiling = false;
 	private Long evaluationStartTime = null;
 	private Long evaluationEndTime = null;
-	// This is sometimes used to identify the element that mapping produces
-	// if it is different from itemName. E.g. this happens with associations.
-	private QName mappingQName;
-	private RefinedObjectClassDefinition refinedObjectClassDefinition;
-	
+
+	private String mappingContextDescription = null;
+
 	// This is single-use only. Once evaluated it is not used any more
 	// it is remembered only for tracing purposes.
 	private Expression<V,D> expression;
 	
 	private static final Trace LOGGER = TraceManager.getTrace(Mapping.class);
-	
-	Mapping(MappingType mappingType, String contextDescription, ExpressionFactory expressionFactory, SecurityEnforcer securityEnforcer) {
-		Validate.notNull(mappingType);
-		this.contextDescription = contextDescription;
-		this.mappingType = mappingType;
-		this.expressionFactory = expressionFactory;
-        this.securityEnforcer = securityEnforcer;
+
+	private Mapping(Builder<V,D> builder) {
+		expressionFactory = builder.expressionFactory;
+		variables = builder.variables;
+		mappingType = builder.mappingType;
+		objectResolver = builder.objectResolver;
+		securityEnforcer = builder.securityEnforcer;
+		defaultSource = builder.defaultSource;
+		defaultTargetDefinition = builder.defaultTargetDefinition;
+		defaultTargetPath = builder.defaultTargetPath;
+		originalTargetValues = builder.originalTargetValues;
+		sourceContext = builder.sourceContext;
+		targetContext = builder.targetContext;
+		sources = builder.sources;
+		originType = builder.originType;
+		originObject = builder.originObject;
+		filterManager = builder.filterManager;
+		stringPolicyResolver = builder.stringPolicyResolver;
+		conditionMaskOld = builder.conditionMaskOld;
+		conditionMaskNew = builder.conditionMaskNew;
+		defaultReferenceTime = builder.defaultReferenceTime;
+		profiling = builder.profiling;
+		contextDescription = builder.contextDescription;
+		mappingQName = builder.mappingQName;
+		refinedObjectClassDefinition = builder.refinedObjectClassDefinition;
+		now = builder.now;
 	}
-	
+
 	public ObjectResolver getObjectResolver() {
 		return objectResolver;
 	}
 
-	public void setObjectResolver(ObjectResolver objectResolver) {
-		this.objectResolver = objectResolver;
-	}
-			
 	public QName getItemName() {
 		if (outputDefinition != null) {
 			return outputDefinition.getName();
@@ -165,70 +172,34 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		return originType;
 	}
 
-	public void setOriginType(OriginType sourceType) {
-		this.originType = sourceType;
-	}
-
 	public ObjectType getOriginObject() {
 		return originObject;
 	}
 
-	public void setOriginObject(ObjectType originObject) {
-		this.originObject = originObject;
-	}
-
-	public void addSource(Source<?,?> source) {
-		sources.add(source);
-	}
-	
 	public Source<?,?> getDefaultSource() {
 		return defaultSource;
-	}
-
-	public void setDefaultSource(Source<?,?> defaultSource) {
-		this.defaultSource = defaultSource;
 	}
 
 	public D getDefaultTargetDefinition() {
 		return defaultTargetDefinition;
 	}
 
-	public void setDefaultTargetDefinition(D defaultTargetDefinition) {
-		this.defaultTargetDefinition = defaultTargetDefinition;
-	}
-
 	public ItemPath getDefaultTargetPath() {
 		return defaultTargetPath;
-	}
-
-	public void setDefaultTargetPath(ItemPath defaultTargetPath) {
-		this.defaultTargetPath = defaultTargetPath;
 	}
 
 	public ObjectDeltaObject<?> getSourceContext() {
 		return sourceContext;
 	}
 
-	public void setSourceContext(ObjectDeltaObject<?> sourceContext) {
-		this.sourceContext = sourceContext;
-	}
-
 	public PrismObjectDefinition<?> getTargetContext() {
 		return targetContext;
-	}
-
-	public void setTargetContext(PrismObjectDefinition<?> targetContext) {
-		this.targetContext = targetContext;
 	}
 
 	public String getContextDescription() {
 		return contextDescription;
 	}
 
-	public void setContextDescription(String contextDescription) {
-		this.contextDescription = contextDescription;
-	}
-	
 	public String getMappingContextDescription() {
 		if (mappingContextDescription == null) {
 			StringBuilder sb = new StringBuilder("mapping ");
@@ -245,80 +216,17 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 	public MappingType getMappingType() {
 		return mappingType;
 	}
-
-	public void setRootNode(ObjectReferenceType objectRef) {
-		addVariableDefinition(null,(Object)objectRef);
-	}
 	
-	public void setRootNode(ObjectDeltaObject<?> odo) {
-		addVariableDefinition(null,(Object)odo);
-	}
-	
-	public void setRootNode(ObjectType objectType) {
-		addVariableDefinition(null,(Object)objectType);
-	}
-	
-	public void setRootNode(PrismObject<? extends ObjectType> mpObject) {
-		addVariableDefinition(null,(Object)mpObject);
+	@Override
+	public boolean isSourceless() {
+		return sources.isEmpty();
 	}
 
-	public void addVariableDefinition(ExpressionVariableDefinitionType varDef) throws SchemaException {
-		if (varDef.getObjectRef() != null) {
-            ObjectReferenceType ref = varDef.getObjectRef();
-            ref.setType(getPrismContext().getSchemaRegistry().qualifyTypeName(ref.getType()));
-			addVariableDefinition(varDef.getName(), ref);
-		} else if (varDef.getValue() != null) {
-			addVariableDefinition(varDef.getName(),varDef.getValue());
-		} else {
-			LOGGER.warn("Empty definition of variable {} in {}, ignoring it",varDef.getName(),getMappingContextDescription());
-		}
-	}
-	
-	public void addVariableDefinition(QName name, ObjectReferenceType objectRef) {
-		addVariableDefinition(name, (Object)objectRef);
-	}
-	
-	public void addVariableDefinition(QName name, ObjectType objectType) {
-		addVariableDefinition(name,(Object)objectType);
-	}
-	
-	public void addVariableDefinition(QName name, PrismObject<? extends ObjectType> midpointObject) {
-		addVariableDefinition(name,(Object)midpointObject);
-	}
-
-	public void addVariableDefinition(QName name, String value) {
-		addVariableDefinition(name,(Object)value);
-	}
-
-	public void addVariableDefinition(QName name, int value) {
-		addVariableDefinition(name,(Object)value);
-	}
-
-	public void addVariableDefinition(QName name, Element value) {
-		addVariableDefinition(name,(Object)value);
-	}
-	
-	public void addVariableDefinition(QName name, PrismValue value) {
-		addVariableDefinition(name,(Object)value);
-	}
-	
-	public void addVariableDefinition(QName name, ObjectDeltaObject<?> value) {
-		addVariableDefinition(name,(Object)value);
-	}
-
-	public void addVariableDefinitions(Map<QName, Object> extraVariables) {
-		variables.addVariableDefinitions(extraVariables);
-	}
-	
-	public void addVariableDefinition(QName name, Object value) {
-		variables.addVariableDefinition(name, value);
-	}
-	
-	public boolean hasVariableDefinition(QName varName) {
-		return variables.containsKey(varName);
-	}
-	
 	public MappingStrengthType getStrength() {
+		return getStrength(mappingType);
+	}
+
+	public static MappingStrengthType getStrength(MappingType mappingType) {
 		if (mappingType == null) {
 			return MappingStrengthType.NORMAL;
 		}
@@ -351,22 +259,21 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		return value;
 	}
 	
+	public Boolean isTolerant() {
+		if (mappingType == null) {
+			return null;
+		}
+		return mappingType.isTolerant();
+	}
+	
 	public boolean isConditionMaskOld() {
 		return conditionMaskOld;
-	}
-
-	public void setConditionMaskOld(boolean conditionMaskOld) {
-		this.conditionMaskOld = conditionMaskOld;
 	}
 
 	public boolean isConditionMaskNew() {
 		return conditionMaskNew;
 	}
 
-	public void setConditionMaskNew(boolean conditionMaskNew) {
-		this.conditionMaskNew = conditionMaskNew;
-	}
-	
 	private PrismContext getPrismContext() {
 		return outputDefinition.getPrismContext();
 	}
@@ -375,19 +282,15 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		return filterManager;
 	}
 
-	public void setFilterManager(FilterManager<Filter> filterManager) {
-		this.filterManager = filterManager;
-	}
-	
 	public StringPolicyResolver getStringPolicyResolver() {
 		return stringPolicyResolver;
 	}
 
-	public void setStringPolicyResolver(StringPolicyResolver stringPolicyResolver) {
-		this.stringPolicyResolver = stringPolicyResolver;
-	}
-	
 	public boolean isApplicableToChannel(String channelUri) {
+		return isApplicableToChannel(mappingType, channelUri);
+	}
+
+	public static boolean isApplicableToChannel(MappingType mappingType, String channelUri) {
 		List<String> exceptChannel = mappingType.getExceptChannel();
 		if (exceptChannel != null &&  !exceptChannel.isEmpty()){
 			return !exceptChannel.contains(channelUri);
@@ -403,32 +306,16 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		return now;
 	}
 
-	public void setNow(XMLGregorianCalendar now) {
-		this.now = now;
-	}
-
 	public XMLGregorianCalendar getDefaultReferenceTime() {
 		return defaultReferenceTime;
-	}
-
-	public void setDefaultReferenceTime(XMLGregorianCalendar defaultReferenceTime) {
-		this.defaultReferenceTime = defaultReferenceTime;
 	}
 
 	public XMLGregorianCalendar getNextRecomputeTime() {
 		return nextRecomputeTime;
 	}
 
-	public void setNextRecomputeTime(XMLGregorianCalendar nextRecomputeTime) {
-		this.nextRecomputeTime = nextRecomputeTime;
-	}
-
 	public boolean isProfiling() {
 		return profiling;
-	}
-
-	public void setProfiling(boolean profiling) {
-		this.profiling = profiling;
 	}
 
 	public Long getEvaluationStartTime() {
@@ -454,27 +341,69 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		return mappingQName;
 	}
 
-	public void setMappingQName(QName mappingQName) {
-		this.mappingQName = mappingQName;
-	}
-
 	public RefinedObjectClassDefinition getRefinedObjectClassDefinition() {
 		return refinedObjectClassDefinition;
 	}
 
-	public void setRefinedObjectClassDefinition(RefinedObjectClassDefinition refinedObjectClassDefinition) {
-		this.refinedObjectClassDefinition = refinedObjectClassDefinition;
+	// TODO: rename to evaluateAll
+	public void evaluate(Task task, OperationResult parentResult) throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException {
+		prepare(task, parentResult);
+
+//		if (!isActivated()) {
+//			outputTriple = null;
+//			LOGGER.debug("Skipping evaluation of mapping {} in {} because it is not activated",
+//					mappingType.getName() == null?null:mappingType.getName(), contextDescription);
+//			return;
+//		}
+
+		evaluateBody(task, parentResult);
 	}
 
-	public void evaluate(Task task, OperationResult parentResult) throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException {
+	/**
+	 * Prepare mapping for evaluation.  Parse the values
+	 * After this call it can checked if a mapping is activated
+	 * (i.e. if the input changes will "trigger" the mapping).
+	 */
+	public void prepare(Task task, OperationResult parentResult) throws SchemaException, ObjectNotFoundException, ExpressionEvaluationException {
+			OperationResult result = parentResult.createMinorSubresult(Mapping.class.getName()+".prepare");
+		assertState(MappingEvaluationState.UNINITIALIZED);
+		try {
+			
+			parseSources(task, result);
+			
+			parseTarget();
+			if (outputPath != null && outputDefinition == null) {
+				throw new IllegalArgumentException("No output definition, cannot evaluate "+getMappingContextDescription());
+			}
+			
+		} catch (ExpressionEvaluationException | ObjectNotFoundException | RuntimeException | SchemaException | Error e) {
+			result.recordFatalError(e);
+			throw e;
+		}
+		
+		transitionState(MappingEvaluationState.PREPARED);
+		result.recordSuccess();
+	}
+	
+	public boolean isActivated() {
+		// TODO
+//		return isActivated;
+		return sourcesChanged();
+	}
+	
+	// TODO: rename to evaluate
+	public void evaluateBody(Task task, OperationResult parentResult) throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException {
+		
+		assertState(MappingEvaluationState.PREPARED);
 		
 		OperationResult result = parentResult.createMinorSubresult(Mapping.class.getName()+".evaluate");
-
-        ExpressionUtil.addActorVariable(variables, securityEnforcer);
 
         traceEvaluationStart();
 		
 		try {
+			
+			// We may need to re-parse the sources here
+			
 			evaluateTimeConstraintValid(task, result);
 			
 			if (!timeConstraintValid) {
@@ -482,13 +411,6 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 				result.recordNotApplicableIfUnknown();
 				traceDeferred();
 				return;
-			}
-
-			parseSources(task, result);
-			parseTarget();
-
-			if (outputPath != null && outputDefinition == null) {
-				throw new IllegalArgumentException("No output definition, cannot evaluate "+getMappingContextDescription());
 			}
 			
 			evaluateCondition(task, result);
@@ -500,40 +422,113 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 			boolean conditionResultNew = conditionOutputNew && conditionMaskNew;
 			
 			if (!conditionResultOld && !conditionResultNew) {
-				result.recordSuccess();
-				traceSuccess(conditionResultOld, conditionResultNew);
+				outputTriple = null;
+				transitionState(MappingEvaluationState.EVALUATED);
+				result.recordNotApplicableIfUnknown();
+				traceNotApplicable("condition is false");
 				return;
 			}
+			
 			// TODO: input filter
 			evaluateExpression(task, result, conditionResultOld, conditionResultNew);
 			fixDefinition();
 			recomputeValues();
 			setOrigin();
 			// TODO: output filter
-			
+
+			checkRange(task, result);
+
+			transitionState(MappingEvaluationState.EVALUATED);
 			result.recordSuccess();
 			traceSuccess(conditionResultOld, conditionResultNew);
 			
-		} catch (ExpressionEvaluationException e) {
-			result.recordFatalError(e);
-			traceFailure(e);
-			throw e;
-		} catch (ObjectNotFoundException e) {
-			result.recordFatalError(e);
-			traceFailure(e);
-			throw e;
-		} catch (SchemaException e) {
-			result.recordFatalError(e);
-			traceFailure(e);
-			throw e;
-		} catch (RuntimeException e) {
+		} catch (ExpressionEvaluationException | ObjectNotFoundException | RuntimeException | SchemaException | Error e) {
 			result.recordFatalError(e);
 			traceFailure(e);
 			throw e;
 		}
 	}
-	
-	public boolean isSatisfyCondition(){
+
+	private void checkRange(Task task, OperationResult result)
+			throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException {
+		VariableBindingDefinitionType target = mappingType.getTarget();
+		if (target != null && target.getSet() != null) {
+			checkRangeTarget(task, result);
+		}
+		if (mappingType.getRange() != null) {
+			checkRangeLegacy(task, result);
+		}
+	}
+
+	private void checkRangeTarget(Task task, OperationResult result)
+			throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException {
+		if (originalTargetValues == null) {
+			throw new IllegalStateException("Couldn't check range for mapping in " + contextDescription + ", as original target values are not known.");
+		}
+		ValueSetDefinitionType rangetSetDefType = mappingType.getTarget().getSet();
+		QName name = outputPath.lastNamed().getName();
+		ValueSetDefinition setDef = new ValueSetDefinition(rangetSetDefType, name, "range of "+name.getLocalPart()+" in "+getMappingContextDescription(), task, result);
+		setDef.init(expressionFactory);
+		for (V originalValue : originalTargetValues) {
+			if (!setDef.contains(originalValue)) {
+				continue;
+			}
+			addToMinusIfNecessary(originalValue);
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private void addToMinusIfNecessary(V originalValue) {
+		if (outputTriple != null && (outputTriple.presentInPlusSet(originalValue) || outputTriple.presentInZeroSet(originalValue))) {
+			return;
+		}
+		// remove it!
+		if (outputTriple == null) {
+			outputTriple = new PrismValueDeltaSetTriple<>();
+		}
+		LOGGER.trace("Original value is in the mapping range (while not in mapping result), adding it to minus set: {}", originalValue);
+		outputTriple.addToMinusSet((V)originalValue.clone());
+	}
+
+	private void checkRangeLegacy(Task task, OperationResult result)
+			throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException {
+		if (originalTargetValues == null) {
+			throw new IllegalStateException("Couldn't check range for mapping in " + contextDescription + ", as original target values are not known.");
+		}
+		for (V originalValue : originalTargetValues) {
+			if (!isInRange(originalValue, task, result)) {
+				continue;
+			}
+			addToMinusIfNecessary(originalValue);
+		}
+	}
+
+	private boolean isInRange(V value, Task task, OperationResult result) throws ExpressionEvaluationException, ObjectNotFoundException, SchemaException {
+		@NotNull ValueSetSpecificationType range = mappingType.getRange();
+		if (range.getIsInSetExpression() == null) {
+			return false;
+		}
+		ExpressionVariables variables = new ExpressionVariables();
+		variables.addVariableDefinitions(this.variables);			// TODO is this ok?
+
+		if (value instanceof PrismContainerValue) {
+			// artifically create parent for PCV in order to pass it to expression
+			PrismContainer.createParentIfNeeded((PrismContainerValue) value, outputDefinition);
+		}
+		variables.addVariableDefinition(ExpressionConstants.VAR_VALUE, value);
+
+		PrismPropertyDefinition<Boolean> outputDef = new PrismPropertyDefinitionImpl<Boolean>(SchemaConstantsGenerated.C_VALUE, DOMUtil.XSD_BOOLEAN, getPrismContext(), null, false);
+		PrismPropertyValue<Boolean> rv = ExpressionUtil.evaluateExpression(variables, outputDef, range.getIsInSetExpression(), expressionFactory, "isInSet expression in " + contextDescription, task, result);
+
+		// but now remove the parent!
+		if (value.getParent() != null) {
+			value.setParent(null);
+		}
+
+		return rv != null && rv.getValue() != null ? rv.getValue() : Boolean.FALSE;
+	}
+
+	public boolean isSatisfyCondition() {
 		boolean conditionOutputOld = computeConditionResult(conditionOutputTriple.getNonPositiveValues());
 		boolean conditionResultOld = conditionOutputOld && conditionMaskOld;
 		
@@ -541,7 +536,11 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		boolean conditionResultNew = conditionOutputNew && conditionMaskNew;
 		return (conditionResultOld || conditionResultNew);
 	}
-	
+
+	public PrismValueDeltaSetTriple<PrismPropertyValue<Boolean>> getConditionOutputTriple() {
+		return conditionOutputTriple;
+	}
+
 	private void traceEvaluationStart() {
 		if (profiling) {
 			evaluationStartTime = System.currentTimeMillis();
@@ -556,7 +555,7 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 
 	private void traceSuccess(boolean conditionResultOld, boolean conditionResultNew) {
 		traceEvaluationEnd();
-		if (!LOGGER.isTraceEnabled()) {
+		if (!isTrace()) {
 			return;
 		}
 		StringBuilder sb = new StringBuilder();
@@ -579,12 +578,12 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 			sb.append(" ms");
 		}
 		appendTraceFooter(sb);
-		LOGGER.trace(sb.toString());
+		trace(sb.toString());
 	}
 	
 	private void traceDeferred() {
 		traceEvaluationEnd();
-		if (!LOGGER.isTraceEnabled()) {
+		if (!isTrace()) {
 			return;
 		}
 		StringBuilder sb = new StringBuilder();
@@ -602,17 +601,35 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 			sb.append(" ms");
 		}
 		appendTraceFooter(sb);
-		LOGGER.trace(sb.toString());
+		trace(sb.toString());
 	}
 	
-	private void traceFailure(Exception e) {
-		LOGGER.error("Error evaluating {}: {}", new Object[]{getMappingContextDescription(), e.getMessage(), e});
+	private void traceNotApplicable(String reason) {
 		traceEvaluationEnd();
-		if (!LOGGER.isTraceEnabled()) {
+		if (!isTrace()) {
 			return;
 		}
 		StringBuilder sb = new StringBuilder();
-		sb.append("Mapping failure:\n");
+		sb.append("Mapping trace:\n");
+		appendTraceHeader(sb);
+		sb.append("\nEvaluation is NOT APPLICABLE because "+reason);
+		if (profiling) {
+			sb.append("\nEtime: ");
+			sb.append(getEtime());
+			sb.append(" ms");
+		}
+		appendTraceFooter(sb);
+		trace(sb.toString());
+	}
+	
+	private void traceFailure(Throwable e) {
+		LOGGER.error("Error evaluating {}: {}", new Object[]{getMappingContextDescription(), e.getMessage(), e});
+		traceEvaluationEnd();
+		if (!isTrace()) {
+			return;
+		}
+		StringBuilder sb = new StringBuilder();
+		sb.append("Mapping FAILURE:\n");
 		appendTraceHeader(sb);
 		sb.append("\nERROR: ").append(e.getClass().getSimpleName()).append(": ").append(e.getMessage());
 		if (profiling) {
@@ -621,7 +638,19 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 			sb.append(" ms");
 		}
 		appendTraceFooter(sb);
-		LOGGER.trace(sb.toString());
+		trace(sb.toString());
+	}
+	
+	private boolean isTrace() {
+		return LOGGER.isTraceEnabled() || (mappingType != null && mappingType.isTrace() == Boolean.TRUE); 
+	}
+	
+	private void trace(String msg) {
+		if (mappingType != null && mappingType.isTrace() == Boolean.TRUE) {
+			LOGGER.info(msg);
+		} else {
+			LOGGER.trace(msg);
+		}
 	}
 
 	private void appendTraceHeader(StringBuilder sb) {
@@ -632,6 +661,10 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		sb.append(" in ");
 		sb.append(contextDescription);
 		sb.append("]---------------------------");
+		MappingStrengthType strength = getStrength();
+		if (strength != null) {
+			sb.append("\nStregth: ").append(strength);
+		}
 		for (Source<?,?> source: sources) {
 			sb.append("\nSource: ");
 			sb.append(source.shortDebugDump());
@@ -723,10 +756,10 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		if (timeType == null) {
 			return null;
 		}
-		XMLGregorianCalendar time = null;
-		MappingSourceDeclarationType referenceTimeType = timeType.getReferenceTime();
+		XMLGregorianCalendar time;
+		VariableBindingDefinitionType referenceTimeType = timeType.getReferenceTime();
 		if (referenceTimeType == null) {
-			if (time == null) {
+			if (defaultReferenceTime == null) {
 				throw new SchemaException("No reference time specified (and there is also no default) in time specification in "+getMappingContextDescription());
 			} else {
 				time = (XMLGregorianCalendar) defaultReferenceTime.clone();
@@ -746,7 +779,7 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		return time;
 	}
 
-	private XMLGregorianCalendar parseTimeSource(MappingSourceDeclarationType sourceType, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException {
+	private XMLGregorianCalendar parseTimeSource(VariableBindingDefinitionType sourceType, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException {
 		ItemPathType itemPathType = sourceType.getPath();
 		if (itemPathType == null) {
 			throw new SchemaException("No path in source definition in "+getMappingContextDescription());
@@ -774,15 +807,15 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		return timeProperty.getRealValue();
 	}
 
-	private Collection<Source<?,?>> parseSources(Task task, OperationResult result) throws SchemaException, ObjectNotFoundException {
-		List<MappingSourceDeclarationType> sourceTypes = mappingType.getSource();
+	private Collection<Source<?,?>> parseSources(Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, ExpressionEvaluationException {
+		List<VariableBindingDefinitionType> sourceTypes = mappingType.getSource();
 		if (defaultSource != null) {
 			defaultSource.recompute();
 			sources.add(defaultSource);
 			defaultSource.recompute();
 		}
 		if (sourceTypes != null) {
-			for (MappingSourceDeclarationType sourceType: sourceTypes) {
+			for (VariableBindingDefinitionType sourceType: sourceTypes) {
 				Source<?,?> source = parseSource(sourceType, task, result);
 				source.recompute();
 				
@@ -801,7 +834,7 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		return sources;
 	}
 
-	private <IV extends PrismValue, ID extends ItemDefinition> Source<IV,ID> parseSource(MappingSourceDeclarationType sourceType, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException {
+	private <IV extends PrismValue, ID extends ItemDefinition> Source<IV,ID> parseSource(VariableBindingDefinitionType sourceType, Task task, OperationResult result) throws SchemaException, ObjectNotFoundException, ExpressionEvaluationException {
 		ItemPathType itemPathType = sourceType.getPath();
 		if (itemPathType == null) {
 			throw new SchemaException("No path in source definition in "+getMappingContextDescription());
@@ -836,6 +869,41 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 				throw new IllegalStateException("Unknown resolve result "+sourceObject);
 			}
 		}
+		
+		// apply domain
+		ValueSetDefinitionType domainSetType = sourceType.getSet();
+		if (domainSetType != null) {
+			ValueSetDefinition setDef = new ValueSetDefinition(domainSetType, name, "domain of "+name.getLocalPart()+" in "+getMappingContextDescription(), task, result);
+			setDef.init(expressionFactory);
+			try {
+				
+				if (itemOld != null) {
+					itemOld = itemOld.clone();
+					itemOld.filterValues(val -> setDef.containsTunnel(val));
+				}
+				
+				if (itemNew != null) {
+					itemNew = itemNew.clone();
+					itemNew.filterValues(val -> setDef.containsTunnel(val));
+				}
+				
+				if (delta != null) {
+					delta = delta.clone();
+					delta.filterValues(val -> setDef.containsTunnel(val));
+				}
+				
+			} catch (TunnelException te) {
+				Throwable cause = te.getCause();
+				if (cause instanceof SchemaException) {
+					throw (SchemaException)cause;
+				} else if (cause instanceof ExpressionEvaluationException) {
+					throw (ExpressionEvaluationException)cause;
+				} else if (cause instanceof ObjectNotFoundException) {
+					throw (ObjectNotFoundException)cause;
+				}
+			}
+		}
+		
 		Source<IV,ID> source = new Source<>(itemOld, delta, itemNew, name);
 		source.setResidualPath(residualPath);
 		source.setResolvePath(resolvePath);
@@ -843,28 +911,32 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		return source;
 	}
 	
+	private boolean sourcesChanged() {
+		for (Source<?,?> source: sources) {
+			if (source.getDelta() != null) {
+				return true;
+			}
+		}
+		return false;
+	}
+	
 	private void parseTarget() throws SchemaException {
-		MappingTargetDeclarationType targetType = mappingType.getTarget();
+		VariableBindingDefinitionType targetType = mappingType.getTarget();
 		if (targetType == null) {
 			outputDefinition = defaultTargetDefinition;
 			outputPath = defaultTargetPath;
 		} else {
 			ItemPathType itemPathType = targetType.getPath();
 			if (itemPathType == null) {
-				throw new SchemaException("No path in target definition in "+getMappingContextDescription());
-			}
-			ItemPath path = itemPathType.getItemPath();
-			outputDefinition = ExpressionUtil.resolveDefinitionPath(path, variables, targetContext, "target definition in "+getMappingContextDescription());
-			if (outputDefinition == null) {
-				throw new SchemaException("No target item that would conform to the path "+path+" in "+getMappingContextDescription());
-			}
-
-			// Make the path relative if needed
-			if (!path.isEmpty() && (path.first() instanceof NameItemPathSegment) && 
-					((NameItemPathSegment)path.first()).isVariable()) {
-				outputPath = path.rest();
+				outputDefinition = defaultTargetDefinition;
+				outputPath = defaultTargetPath;
 			} else {
-				outputPath = path;
+				ItemPath path = itemPathType.getItemPath();
+				outputDefinition = ExpressionUtil.resolveDefinitionPath(path, variables, targetContext, "target definition in "+getMappingContextDescription());
+				if (outputDefinition == null) {
+					throw new SchemaException("No target item that would conform to the path "+path+" in "+getMappingContextDescription());
+				}
+				outputPath = path.stripVariableSegment();
 			}
 		}
 		if (stringPolicyResolver != null) {
@@ -934,18 +1006,18 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 			conditionOutputTriple.addToZeroSet(new PrismPropertyValue<Boolean>(Boolean.TRUE));
 			return;
 		}
-		PrismPropertyDefinition<Boolean> conditionOutput = new PrismPropertyDefinition<>(CONDITION_OUTPUT_NAME, DOMUtil.XSD_BOOLEAN, expressionFactory.getPrismContext());
-		Expression<PrismPropertyValue<Boolean>,PrismPropertyDefinition<Boolean>> expression = expressionFactory.makeExpression(conditionExpressionType, 
-				conditionOutput, "condition in "+getMappingContextDescription(), task, result);
-		ExpressionEvaluationContext params = new ExpressionEvaluationContext(sources, variables, 
+		Expression<PrismPropertyValue<Boolean>,PrismPropertyDefinition<Boolean>> expression = 
+				ExpressionUtil.createCondition(conditionExpressionType, expressionFactory, 
 				"condition in "+getMappingContextDescription(), task, result);
-		params.setStringPolicyResolver(stringPolicyResolver);
-		params.setExpressionFactory(expressionFactory);
-		params.setDefaultSource(defaultSource);
-		params.setDefaultTargetContext(getTargetContext());
-		params.setRefinedObjectClassDefinition(getRefinedObjectClassDefinition());
-		params.setMappingQName(mappingQName);
-		conditionOutputTriple = expression.evaluate(params);
+		ExpressionEvaluationContext context = new ExpressionEvaluationContext(sources, variables,
+				"condition in "+getMappingContextDescription(), task, result);
+		context.setStringPolicyResolver(stringPolicyResolver);
+		context.setExpressionFactory(expressionFactory);
+		context.setDefaultSource(defaultSource);
+		context.setDefaultTargetContext(getTargetContext());
+		context.setRefinedObjectClassDefinition(getRefinedObjectClassDefinition());
+		context.setMappingQName(mappingQName);
+		conditionOutputTriple = expression.evaluate(context);
 	}
 
 	
@@ -956,34 +1028,44 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		}
 		expression = expressionFactory.makeExpression(expressionType, outputDefinition, 
 				"expression in "+getMappingContextDescription(), task, result);
-		ExpressionEvaluationContext params = new ExpressionEvaluationContext(sources, variables, 
+		ExpressionEvaluationContext context = new ExpressionEvaluationContext(sources, variables,
 				"expression in "+getMappingContextDescription(), task, result);
-		params.setDefaultSource(defaultSource);
-		params.setSkipEvaluationMinus(!conditionResultOld);
-		params.setSkipEvaluationPlus(!conditionResultNew);
-		params.setStringPolicyResolver(stringPolicyResolver);
-		params.setExpressionFactory(expressionFactory);
-		params.setDefaultTargetContext(getTargetContext());
-		params.setRefinedObjectClassDefinition(getRefinedObjectClassDefinition());
-		params.setMappingQName(mappingQName);
-		outputTriple = expression.evaluate(params);
+		context.setDefaultSource(defaultSource);
+		context.setSkipEvaluationMinus(!conditionResultOld);
+		context.setSkipEvaluationPlus(!conditionResultNew);
+		context.setStringPolicyResolver(stringPolicyResolver);
+		context.setExpressionFactory(expressionFactory);
+		context.setDefaultTargetContext(getTargetContext());
+		context.setRefinedObjectClassDefinition(getRefinedObjectClassDefinition());
+		context.setMappingQName(mappingQName);
+		outputTriple = expression.evaluate(context);
 
 		if (outputTriple == null) {
-			return;
-		}
+			
+			if (conditionResultNew) {
+				// We need to return empty triple instead of null.
+				// The condition was true (or there was not condition at all)
+				// so the mapping is applicable.
+				// Returning null would mean that the mapping is not applicable
+				// at all.
+				outputTriple = new PrismValueDeltaSetTriple<>();
+			}
+			
+		} else {
 		
-		// reflect condition change
-		if (!conditionResultOld && conditionResultNew) {
-			// Condition change false -> true
-			outputTriple.addAllToPlusSet(outputTriple.getZeroSet());
-			outputTriple.clearZeroSet();
-			outputTriple.clearMinusSet();
-		}
-		if (conditionResultOld && !conditionResultNew) {
-			// Condition change true -> false
-			outputTriple.addAllToMinusSet(outputTriple.getZeroSet());
-			outputTriple.clearZeroSet();
-			outputTriple.clearPlusSet();
+			// reflect condition change
+			if (!conditionResultOld && conditionResultNew) {
+				// Condition change false -> true
+				outputTriple.addAllToPlusSet(outputTriple.getZeroSet());
+				outputTriple.clearZeroSet();
+				outputTriple.clearMinusSet();
+			}
+			if (conditionResultOld && !conditionResultNew) {
+				// Condition change true -> false
+				outputTriple.addAllToMinusSet(outputTriple.getZeroSet());
+				outputTriple.clearZeroSet();
+				outputTriple.clearPlusSet();
+			}
 		}
 	}
 	
@@ -1031,34 +1113,47 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
         return filteredValue;
     }
 	
+	private void transitionState(MappingEvaluationState newState) {
+		state = newState;
+	}
+	
+	private void assertState(MappingEvaluationState expecetdState) {
+		if (state != expecetdState) {
+			throw new IllegalArgumentException("Expected mapping state "+expecetdState+", but was "+state);
+		}
+	}
+	
 	/**
 	 * Shallow clone. Only the output is cloned deeply.
 	 */
 	public PrismValueDeltaSetTripleProducer<V, D> clone() {
-		Mapping<V,D> clone = new Mapping<>(mappingType, contextDescription, expressionFactory, securityEnforcer);
-		clone.conditionMaskNew = this.conditionMaskNew;
-		clone.conditionMaskOld = this.conditionMaskOld;
-		if (this.conditionOutputTriple != null) {
-			clone.conditionOutputTriple = this.conditionOutputTriple.clone();
-		}
-		clone.defaultSource = this.defaultSource;
-		clone.defaultTargetDefinition = this.defaultTargetDefinition;
-		clone.expressionFactory = this.expressionFactory;
-		clone.mappingType = this.mappingType;
-		clone.objectResolver = this.objectResolver;
-		clone.originObject = this.originObject;
-		clone.originType = this.originType;
-		clone.outputDefinition = this.outputDefinition;
-		clone.outputPath = this.outputPath;
+		Mapping<V, D> clone = new Builder<V, D>()
+				.mappingType(mappingType)
+				.contextDescription(contextDescription)
+				.expressionFactory(expressionFactory)
+				.securityEnforcer(securityEnforcer)
+				.variables(variables)
+				.conditionMaskNew(conditionMaskNew)
+				.conditionMaskOld(conditionMaskOld)
+				.defaultSource(defaultSource)
+				.defaultTargetDefinition(defaultTargetDefinition)
+				.objectResolver(objectResolver)
+				.originObject(originObject)
+				.originType(originType)
+				.sourceContext(sourceContext)
+				.sources(sources)
+				.targetContext(targetContext)
+				.build();
+
+		clone.outputDefinition = outputDefinition;
+		clone.outputPath = outputPath;
+
 		if (this.outputTriple != null) {
 			clone.outputTriple = this.outputTriple.clone();
 		}
-		clone.contextDescription = this.contextDescription;
-		clone.sourceContext = this.sourceContext;
-		clone.sources = this.sources;
-		clone.targetContext = this.targetContext;
-		clone.variables = this.variables;
-		
+		if (this.conditionOutputTriple != null) {
+			clone.conditionOutputTriple = this.conditionOutputTriple.clone();
+		}
 		return clone;
 	}
 
@@ -1192,7 +1287,11 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 
 	@Override
 	public String toString() {
-		return "M(" + getMappingDisplayName() + " = " + outputTriple + toStringStrength() + ")";
+		if (mappingType != null && mappingType.getName() != null) {
+			return "M(" + mappingType.getName()+ ": "+ getMappingDisplayName() + " = " + outputTriple + toStringStrength() + ")";
+		} else {
+			return "M(" + getMappingDisplayName() + " = " + outputTriple + toStringStrength() + ")";
+		}
 	}
 
 	private String getMappingDisplayName() {
@@ -1213,5 +1312,505 @@ public class Mapping<V extends PrismValue,D extends ItemDefinition> implements D
 		}
 		return null;
 	}
-	
+
+	/**
+	 * Builder is used to construct a configuration of Mapping object, which - after building - becomes
+	 * immutable.
+	 *
+	 * In order to provide backward-compatibility with existing use of Mapping object, the builder has
+	 * also traditional setter methods. Both setters and "builder-style" methods MODIFY existing Builder
+	 * object (i.e. they do not create a new one).
+	 *
+	 * TODO decide on which style of setters to keep (setters vs builder-style).
+	 */
+	public static final class Builder<V extends PrismValue, D extends ItemDefinition> {
+		private ExpressionFactory expressionFactory;
+		private ExpressionVariables variables = new ExpressionVariables();
+		private MappingType mappingType;
+		private ObjectResolver objectResolver;
+		private SecurityEnforcer securityEnforcer;
+		private Source<?, ?> defaultSource;
+		private D defaultTargetDefinition;
+		private ItemPath defaultTargetPath;
+		private Collection<V> originalTargetValues;
+		private ObjectDeltaObject<?> sourceContext;
+		private PrismObjectDefinition<?> targetContext;
+		private Collection<Source<?, ?>> sources = new ArrayList<>();
+		private OriginType originType;
+		private ObjectType originObject;
+		private FilterManager<Filter> filterManager;
+		private StringPolicyResolver stringPolicyResolver;
+		private boolean conditionMaskOld = true;
+		private boolean conditionMaskNew = true;
+		private XMLGregorianCalendar now;
+		private XMLGregorianCalendar defaultReferenceTime;
+		private boolean profiling;
+		private String contextDescription;
+		private QName mappingQName;
+		private RefinedObjectClassDefinition refinedObjectClassDefinition;
+		private PrismContext prismContext;
+
+
+		public Builder<V,D> expressionFactory(ExpressionFactory val) {
+			expressionFactory = val;
+			return this;
+		}
+
+		public Builder<V,D> variables(ExpressionVariables val) {
+			variables = val;
+			return this;
+		}
+
+		public Builder<V,D> mappingType(MappingType val) {
+			mappingType = val;
+			return this;
+		}
+
+		public Builder<V,D> objectResolver(ObjectResolver val) {
+			objectResolver = val;
+			return this;
+		}
+
+		public Builder<V,D> securityEnforcer(SecurityEnforcer val) {
+			securityEnforcer = val;
+			return this;
+		}
+
+		public Builder<V,D> defaultSource(Source<?, ?> val) {
+			defaultSource = val;
+			return this;
+		}
+
+		public Builder<V,D> defaultTargetDefinition(D val) {
+			defaultTargetDefinition = val;
+			return this;
+		}
+
+		public Builder<V,D> defaultTargetPath(ItemPath val) {
+			defaultTargetPath = val;
+			return this;
+		}
+
+		public Builder<V,D> originalTargetValues(Collection<V> values) {
+			originalTargetValues = values;
+			return this;
+		}
+
+		public Builder<V,D> sourceContext(ObjectDeltaObject<?> val) {
+			sourceContext = val;
+			return this;
+		}
+
+		public Builder<V,D> targetContext(PrismObjectDefinition<?> val) {
+			targetContext = val;
+			return this;
+		}
+
+		public Builder<V,D> sources(Collection<Source<?, ?>> val) {
+			sources = val;
+			return this;
+		}
+
+		public Builder<V,D> originType(OriginType val) {
+			originType = val;
+			return this;
+		}
+
+		public Builder<V,D> originObject(ObjectType val) {
+			originObject = val;
+			return this;
+		}
+
+		public Builder<V,D> filterManager(FilterManager<Filter> val) {
+			filterManager = val;
+			return this;
+		}
+
+		public Builder<V,D> stringPolicyResolver(StringPolicyResolver val) {
+			stringPolicyResolver = val;
+			return this;
+		}
+
+		public Builder<V,D> conditionMaskOld(boolean val) {
+			conditionMaskOld = val;
+			return this;
+		}
+
+		public Builder<V,D> conditionMaskNew(boolean val) {
+			conditionMaskNew = val;
+			return this;
+		}
+
+		public Builder<V,D> now(XMLGregorianCalendar val) {
+			now = val;
+			return this;
+		}
+
+		public Builder<V,D> defaultReferenceTime(XMLGregorianCalendar val) {
+			defaultReferenceTime = val;
+			return this;
+		}
+
+		public Builder<V,D> profiling(boolean val) {
+			profiling = val;
+			return this;
+		}
+
+		public Builder<V,D> contextDescription(String val) {
+			contextDescription = val;
+			return this;
+		}
+
+		public Builder<V,D> mappingQName(QName val) {
+			mappingQName = val;
+			return this;
+		}
+
+		public Builder<V,D> refinedObjectClassDefinition(RefinedObjectClassDefinition val) {
+			refinedObjectClassDefinition = val;
+			return this;
+		}
+
+		public Builder<V,D> prismContext(PrismContext val) {
+			prismContext = val;
+			return this;
+		}
+
+		public Mapping<V,D> build() {
+			return new Mapping<>(this);
+		}
+
+		public ExpressionFactory getExpressionFactory() {
+			return expressionFactory;
+		}
+
+		public ExpressionVariables getVariables() {
+			return variables;
+		}
+
+		public MappingType getMappingType() {
+			return mappingType;
+		}
+
+		public ObjectResolver getObjectResolver() {
+			return objectResolver;
+		}
+
+		public SecurityEnforcer getSecurityEnforcer() {
+			return securityEnforcer;
+		}
+
+		public Source<?, ?> getDefaultSource() {
+			return defaultSource;
+		}
+
+		public D getDefaultTargetDefinition() {
+			return defaultTargetDefinition;
+		}
+
+		public ItemPath getDefaultTargetPath() {
+			return defaultTargetPath;
+		}
+
+		public Collection<V> getOriginalTargetValues() {
+			return originalTargetValues;
+		}
+
+		public ObjectDeltaObject<?> getSourceContext() {
+			return sourceContext;
+		}
+
+		public PrismObjectDefinition<?> getTargetContext() {
+			return targetContext;
+		}
+
+		public Collection<Source<?, ?>> getSources() {
+			return sources;
+		}
+
+		public OriginType getOriginType() {
+			return originType;
+		}
+
+		public ObjectType getOriginObject() {
+			return originObject;
+		}
+
+		public FilterManager<Filter> getFilterManager() {
+			return filterManager;
+		}
+
+		public StringPolicyResolver getStringPolicyResolver() {
+			return stringPolicyResolver;
+		}
+
+		public boolean isConditionMaskOld() {
+			return conditionMaskOld;
+		}
+
+		public boolean isConditionMaskNew() {
+			return conditionMaskNew;
+		}
+
+		public XMLGregorianCalendar getNow() {
+			return now;
+		}
+
+		public XMLGregorianCalendar getDefaultReferenceTime() {
+			return defaultReferenceTime;
+		}
+
+		public boolean isProfiling() {
+			return profiling;
+		}
+
+		public String getContextDescription() {
+			return contextDescription;
+		}
+
+		public QName getMappingQName() {
+			return mappingQName;
+		}
+
+		public RefinedObjectClassDefinition getRefinedObjectClassDefinition() {
+			return refinedObjectClassDefinition;
+		}
+
+		public Builder<V, D> rootNode(ObjectReferenceType objectRef) {
+			return addVariableDefinition(null,(Object)objectRef);
+		}
+
+		public Builder<V, D> rootNode(ObjectDeltaObject<?> odo) {
+			return addVariableDefinition(null,(Object)odo);
+		}
+
+		public Builder<V, D> rootNode(ObjectType objectType) {
+			return addVariableDefinition(null,(Object)objectType);
+		}
+
+		public Builder<V, D> rootNode(PrismObject<? extends ObjectType> mpObject) {
+			return addVariableDefinition(null,(Object)mpObject);
+		}
+
+		@Deprecated
+		public void setRootNode(ObjectReferenceType objectRef) {
+			rootNode(objectRef);
+		}
+
+		@Deprecated
+		public void setRootNode(ObjectDeltaObject<?> odo) {
+			rootNode(odo);
+		}
+
+		@Deprecated
+		public void setRootNode(ObjectType objectType) {
+			rootNode(objectType);
+		}
+
+		@Deprecated
+		public void setRootNode(PrismObject<? extends ObjectType> mpObject) {
+			rootNode(mpObject);
+		}
+
+		public PrismContext getPrismContext() {
+			return prismContext;
+		}
+
+		public Builder<V, D> addVariableDefinition(ExpressionVariableDefinitionType varDef) throws SchemaException {
+			if (varDef.getObjectRef() != null) {
+				ObjectReferenceType ref = varDef.getObjectRef();
+				ref.setType(getPrismContext().getSchemaRegistry().qualifyTypeName(ref.getType()));
+				return addVariableDefinition(varDef.getName(), ref);
+			} else if (varDef.getValue() != null) {
+				return addVariableDefinition(varDef.getName(),varDef.getValue());
+			} else {
+				LOGGER.warn("Empty definition of variable {} in {}, ignoring it", varDef.getName(), getContextDescription());
+				return this;
+			}
+		}
+
+		public Builder<V, D> addVariableDefinition(QName name, ObjectReferenceType objectRef) {
+			return addVariableDefinition(name, (Object)objectRef);
+		}
+
+		public Builder<V, D> addVariableDefinition(QName name, ObjectType objectType) {
+			return addVariableDefinition(name,(Object)objectType);
+		}
+
+		public Builder<V, D> addVariableDefinition(QName name, PrismObject<? extends ObjectType> midpointObject) {
+			return addVariableDefinition(name,(Object)midpointObject);
+		}
+
+		public Builder<V, D> addVariableDefinition(QName name, String value) {
+			return addVariableDefinition(name,(Object)value);
+		}
+
+		public Builder<V, D> addVariableDefinition(QName name, int value) {
+			return addVariableDefinition(name,(Object)value);
+		}
+
+		public Builder<V, D> addVariableDefinition(QName name, Element value) {
+			return addVariableDefinition(name,(Object)value);
+		}
+
+		public Builder<V, D> addVariableDefinition(QName name, PrismValue value) {
+			return addVariableDefinition(name,(Object)value);
+		}
+
+		public Builder<V, D> addVariableDefinition(QName name, ObjectDeltaObject<?> value) {
+			return addVariableDefinition(name,(Object)value);
+		}
+
+		public Builder<V, D> addVariableDefinitions(Map<QName, Object> extraVariables) {
+			variables.addVariableDefinitions(extraVariables);
+			return this;
+		}
+
+		public Builder<V, D> addVariableDefinition(QName name, Object value) {
+			variables.addVariableDefinition(name, value);
+			return this;
+		}
+
+		public boolean hasVariableDefinition(QName varName) {
+			return variables.containsKey(varName);
+		}
+
+		public boolean isApplicableToChannel(String channel) {
+			return Mapping.isApplicableToChannel(mappingType, channel);
+		}
+
+		public Builder<V, D> addSource(Source<?,?> source) {
+			sources.add(source);
+			return this;
+		}
+
+		// traditional setters are also here, to avoid massive changes to existing code
+
+		@Deprecated
+		public void setExpressionFactory(ExpressionFactory expressionFactory) {
+			this.expressionFactory = expressionFactory;
+		}
+
+		@Deprecated
+		public void setVariables(ExpressionVariables variables) {
+			this.variables = variables;
+		}
+
+		@Deprecated
+		public void setMappingType(MappingType mappingType) {
+			this.mappingType = mappingType;
+		}
+
+		@Deprecated
+		public void setObjectResolver(ObjectResolver objectResolver) {
+			this.objectResolver = objectResolver;
+		}
+
+		@Deprecated
+		public void setSecurityEnforcer(SecurityEnforcer securityEnforcer) {
+			this.securityEnforcer = securityEnforcer;
+		}
+
+		@Deprecated
+		public void setDefaultSource(Source<?, ?> defaultSource) {
+			this.defaultSource = defaultSource;
+		}
+
+		@Deprecated
+		public void setDefaultTargetDefinition(D defaultTargetDefinition) {
+			this.defaultTargetDefinition = defaultTargetDefinition;
+		}
+
+		@Deprecated
+		public void setDefaultTargetPath(ItemPath defaultTargetPath) {
+			this.defaultTargetPath = defaultTargetPath;
+		}
+
+		@Deprecated
+		public void setSourceContext(ObjectDeltaObject<?> sourceContext) {
+			this.sourceContext = sourceContext;
+		}
+
+		@Deprecated
+		public void setTargetContext(PrismObjectDefinition<?> targetContext) {
+			this.targetContext = targetContext;
+		}
+
+		@Deprecated
+		public void setSources(Collection<Source<?, ?>> sources) {
+			this.sources = sources;
+		}
+
+		@Deprecated
+		public void setOriginType(OriginType originType) {
+			this.originType = originType;
+		}
+
+		@Deprecated
+		public void setOriginObject(ObjectType originObject) {
+			this.originObject = originObject;
+		}
+
+		@Deprecated
+		public void setFilterManager(
+				FilterManager<Filter> filterManager) {
+			this.filterManager = filterManager;
+		}
+
+		@Deprecated
+		public void setStringPolicyResolver(
+				StringPolicyResolver stringPolicyResolver) {
+			this.stringPolicyResolver = stringPolicyResolver;
+		}
+
+		@Deprecated
+		public void setConditionMaskOld(boolean conditionMaskOld) {
+			this.conditionMaskOld = conditionMaskOld;
+		}
+
+		@Deprecated
+		public void setConditionMaskNew(boolean conditionMaskNew) {
+			this.conditionMaskNew = conditionMaskNew;
+		}
+
+		@Deprecated
+		public void setNow(XMLGregorianCalendar now) {
+			this.now = now;
+		}
+
+		@Deprecated
+		public void setDefaultReferenceTime(XMLGregorianCalendar defaultReferenceTime) {
+			this.defaultReferenceTime = defaultReferenceTime;
+		}
+
+		@Deprecated
+		public void setProfiling(boolean profiling) {
+			this.profiling = profiling;
+		}
+
+		@Deprecated
+		public void setContextDescription(String contextDescription) {
+			this.contextDescription = contextDescription;
+		}
+
+		@Deprecated
+		public void setMappingQName(QName mappingQName) {
+			this.mappingQName = mappingQName;
+		}
+
+		@Deprecated
+		public void setRefinedObjectClassDefinition(
+				RefinedObjectClassDefinition refinedObjectClassDefinition) {
+			this.refinedObjectClassDefinition = refinedObjectClassDefinition;
+		}
+
+		@Deprecated
+		public void setPrismContext(PrismContext prismContext) {
+			this.prismContext = prismContext;
+		}
+
+		public MappingStrengthType getStrength() {
+			return Mapping.getStrength(mappingType);
+		}
+	}
 }

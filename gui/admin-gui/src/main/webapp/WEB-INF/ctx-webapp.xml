@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@
      http://www.springframework.org/schema/context
      http://www.springframework.org/schema/context/spring-context-3.0.xsd"
        default-lazy-init="false" default-autowire="byName">
+
+<context:property-placeholder location="classpath:midpoint-config.properties"/> <!-- change classpath to e.g ${midpoint.home} -->
 
     <context:annotation-config/>
     <context:spring-configured/>

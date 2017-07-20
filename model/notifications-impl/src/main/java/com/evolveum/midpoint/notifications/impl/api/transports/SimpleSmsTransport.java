@@ -16,16 +16,19 @@
 
 package com.evolveum.midpoint.notifications.impl.api.transports;
 
-import com.evolveum.midpoint.model.common.expression.Expression;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluationContext;
-import com.evolveum.midpoint.model.common.expression.ExpressionFactory;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
+import com.evolveum.midpoint.repo.common.expression.Expression;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluationContext;
+import com.evolveum.midpoint.repo.common.expression.ExpressionFactory;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
+import com.evolveum.midpoint.model.impl.expr.ModelExpressionThreadLocalHolder;
 import com.evolveum.midpoint.notifications.api.NotificationManager;
+import com.evolveum.midpoint.notifications.api.events.Event;
 import com.evolveum.midpoint.notifications.api.transports.Message;
 import com.evolveum.midpoint.notifications.api.transports.Transport;
-import com.evolveum.midpoint.notifications.impl.NotificationsUtil;
+import com.evolveum.midpoint.notifications.impl.NotificationFunctionsImpl;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismPropertyDefinition;
+import com.evolveum.midpoint.prism.PrismPropertyDefinitionImpl;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
 import com.evolveum.midpoint.repo.api.RepositoryService;
@@ -78,7 +81,7 @@ public class SimpleSmsTransport implements Transport {
     @Autowired
     protected ExpressionFactory expressionFactory;
 
-    @Autowired(required = true)
+    @Autowired
     @Qualifier("cacheRepositoryService")
     private transient RepositoryService cacheRepositoryService;
 
@@ -91,13 +94,13 @@ public class SimpleSmsTransport implements Transport {
     }
 
     @Override
-    public void send(Message message, String transportName, Task task, OperationResult parentResult) {
+    public void send(Message message, String transportName, Event event, Task task, OperationResult parentResult) {
 
         OperationResult result = parentResult.createSubresult(DOT_CLASS + "send");
         result.addCollectionOfSerializablesAsParam("message recipient(s)", message.getTo());
         result.addParam("message subject", message.getSubject());
 
-        SystemConfigurationType systemConfiguration = NotificationsUtil.getSystemConfiguration(cacheRepositoryService, new OperationResult("dummy"));
+        SystemConfigurationType systemConfiguration = NotificationFunctionsImpl.getSystemConfiguration(cacheRepositoryService, new OperationResult("dummy"));
         if (systemConfiguration == null || systemConfiguration.getNotificationConfiguration() == null) {
             String msg = "No notifications are configured. SMS notification to " + message.getTo() + " will not be sent.";
             LOGGER.warn(msg) ;
@@ -225,11 +228,12 @@ public class SimpleSmsTransport implements Transport {
     		String shortDesc, Task task, OperationResult result) throws ObjectNotFoundException, SchemaException, ExpressionEvaluationException {
 
         QName resultName = new QName(SchemaConstants.NS_C, "result");
-        PrismPropertyDefinition<String> resultDef = new PrismPropertyDefinition(resultName, DOMUtil.XSD_STRING, prismContext);
+        PrismPropertyDefinition<String> resultDef = new PrismPropertyDefinitionImpl(resultName, DOMUtil.XSD_STRING, prismContext);
 
         Expression<PrismPropertyValue<String>,PrismPropertyDefinition<String>> expression = expressionFactory.makeExpression(expressionType, resultDef, shortDesc, task, result);
         ExpressionEvaluationContext params = new ExpressionEvaluationContext(null, expressionVariables, shortDesc, task, result);
-        PrismValueDeltaSetTriple<PrismPropertyValue<String>> exprResult = expression.evaluate(params);
+        PrismValueDeltaSetTriple<PrismPropertyValue<String>> exprResult = ModelExpressionThreadLocalHolder
+				.evaluateExpressionInContext(expression, params, task, result);
 
         if (exprResult.getZeroSet().size() != 1) {
             throw new SystemException("Invalid number of return values (" + exprResult.getZeroSet().size() + "), expected 1.");

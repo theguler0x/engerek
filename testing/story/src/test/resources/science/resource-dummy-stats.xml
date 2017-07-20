@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2014 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -120,7 +120,7 @@
          <correlation xmlns:q="http://prism.evolveum.com/xml/ns/public/query-3">
             <q:description>
 	                    Correlation expression is a search query.
-	                    Following search queury will look for users that have "name"
+	                    Following search query will look for users that have "name"
 	                    equal to the "uid" attribute of the account. Simply speaking,
 	                    it will look for match in usernames in the IDM and the resource.
 	                    The correlation rule always looks for users, so it will not match

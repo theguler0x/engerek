@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,15 @@ import com.evolveum.midpoint.prism.delta.ChangeType;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.LightweightIdentifierGenerator;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.EventCategoryType;
+import com.evolveum.midpoint.util.DebugUtil;
+import com.evolveum.midpoint.wf.api.WorkItemOperationInfo;
+import com.evolveum.midpoint.wf.api.WorkItemOperationSourceInfo;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
+import org.apache.commons.lang.Validate;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import javax.xml.datatype.Duration;
 import javax.xml.namespace.QName;
 
 import java.util.Map;
@@ -31,22 +38,45 @@ import java.util.Map;
  */
 public class WorkItemEvent extends WorkflowEvent {
 
-    private String workItemName;
-    private SimpleObjectRef assignee;
+    @NotNull protected final WorkItemType workItem;
+    // (Currently) Each work item event is related to at most one assignee. So, if a work item has more assignees,
+	// more events will be generated. This might change in a future.
+	protected final SimpleObjectRef assignee;
+	/**
+	 * User who "pressed the button". I.e. the one that really approved, rejected or delegated/escalated a work item.
+	 * In case of automated actions (completion, delegation/escalation) this is not filled-in.
+	 */
+	protected final SimpleObjectRef initiator;
+	protected final WorkItemOperationInfo operationInfo;
+	protected final WorkItemOperationSourceInfo sourceInfo;
+	protected final Duration timeBefore;
 
-    public WorkItemEvent(LightweightIdentifierGenerator lightweightIdentifierGenerator, ChangeType changeType) {
-        super(lightweightIdentifierGenerator, changeType);
+    WorkItemEvent(@NotNull LightweightIdentifierGenerator lightweightIdentifierGenerator, @NotNull ChangeType changeType,
+			@NotNull WorkItemType workItem,
+			@Nullable SimpleObjectRef assignee, @Nullable SimpleObjectRef initiator,
+			@Nullable WorkItemOperationInfo operationInfo, @Nullable WorkItemOperationSourceInfo sourceInfo,
+			@NotNull WfContextType workflowContext,
+			@Nullable EventHandlerType handler, @Nullable Duration timeBefore) {
+        super(lightweightIdentifierGenerator, changeType, workflowContext, handler);
+	    Validate.notNull(workItem);
+        this.workItem = workItem;
+		this.assignee = assignee;
+		this.initiator = initiator;
+		this.operationInfo = operationInfo;
+		this.sourceInfo = sourceInfo;
+	    this.timeBefore = timeBefore;
     }
 
     public String getWorkItemName() {
-        return workItemName;
+        return workItem.getName();
     }
 
-    public void setWorkItemName(String workItemName) {
-        this.workItemName = workItemName;
-    }
+	@NotNull
+	public WorkItemType getWorkItem() {
+		return workItem;
+	}
 
-    @Override
+	@Override
     public boolean isCategoryType(EventCategoryType eventCategoryType) {
         return eventCategoryType == EventCategoryType.WORK_ITEM_EVENT || eventCategoryType == EventCategoryType.WORKFLOW_EVENT;
     }
@@ -55,25 +85,67 @@ public class WorkItemEvent extends WorkflowEvent {
         return assignee;
     }
 
-    public void setAssignee(SimpleObjectRef assignee) {
-        this.assignee = assignee;
-    }
+	public SimpleObjectRef getInitiator() {
+		return initiator;
+	}
 
-    @Override
+	public WorkItemOperationKindType getOperationKind() {
+		return operationInfo != null ? operationInfo.getOperationKind() : null;
+	}
+
+	public AbstractWorkItemActionType getSource() {
+		return sourceInfo != null ? sourceInfo.getSource() : null;
+	}
+
+	public WorkItemEventCauseInformationType getCause() {
+		return sourceInfo != null ? sourceInfo.getCause() : null;
+	}
+
+	public Duration getTimeBefore() {
+		return timeBefore;
+	}
+
+	public WorkItemOperationInfo getOperationInfo() {
+		return operationInfo;
+	}
+
+	public WorkItemOperationSourceInfo getSourceInfo() {
+		return sourceInfo;
+	}
+
+	@Override
     public void createExpressionVariables(Map<QName, Object> variables, OperationResult result) {
         super.createExpressionVariables(variables, result);
-        variables.put(SchemaConstants.C_ASSIGNEE, assignee != null ? assignee.resolveObjectType(result) : assignee);
+        variables.put(SchemaConstants.C_ASSIGNEE, assignee != null ? assignee.resolveObjectType(result, false) : null);
+        variables.put(SchemaConstants.C_WORK_ITEM, workItem);
     }
 
-    @Override
+    public AbstractWorkItemOutputType getOutput() {
+    	return workItem.getOutput();
+	}
+
+	@Override
+	public String getOutcome() {
+    	AbstractWorkItemOutputType output = getOutput();
+		return output != null ? output.getOutcome() : null;
+	}
+
+	@Override
     public String toString() {
         return "WorkflowProcessEvent{" +
                 "workflowEvent=" + super.toString() +
-                ", workItemName=" + workItemName +
+                ", workItemName=" + getWorkItemName() +
                 ", assignee=" + assignee +
                 '}';
 
     }
 
-
+	@Override
+	public String debugDump(int indent) {
+		StringBuilder sb = DebugUtil.createTitleStringBuilderLn(this.getClass(), indent);
+		debugDumpCommon(sb, indent);
+		DebugUtil.debugDumpWithLabelLn(sb, "workItemName", getWorkItemName(), indent + 1);
+		DebugUtil.debugDumpWithLabelToString(sb, "assignee", assignee, indent + 1);
+		return sb.toString();
+	}
 }

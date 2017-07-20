@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -65,8 +65,16 @@
         </mail>
     </notificationConfiguration>
     <workflowConfiguration>
+        <allowCompleteOthersItems>true</allowCompleteOthersItems>
         <primaryChangeProcessor>
             <enabled>true</enabled>
+            <policyRuleBasedAspect>
+                <enabled>true</enabled>			<!-- changed depending on test configuration -->
+            </policyRuleBasedAspect>
+            <addUserAbstractRoleAssignmentAspect/>
+            <modifyUserAbstractRoleAssignmentAspect/>
+            <addUserResourceAssignmentAspect/>
+            <modifyUserResourceAssignmentAspect/>
             <addAbstractRoleAspect>
                 <approverRef oid="00000000-0000-0000-0000-000000000002" type="UserType"/>
             </addAbstractRoleAspect>

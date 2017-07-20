@@ -16,8 +16,17 @@
 
 package com.evolveum.midpoint.web.component;
 
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
+import com.evolveum.midpoint.web.page.admin.configuration.component.EmptyOnBlurAjaxFormUpdatingBehaviour;
+import com.evolveum.midpoint.web.page.admin.configuration.component.EmptyOnChangeAjaxFormUpdatingBehavior;
+import org.apache.wicket.ajax.AjaxRequestTarget;
+import org.apache.wicket.ajax.form.AjaxFormSubmitBehavior;
+import org.apache.wicket.datetime.markup.html.form.DateTextField;
 import org.apache.wicket.extensions.yui.calendar.DateTimeField;
+import org.apache.wicket.markup.html.form.DropDownChoice;
+import org.apache.wicket.markup.html.form.TextField;
 import org.apache.wicket.model.IModel;
+import org.apache.wicket.model.PropertyModel;
 import org.joda.time.DateTimeFieldType;
 import org.joda.time.DateTimeZone;
 import org.joda.time.MutableDateTime;
@@ -32,10 +41,54 @@ public class DateInput extends DateTimeField {
 
     public DateInput(String id, IModel<Date> model) {
         super(id, model);
+        ((DropDownChoice)get("amOrPmChoice")).add(new EmptyOnChangeAjaxFormUpdatingBehavior(){
+            @Override
+            protected void onUpdate(AjaxRequestTarget target){
+                DateInput.this.setModelObject(computeDateTime());
+            }
+        });
     }
 
-    public void updateDateTimeModel() {
-        setModelObject(computeDateTime());
+    @Override
+    protected DateTextField newDateTextField(String id, PropertyModel dateFieldModel) {
+        String localizedDatePattern = WebComponentUtil.getLocalizedDatePattern(DateLabelComponent.SHORT_NOTIME_STYLE);
+        if (localizedDatePattern != null && !localizedDatePattern.contains("yyyy")){
+            localizedDatePattern = localizedDatePattern.replaceAll("yy", "yyyy");
+        }
+        DateTextField dateField = DateTextField.forDatePattern(id, dateFieldModel, localizedDatePattern);
+        dateField.add(new EmptyOnChangeAjaxFormUpdatingBehavior(){
+            @Override
+            protected void onUpdate(AjaxRequestTarget target){
+                DateInput.this.setModelObject(computeDateTime());
+            }
+        });
+        return dateField;
+
+    }
+
+    @Override
+    protected TextField<Integer> newMinutesTextField(String id, IModel<Integer> model, Class<Integer> type) {
+        TextField<Integer> textField = super.newMinutesTextField(id, model, type);
+        textField.add(new EmptyOnChangeAjaxFormUpdatingBehavior() {
+            @Override
+            protected void onUpdate(AjaxRequestTarget target){
+                DateInput.this.setModelObject(computeDateTime());
+            }
+        });
+
+        return textField;
+    }
+
+    @Override
+    protected TextField<Integer> newHoursTextField(final String id, IModel<Integer> model, Class<Integer> type) {
+        TextField<Integer> textField = super.newHoursTextField(id, model, type);
+        textField.add(new EmptyOnChangeAjaxFormUpdatingBehavior() {
+            @Override
+            protected void onUpdate(AjaxRequestTarget target){
+                DateInput.this.setModelObject(computeDateTime());
+            }
+        });
+        return textField;
     }
 
     public Date computeDateTime() {

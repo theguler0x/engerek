@@ -23,6 +23,7 @@ import com.evolveum.midpoint.repo.sql.data.common.other.RReferenceOwner;
 import com.evolveum.midpoint.repo.sql.query.definition.JaxbType;
 import com.evolveum.midpoint.repo.sql.query2.definition.NotQueryable;
 import com.evolveum.midpoint.repo.sql.util.ClassMapper;
+import com.evolveum.midpoint.repo.sql.util.MidPointSingleTablePersister;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 
@@ -30,8 +31,12 @@ import org.apache.commons.lang.Validate;
 import org.hibernate.annotations.ForeignKey;
 import org.hibernate.annotations.NotFound;
 import org.hibernate.annotations.NotFoundAction;
+import org.hibernate.annotations.Persister;
 
 import javax.persistence.*;
+
+import static com.evolveum.midpoint.repo.sql.util.RUtil.qnameToString;
+import static com.evolveum.midpoint.schema.util.ObjectTypeUtil.normalizeRelation;
 
 /**
  * @author lazyman
@@ -42,6 +47,7 @@ import javax.persistence.*;
 @Table(name = "m_reference", indexes = {
         @javax.persistence.Index(name = "iReferenceTargetOid", columnList = "targetOid")
 })
+@Persister(impl = MidPointSingleTablePersister.class)
 public class RObjectReference<T extends RObject> implements ObjectReference {
 
     public static final String REFERENCE_TYPE = "reference_type";
@@ -122,7 +128,7 @@ public class RObjectReference<T extends RObject> implements ObjectReference {
      *
      * @return null if not defined, otherwise value from {@link com.evolveum.midpoint.repo.sql.data.common.other.RObjectType} enum
      */
-    @Column(name = "containerType")
+    @Column(name = "targetType")
     @Enumerated(EnumType.ORDINAL)
     @Override
     public RObjectType getType() {
@@ -137,6 +143,7 @@ public class RObjectReference<T extends RObject> implements ObjectReference {
         this.ownerOid = ownerOid;
     }
 
+    @Override
     public void setRelation(String relation) {
         this.relation = relation;
     }
@@ -145,10 +152,12 @@ public class RObjectReference<T extends RObject> implements ObjectReference {
         this.target = target;
     }
 
+    @Override
     public void setTargetOid(String targetOid) {
         this.targetOid = targetOid;
     }
 
+    @Override
     public void setType(RObjectType type) {
         this.type = type;
     }
@@ -175,7 +184,7 @@ public class RObjectReference<T extends RObject> implements ObjectReference {
         return result;
     }
 
-    public static void copyToJAXB(RObjectReference repo, ObjectReferenceType jaxb, PrismContext prismContext) {
+    public static void copyToJAXB(RObjectReference repo, ObjectReferenceType jaxb) {
         Validate.notNull(repo, "Repo object must not be null.");
         Validate.notNull(jaxb, "JAXB object must not be null.");
 
@@ -184,20 +193,19 @@ public class RObjectReference<T extends RObject> implements ObjectReference {
         jaxb.setRelation(RUtil.stringToQName(repo.getRelation()));
     }
 
-    public static void copyFromJAXB(ObjectReferenceType jaxb, RObjectReference repo, PrismContext prismContext) {
+    public static void copyFromJAXB(ObjectReferenceType jaxb, ObjectReference repo) {
         Validate.notNull(repo, "Repo object must not be null.");
         Validate.notNull(jaxb, "JAXB object must not be null.");
         Validate.notEmpty(jaxb.getOid(), "Target oid must not be null.");
 
         repo.setType(ClassMapper.getHQLTypeForQName(jaxb.getType()));
-        repo.setRelation(RUtil.qnameToString(jaxb.getRelation()));
-
+		repo.setRelation(qnameToString(normalizeRelation(jaxb.getRelation())));
         repo.setTargetOid(jaxb.getOid());
-    }
+	}
 
     public ObjectReferenceType toJAXB(PrismContext prismContext) {
         ObjectReferenceType ref = new ObjectReferenceType();
-        copyToJAXB(this, ref, prismContext);
+        copyToJAXB(this, ref);
 
         return ref;
     }

@@ -18,7 +18,6 @@ package com.evolveum.midpoint.web.component.data.column;
 
 import com.evolveum.midpoint.web.component.input.TextPanel;
 import com.evolveum.midpoint.web.component.prism.InputPanel;
-import com.evolveum.midpoint.web.component.util.Editable;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.form.AjaxFormComponentUpdatingBehavior;
 import org.apache.wicket.extensions.markup.html.repeater.data.grid.ICellPopulator;
@@ -27,8 +26,6 @@ import org.apache.wicket.markup.html.form.TextField;
 import org.apache.wicket.markup.repeater.Item;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.PropertyModel;
-
-import java.io.Serializable;
 
 /**
  * @author lazyman
@@ -49,8 +46,8 @@ public class DirectlyEditablePropertyColumn<T> extends PropertyColumn<T, String>
     }
 
     protected InputPanel createInputPanel(String componentId, final IModel<T> model) {
-        TextPanel textPanel = new TextPanel(componentId, new PropertyModel(model, getPropertyExpression()));
-        TextField textField = (TextField) textPanel.getBaseFormComponent();     // UGLY HACK
+        TextPanel<?> textPanel = new TextPanel<String>(componentId, new PropertyModel<>(model, getPropertyExpression()));
+        TextField<?> textField = (TextField<?>) textPanel.getBaseFormComponent();     // UGLY HACK
         textField.add(new AjaxFormComponentUpdatingBehavior("blur") {
             @Override
             protected void onUpdate(AjaxRequestTarget target) {
@@ -61,6 +58,6 @@ public class DirectlyEditablePropertyColumn<T> extends PropertyColumn<T, String>
     }
 
     public void onBlur(AjaxRequestTarget target, IModel<T> model) {
-        // doing nothing; may be overriden in subclasses
+        // doing nothing; may be overridden in subclasses
     }
 }

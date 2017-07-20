@@ -57,15 +57,15 @@ public class AccountOperationListener implements ResourceOperationListener {
     @Autowired
     private ChangeNotificationDispatcher provisioningNotificationDispatcher;
 
-    @Autowired(required = true)
+    @Autowired
     private NotificationManager notificationManager;
 
-    @Autowired(required = true)
+    @Autowired
     @Qualifier("cacheRepositoryService")
     private transient RepositoryService cacheRepositoryService;
 
     @Autowired
-    private NotificationsUtil notificationsUtil;
+    private NotificationFunctionsImpl notificationsUtil;
 
     @PostConstruct
     public void init() {
@@ -83,7 +83,7 @@ public class AccountOperationListener implements ResourceOperationListener {
     @Override
     public void notifySuccess(ResourceOperationDescription operationDescription, Task task, OperationResult parentResult) {
         if (notificationsEnabled()) {
-            notifyAny(OperationStatus.SUCCESS, operationDescription, task, parentResult.createSubresult(DOT_CLASS + "notifySuccess"));
+            notifyAny(OperationStatus.SUCCESS, operationDescription, task, parentResult.createMinorSubresult(DOT_CLASS + "notifySuccess"));
         }
     }
 
@@ -99,14 +99,14 @@ public class AccountOperationListener implements ResourceOperationListener {
     @Override
     public void notifyInProgress(ResourceOperationDescription operationDescription, Task task, OperationResult parentResult) {
         if (notificationsEnabled()) {
-            notifyAny(OperationStatus.IN_PROGRESS, operationDescription, task, parentResult.createSubresult(DOT_CLASS + "notifyInProgress"));
+            notifyAny(OperationStatus.IN_PROGRESS, operationDescription, task, parentResult.createMinorSubresult(DOT_CLASS + "notifyInProgress"));
         }
     }
 
     @Override
     public void notifyFailure(ResourceOperationDescription operationDescription, Task task, OperationResult parentResult) {
         if (notificationsEnabled()) {
-            notifyAny(OperationStatus.FAILURE, operationDescription, task, parentResult.createSubresult(DOT_CLASS + "notifyFailure"));
+            notifyAny(OperationStatus.FAILURE, operationDescription, task, parentResult.createMinorSubresult(DOT_CLASS + "notifyFailure"));
         }
     }
 
@@ -180,9 +180,11 @@ public class AccountOperationListener implements ResourceOperationListener {
             LOGGER.warn("No owner for task " + task + ", therefore no requester will be set for event " + event.getId());
         }
 
-        if (task != null) {
+        if (task != null && task.getChannel() != null) {
             event.setChannel(task.getChannel());
-        }
+        } else if (operationDescription.getSourceChannel() != null) {
+			event.setChannel(operationDescription.getSourceChannel());
+		}
 
         return event;
     }

@@ -17,12 +17,12 @@
 package com.evolveum.midpoint.model.impl.scripting;
 
 import com.evolveum.midpoint.model.api.ScriptExecutionException;
+import com.evolveum.midpoint.model.impl.scripting.expressions.FilterContentEvaluator;
 import com.evolveum.midpoint.model.impl.scripting.expressions.SearchEvaluator;
 import com.evolveum.midpoint.model.impl.scripting.expressions.SelectEvaluator;
-import com.evolveum.midpoint.model.impl.scripting.helpers.JaxbHelper;
-import com.evolveum.midpoint.prism.Item;
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.parser.QueryConvertor;
+import com.evolveum.midpoint.model.impl.scripting.helpers.ScriptingJaxbUtil;
+import com.evolveum.midpoint.prism.*;
+import com.evolveum.midpoint.prism.marshaller.QueryConvertor;
 import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
@@ -31,26 +31,16 @@ import com.evolveum.midpoint.task.api.TaskManager;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ActionExpressionType;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ExecuteScriptType;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ExpressionPipelineType;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ExpressionSequenceType;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.FilterExpressionType;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ForeachExpressionType;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ObjectFactory;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.ScriptingExpressionType;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.SearchExpressionType;
-import com.evolveum.midpoint.xml.ns._public.model.scripting_3.SelectExpressionType;
+import com.evolveum.midpoint.xml.ns._public.model.scripting_3.*;
 import com.evolveum.prism.xml.ns._public.types_3.RawType;
-
-import org.apache.commons.lang.NotImplementedException;
 import org.apache.commons.lang.Validate;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.xml.bind.JAXBElement;
 import javax.xml.namespace.QName;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -65,24 +55,15 @@ public class ScriptingExpressionEvaluator {
     private static final Trace LOGGER = TraceManager.getTrace(ScriptingExpressionEvaluator.class);
     private static final String DOT_CLASS = ScriptingExpressionEvaluator.class + ".";
 
-    @Autowired
-    private TaskManager taskManager;
-
-    @Autowired
-    private SearchEvaluator searchEvaluator;
-
-    @Autowired
-    private SelectEvaluator selectEvaluator;
-
-    @Autowired
-    private JaxbHelper jaxbHelper;
-
-    @Autowired
-    private PrismContext prismContext;
+    @Autowired private TaskManager taskManager;
+    @Autowired private SearchEvaluator searchEvaluator;
+    @Autowired private SelectEvaluator selectEvaluator;
+    @Autowired private FilterContentEvaluator filterContentEvaluator;
+    @Autowired private PrismContext prismContext;
 
     private ObjectFactory objectFactory = new ObjectFactory();
 
-    private Map<String,ActionExecutor> actionExecutors = new HashMap<>();
+    private Map<String, ActionExecutor> actionExecutors = new HashMap<>();
 
     /**
      * Asynchronously executes simple scripting expressions, consisting of one search command and one action.
@@ -93,9 +74,8 @@ public class ScriptingExpressionEvaluator {
      * @param task Task in context of which the script should execute. The task should be "clean", i.e.
      *             (1) transient, (2) without any handler. This method puts the task into background,
      *             and assigns ScriptExecutionTaskHandler to it, to execute the script.
-     * @param parentResult
-     * @throws SchemaException
      */
+    @Deprecated
     public void evaluateExpressionInBackground(QName objectType, ObjectFilter filter, String actionName, Task task, OperationResult parentResult) throws SchemaException {
         Validate.notNull(objectType);
         Validate.notNull(actionName);
@@ -112,6 +92,13 @@ public class ScriptingExpressionEvaluator {
         evaluateExpressionInBackground(search, task, parentResult);
     }
 
+    // TODO implement more nicely
+    public static ExecuteScriptType createExecuteScriptCommand(ScriptingExpressionType expression) {
+        ExecuteScriptType executeScriptCommand = new ExecuteScriptType();
+        executeScriptCommand.setScriptingExpression(ScriptingJaxbUtil.toJaxbElement(expression));
+        return executeScriptCommand;
+    }
+
     /**
      * Asynchronously executes any scripting expression.
      *
@@ -119,20 +106,20 @@ public class ScriptingExpressionEvaluator {
      * @param task Task in context of which the script should execute. The task should be "clean", i.e.
      *             (1) transient, (2) without any handler. This method puts the task into background,
      *             and assigns ScriptExecutionTaskHandler to it, to execute the script.
-     * @param parentResult
-     * @throws SchemaException
      */
     public void evaluateExpressionInBackground(ScriptingExpressionType expression, Task task, OperationResult parentResult) throws SchemaException {
-        OperationResult result = parentResult.createSubresult(DOT_CLASS + "evaluateExpressionInBackground");
+        evaluateExpressionInBackground(createExecuteScriptCommand(expression), task, parentResult);
+    }
+
+    public void evaluateExpressionInBackground(ExecuteScriptType executeScriptCommand, Task task, OperationResult parentResult) throws SchemaException {
         if (!task.isTransient()) {
             throw new IllegalStateException("Task must be transient");
         }
         if (task.getHandlerUri() != null) {
             throw new IllegalStateException("Task must not have a handler");
         }
-        ExecuteScriptType executeScriptType = new ExecuteScriptType();
-        executeScriptType.setScriptingExpression(jaxbHelper.toJaxbElement(expression));
-        task.setExtensionPropertyValue(SchemaConstants.SE_EXECUTE_SCRIPT, executeScriptType);
+        OperationResult result = parentResult.createSubresult(DOT_CLASS + "evaluateExpressionInBackground");
+        task.setExtensionPropertyValue(SchemaConstants.SE_EXECUTE_SCRIPT, executeScriptCommand);
         task.setHandlerUri(ScriptExecutionTaskHandler.HANDLER_URI);
         taskManager.switchToBackground(task, result);
         result.computeStatus();
@@ -146,70 +133,69 @@ public class ScriptingExpressionEvaluator {
      * @param result Operation result
      * @return ExecutionContext, from which the caller can retrieve the output data via getFinalOutput() method,
      *         and the console output via getConsoleOutput() method.
-     * @throws com.evolveum.midpoint.model.api.ScriptExecutionException
      */
 
     public ExecutionContext evaluateExpression(ScriptingExpressionType expression, Task task, OperationResult result) throws ScriptExecutionException {
-        ExecutionContext context = new ExecutionContext(task);
-        Data output;
-        try {
-            output = evaluateExpression(expression, Data.createEmpty(), context, result);
-        } catch (RuntimeException e) {
-            result.recordFatalError("Couldn't execute script", e);
-            throw new ScriptExecutionException("Couldn't execute script: " + e.getMessage(), e);
-        }
-        result.computeStatusIfUnknown();
-        context.setFinalOutput(output);
+        ExecutionContext context = evaluateExpression(expression, PipelineData.createEmpty(), null, task, result);
+        context.computeResults();
         return context;
     }
 
-//    public ExecutionContext evaluateExpression(JAXBElement<? extends ScriptingExpressionType> expression, Task task, OperationResult result) throws ScriptExecutionException {
-//        ExecutionContext context = new ExecutionContext(task);
-//        Data output = evaluateExpression(expression.getValue(), Data.createEmpty(), context, result);
-//        result.computeStatusIfUnknown();
-//        context.setFinalOutput(output);
-//        return context;
-//    }
 
-    public ExecutionContext evaluateExpression(ExecuteScriptType executeScript, Task task, OperationResult result) throws ScriptExecutionException {
-        return evaluateExpression(executeScript.getScriptingExpression().getValue(), task, result);
+	public ExecutionContext evaluateExpression(@NotNull ExecuteScriptType executeScript, Task task, OperationResult result) throws ScriptExecutionException {
+		Validate.notNull(executeScript.getScriptingExpression(), "Scripting expression must be present");
+        ExecutionContext context = evaluateExpression(executeScript.getScriptingExpression().getValue(),
+                PipelineData.parseFrom(executeScript.getInput(), prismContext), executeScript.getOptions(), task, result);
+        context.computeResults();
+        return context;
     }
 
-    // use in tests only (we need the task at least to report progress/statistics)
-    public ExecutionContext evaluateExpression(ScriptingExpressionType expression, OperationResult result) throws ScriptExecutionException {
-        Task task = taskManager.createTaskInstance();
-        return evaluateExpression(expression, task, result);
+    // main entry point from the outside
+	private ExecutionContext evaluateExpression(ScriptingExpressionType expression, PipelineData data,
+			ScriptingExpressionEvaluationOptionsType options, Task task, OperationResult result) throws ScriptExecutionException {
+		ExecutionContext context = new ExecutionContext(options, task);
+		PipelineData output;
+		try {
+			output = evaluateExpression(expression, data, context, result);
+		} catch (RuntimeException e) {
+			result.recordFatalError("Couldn't execute script", e);
+			throw new ScriptExecutionException("Couldn't execute script: " + e.getMessage(), e);
+		}
+		result.computeStatusIfUnknown();
+		context.setFinalOutput(output);
+		return context;
+	}
+
+	// not to be called from outside
+	public PipelineData evaluateExpression(JAXBElement<? extends ScriptingExpressionType> expression, PipelineData input, ExecutionContext context, OperationResult parentResult) throws ScriptExecutionException {
+        return evaluateExpression(expression.getValue(), input, context, parentResult);
     }
 
-    public Data evaluateExpression(JAXBElement<? extends ScriptingExpressionType> expression, Data input, ExecutionContext context, OperationResult parentResult) throws ScriptExecutionException {
-        return evaluateExpression((ScriptingExpressionType) expression.getValue(), input, context, parentResult);
-    }
-
-    public Data evaluateExpression(ScriptingExpressionType value, Data input, ExecutionContext context, OperationResult parentResult) throws ScriptExecutionException {
-        OperationResult result = parentResult.createMinorSubresult(DOT_CLASS + "evaluateExpression");
-        Data output;
+    // not to be called from outside
+    public PipelineData evaluateExpression(ScriptingExpressionType value, PipelineData input, ExecutionContext context, OperationResult parentResult) throws ScriptExecutionException {
+    	context.checkTaskStop();
+        OperationResult globalResult = parentResult.createMinorSubresult(DOT_CLASS + "evaluateExpression");
+        PipelineData output;
         if (value instanceof ExpressionPipelineType) {
-            output = executePipeline((ExpressionPipelineType) value, input, context, result);
+            output = executePipeline((ExpressionPipelineType) value, input, context, globalResult);
         } else if (value instanceof ExpressionSequenceType) {
-            output = executeSequence((ExpressionSequenceType) value, input, context, result);
-        } else if (value instanceof ForeachExpressionType) {
-            output = executeForEach((ForeachExpressionType) value, input, context, result);
+            output = executeSequence((ExpressionSequenceType) value, input, context, globalResult);
         } else if (value instanceof SelectExpressionType) {
-            output = selectEvaluator.evaluate((SelectExpressionType) value, input, context, result);
-        } else if (value instanceof FilterExpressionType) {
-            output = executeFilter((FilterExpressionType) value, input, context, result);
+            output = selectEvaluator.evaluate((SelectExpressionType) value, input, context, globalResult);
+        } else if (value instanceof FilterContentExpressionType) {
+            output = filterContentEvaluator.evaluate((FilterContentExpressionType) value, input, context, globalResult);
         } else if (value instanceof SearchExpressionType) {
-            output = searchEvaluator.evaluate((SearchExpressionType) value, input, context, result);
+            output = searchEvaluator.evaluate((SearchExpressionType) value, input, context, globalResult);
         } else if (value instanceof ActionExpressionType) {
-            output = executeAction((ActionExpressionType) value, input, context, result);
+            output = executeAction((ActionExpressionType) value, input, context, globalResult);
         } else {
             throw new IllegalArgumentException("Unsupported expression type: " + (value==null?"(null)":value.getClass()));
         }
-        result.computeStatusIfUnknown();
+        globalResult.computeStatusIfUnknown();
         return output;
     }
 
-    private Data executeAction(ActionExpressionType command, Data input, ExecutionContext context, OperationResult result) throws ScriptExecutionException {
+    private PipelineData executeAction(ActionExpressionType command, PipelineData input, ExecutionContext context, OperationResult globalResult) throws ScriptExecutionException {
         Validate.notNull(command, "command");
         Validate.notNull(command.getType(), "command.actionType");
 
@@ -222,46 +208,58 @@ public class ScriptingExpressionEvaluator {
         if (executor == null) {
             throw new IllegalStateException("Unsupported action type: " + command.getType());
         } else {
-            Data retval = executor.execute(command, input, context, result);
-            result.setSummarizeSuccesses(true);
-            result.summarize();
+            PipelineData retval = executor.execute(command, input, context, globalResult);
+            globalResult.setSummarizeSuccesses(true);
+            globalResult.summarize();
             return retval;
         }
     }
 
-
-    private Data executeFilter(FilterExpressionType command, Data input, ExecutionContext context, OperationResult result) {
-        throw new NotImplementedException();
-    }
-
-    private Data executeForEach(ForeachExpressionType command, Data input, ExecutionContext context, OperationResult result) {
-        return null;
-    }
-
-    private Data executePipeline(ExpressionPipelineType pipeline, Data data, ExecutionContext context, OperationResult result) throws ScriptExecutionException {
-        for (ScriptingExpressionType expressionType : pipeline.getExpression()) {
+    private PipelineData executePipeline(ExpressionPipelineType pipeline, PipelineData data, ExecutionContext context, OperationResult result) throws ScriptExecutionException {
+        for (JAXBElement<? extends ScriptingExpressionType> expressionType : pipeline.getScriptingExpression()) {
             data = evaluateExpression(expressionType, data, context, result);
         }
         return data;
     }
 
-    private Data executeSequence(ExpressionSequenceType sequence, Data input, ExecutionContext context, OperationResult result) throws ScriptExecutionException {
-        Data lastOutput = null;
-        for (ScriptingExpressionType expressionType : sequence.getExpression()) {
+    private PipelineData executeSequence(ExpressionSequenceType sequence, PipelineData input, ExecutionContext context, OperationResult result) throws ScriptExecutionException {
+        PipelineData lastOutput = null;
+        for (JAXBElement<? extends ScriptingExpressionType> expressionType : sequence.getScriptingExpression()) {
             lastOutput = evaluateExpression(expressionType, input, context, result);
         }
         return lastOutput;
     }
 
-    public Data evaluateConstantExpression(RawType constant, ExecutionContext context, OperationResult result) throws ScriptExecutionException {
+    public PipelineData evaluateConstantExpression(@NotNull RawType constant, @Nullable Class<?> expectedClass, ExecutionContext context, String desc, OperationResult result) throws ScriptExecutionException {
 
         try {
-            Object value = prismContext.getXnodeProcessor().parseAnyData(constant.getXnode());
-            if (value instanceof Item) {
-                return Data.create((Item) value);
+            // TODO fix this brutal hacking
+            PrismValue value;
+            if (expectedClass == null) {
+                value = constant.getParsedValue(null, null);
             } else {
-                return Data.createProperty(value, prismContext);
+                Object object = constant.getParsedRealValue(expectedClass);
+                if (object instanceof Referencable) {
+                    value = ((Referencable) object).asReferenceValue();
+                } else if (object instanceof Containerable) {
+                    value = ((Containerable) object).asPrismContainerValue();
+                } else {
+                    value = new PrismPropertyValue<>(object);
+                }
             }
+            if (value.isRaw()) {
+                throw new IllegalStateException("Raw value while " + desc + ": " + value + ". Please specify type of the value.");
+            }
+            return PipelineData.createItem(value);
+        } catch (SchemaException e) {
+            throw new ScriptExecutionException(e.getMessage(), e);
+        }
+    }
+
+    public PipelineData evaluateConstantStringExpression(RawType constant, ExecutionContext context, OperationResult result) throws ScriptExecutionException {
+        try {
+            String value = constant.getParsedRealValue(String.class);
+            return PipelineData.createItem(new PrismPropertyValue<>(value));
         } catch (SchemaException e) {
             throw new ScriptExecutionException(e.getMessage(), e);
         }

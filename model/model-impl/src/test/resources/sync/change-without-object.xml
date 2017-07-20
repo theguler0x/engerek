@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -405,7 +405,7 @@
 			<i:correlation> <!-- Correlation rule is a search query -->
 				<!-- The clause <c:type uri="http://midpoint.evolveum.com/xml/ns/public/common/common-3#UserType"/> is implicit in 
 					correlation rules -->
-				<!-- Following search queury will look for users that have "name" equal to the "uid" attribute of the account. Simply 
+				<!-- Following search query will look for users that have "name" equal to the "uid" attribute of the account. Simply 
 					speaking, it will look for match in usernames in the IDM and the resource. -->
 				<c:equal>
 					<c:path>.</c:path>

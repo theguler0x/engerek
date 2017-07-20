@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014 Evolveum
+ * Copyright (c) 2014-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.evolveum.midpoint.prism.crypto;
 
 import com.evolveum.prism.xml.ns._public.types_3.EncryptedDataType;
+import com.evolveum.prism.xml.ns._public.types_3.HashedDataType;
 
 /**
  * @author Radovan Semancik
@@ -23,11 +24,17 @@ import com.evolveum.prism.xml.ns._public.types_3.EncryptedDataType;
  */
 public interface ProtectedData<T> {
 	
-	abstract byte[] getClearBytes();
+	byte[] getClearBytes();
 	
-	abstract void setClearBytes(byte[] bytes);
+	void setClearBytes(byte[] bytes);
 	
-	abstract void destroyCleartext();
+	T getClearValue();
+	
+	void setClearValue(T data);
+	
+	void destroyCleartext();
+	
+	boolean canGetCleartext();
 
 	EncryptedDataType getEncryptedDataType();
 
@@ -35,4 +42,11 @@ public interface ProtectedData<T> {
 	
 	boolean isEncrypted();
 	
+	HashedDataType getHashedDataType();
+	
+	void setHashedData(HashedDataType hashedDataType);
+	
+	boolean isHashed();
+	
+	boolean canSupportType(Class<?> type);
 }

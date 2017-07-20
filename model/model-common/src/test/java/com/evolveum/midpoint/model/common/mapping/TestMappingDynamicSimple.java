@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 package com.evolveum.midpoint.model.common.mapping;
 
+import static com.evolveum.midpoint.test.IntegrationTestTools.display;
 import static com.evolveum.midpoint.prism.util.PrismAsserts.assertTripleNoMinus;
 import static com.evolveum.midpoint.prism.util.PrismAsserts.assertTripleZero;
 import static org.testng.AssertJUnit.assertEquals;
@@ -28,7 +29,6 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.xml.bind.JAXBElement;
 import javax.xml.namespace.QName;
 
 import com.evolveum.prism.xml.ns._public.types_3.ProtectedStringType;
@@ -97,6 +97,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN");					// changed values
     	
         // THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "foobar");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -113,6 +114,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN");					// changed values
     	
         // THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "foobar");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -129,6 +131,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN");					// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "12345", "67890");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -145,6 +148,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN");					// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "12345", "67890");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -161,6 +165,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN");					// changed values
     	
         // THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, ActivationStatusType.ENABLED);
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -177,6 +182,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "PIRATE");
     	PrismAsserts.assertTriplePlus(outputTriple, "CAPTAIN", "SWASHBUCKLER");
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -193,6 +199,7 @@ public class TestMappingDynamicSimple {
 				"PIRATE");					// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleNoZero(outputTriple);
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleMinus(outputTriple, "PIRATE");    	
@@ -208,6 +215,7 @@ public class TestMappingDynamicSimple {
 				"fullName");				// target
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, PrismTestUtil.createPolyString("PIRATE"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -222,6 +230,7 @@ public class TestMappingDynamicSimple {
     			new ItemPath(UserType.F_CREDENTIALS, CredentialsType.F_PASSWORD, PasswordType.F_VALUE)); // target
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	evaluator.assertProtectedString("output zero set", outputTriple.getZeroSet(), "PIRATE");    	
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -236,6 +245,7 @@ public class TestMappingDynamicSimple {
     			new ItemPath(UserType.F_CREDENTIALS, CredentialsType.F_PASSWORD, PasswordType.F_VALUE)); // target
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	evaluator.assertProtectedString("output zero set", outputTriple.getZeroSet(), "d3adM3nT3llN0Tal3s");    	
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -250,6 +260,7 @@ public class TestMappingDynamicSimple {
     			UserType.F_EMPLOYEE_NUMBER); // target
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "d3adM3nT3llN0Tal3s");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -264,6 +275,7 @@ public class TestMappingDynamicSimple {
     			UserType.F_FULL_NAME); // target
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, PrismTestUtil.createPolyString("d3adM3nT3llN0Tal3s"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -281,6 +293,7 @@ public class TestMappingDynamicSimple {
 				"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "jack");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -296,10 +309,8 @@ public class TestMappingDynamicSimple {
 		);	// changed values
     	
     	// THEN
-    	assertNull("expected null triple", outputTriple);
-//    	PrismAsserts.assertTripleNoZero(outputTriple);
-//    	PrismAsserts.assertTripleNoPlus(outputTriple);
-//    	PrismAsserts.assertTripleNoMinus(outputTriple);    	
+    	outputTriple.checkConsistence();
+    	PrismAsserts.assertTripleEmpty(outputTriple);
     }
     
     @Test
@@ -313,6 +324,7 @@ public class TestMappingDynamicSimple {
 				"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "jack");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -330,6 +342,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, PrismTestUtil.createPolyString("Jack Sparrow"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -346,6 +359,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "Jack Sparrow");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -362,6 +376,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "jack sparrow");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -378,6 +393,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "jack sparrow");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -394,6 +410,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "fooBAR");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -410,6 +427,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "fooBAR");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -426,6 +444,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "Captain barbossa");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -442,6 +461,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "Captain barbossa");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -458,6 +478,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, new PolyString("Captain Jack Sparrow", "captain jack sparrow"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -474,6 +495,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, new PolyString("Captain Jack Sparrow", "captain jack sparrow"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -490,6 +512,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, new PolyString("Captain J. Sparrow", "captain j sparrow"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -506,6 +529,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "Captain J");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -538,6 +562,7 @@ public class TestMappingDynamicSimple {
 				PrismTestUtil.createPolyString("Barbossa"));	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleNoZero(outputTriple);
     	PrismAsserts.assertTriplePlus(outputTriple, "Captain b");
     	PrismAsserts.assertTripleMinus(outputTriple, "Captain j");    	
@@ -554,6 +579,7 @@ public class TestMappingDynamicSimple {
     			);	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleNoZero(outputTriple);
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleMinus(outputTriple, "Captain j");    	
@@ -570,6 +596,7 @@ public class TestMappingDynamicSimple {
 				"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "jack sparrow");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -586,6 +613,7 @@ public class TestMappingDynamicSimple {
     			"CAPTAIN", "SWASHBUCKLER");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "Jack Sparrow");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);    	
@@ -595,7 +623,7 @@ public class TestMappingDynamicSimple {
     @Test
     public void testScriptExtraVariablesRef() throws Exception {
     	// GIVEN
-    	Mapping<PrismPropertyValue<String>,PrismPropertyDefinition<String>> mapping = evaluator.createMapping("mapping-script-extra-variables.xml",
+    	Mapping.Builder<PrismPropertyValue<String>,PrismPropertyDefinition<String>> builder = evaluator.createMappingBuilder("mapping-script-extra-variables.xml",
 				"testScriptExtraVariablesRef", "employeeType", null);
     	
     	Map<QName, Object> vars = new HashMap<QName, Object>();
@@ -603,7 +631,9 @@ public class TestMappingDynamicSimple {
         	"c0c010c0-d34d-b33f-f00d-111111111112",
         	UserType.COMPLEX_TYPE);
         vars.put(new QName(SchemaConstants.NS_C, "sailor"), ref);
-        mapping.addVariableDefinitions(vars);
+        builder.addVariableDefinitions(vars);
+
+		Mapping<PrismPropertyValue<String>,PrismPropertyDefinition<String>> mapping = builder.build();
         
     	OperationResult opResult = new OperationResult("testScriptExtraVariablesRef");
     	    	
@@ -612,6 +642,7 @@ public class TestMappingDynamicSimple {
     	
     	// THEN
 		PrismValueDeltaSetTriple<PrismPropertyValue<String>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		PrismAsserts.assertTripleZero(outputTriple, "Captain barbossa");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -622,15 +653,16 @@ public class TestMappingDynamicSimple {
     	// GIVEN
     	final String TEST_NAME = "testScriptExtraVariablesJaxb";
     	TestUtil.displayTestTile(TEST_NAME);
-    	Mapping<PrismPropertyValue<String>,PrismPropertyDefinition<String>> mapping = evaluator.createMapping("mapping-script-extra-variables.xml", 
+    	Mapping.Builder<PrismPropertyValue<String>,PrismPropertyDefinition<String>> builder = evaluator.createMappingBuilder("mapping-script-extra-variables.xml",
     			TEST_NAME, "employeeType", null);
     	
     	Map<QName, Object> vars = new HashMap<QName, Object>();
     	UserType userType = (UserType) PrismTestUtil.parseObject(
                 new File(MidPointTestConstants.OBJECTS_DIR, "c0c010c0-d34d-b33f-f00d-111111111112.xml")).asObjectable();
         vars.put(new QName(SchemaConstants.NS_C, "sailor"), userType);
-        mapping.addVariableDefinitions(vars);
-        
+        builder.addVariableDefinitions(vars);
+		Mapping<PrismPropertyValue<String>,PrismPropertyDefinition<String>> mapping = builder.build();
+
     	OperationResult opResult = new OperationResult(TEST_NAME);
     	    	
     	// WHEN
@@ -638,6 +670,7 @@ public class TestMappingDynamicSimple {
     	
     	// THEN
 		PrismValueDeltaSetTriple<PrismPropertyValue<String>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		PrismAsserts.assertTripleZero(outputTriple, "Captain barbossa");
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -653,6 +686,7 @@ public class TestMappingDynamicSimple {
     			
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, PrismTestUtil.createPolyString("Jack Sparrow"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -671,6 +705,7 @@ public class TestMappingDynamicSimple {
 				PrismTestUtil.createPolyString("Jackie"));	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleNoZero(outputTriple);
     	PrismAsserts.assertTriplePlus(outputTriple, PrismTestUtil.createPolyString("Jackie Sparrow"));
     	PrismAsserts.assertTripleMinus(outputTriple, PrismTestUtil.createPolyString("Jack Sparrow"));
@@ -698,6 +733,7 @@ public class TestMappingDynamicSimple {
     	
     	// THEN
 		PrismValueDeltaSetTriple<PrismPropertyValue<PolyString>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
     	PrismAsserts.assertTripleNoZero(outputTriple);
     	PrismAsserts.assertTriplePlus(outputTriple, PrismTestUtil.createPolyString("Sparrow"));
     	PrismAsserts.assertTripleMinus(outputTriple, PrismTestUtil.createPolyString("Jack Sparrow"));
@@ -728,6 +764,7 @@ public class TestMappingDynamicSimple {
     	
     	// THEN
 		PrismValueDeltaSetTriple<PrismPropertyValue<PolyString>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
     	PrismAsserts.assertTripleNoZero(outputTriple);
     	PrismAsserts.assertTriplePlus(outputTriple, PrismTestUtil.createPolyString("Sparrow"));
     	PrismAsserts.assertTripleMinus(outputTriple, PrismTestUtil.createPolyString("Jack Sparrow"));
@@ -756,6 +793,7 @@ public class TestMappingDynamicSimple {
     	
     	// THEN
 		PrismValueDeltaSetTriple<PrismPropertyValue<PolyString>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
     	PrismAsserts.assertTripleNoZero(outputTriple);
     	PrismAsserts.assertTriplePlus(outputTriple, PrismTestUtil.createPolyString("John Doe"));
     	PrismAsserts.assertTripleMinus(outputTriple, PrismTestUtil.createPolyString("Jack Sparrow"));
@@ -775,6 +813,7 @@ public class TestMappingDynamicSimple {
 				"666");	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, PrismTestUtil.createPolyString("Jack Sparrow"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -794,6 +833,7 @@ public class TestMappingDynamicSimple {
    			"1975-05-30");	// changed values
    	
    	// THEN
+   	outputTriple.checkConsistence();
    	PrismAsserts.assertTripleZero(outputTriple);
    	PrismAsserts.assertTriplePlus(outputTriple, XmlTypeConverter.createXMLGregorianCalendar(1975, 5, 30, 21, 30, 0));
    	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -810,6 +850,7 @@ public class TestMappingDynamicSimple {
 				"CAPTAIN");					// changed values
 
 		// THEN
+		outputTriple.checkConsistence();
 		PrismAsserts.assertTripleZero(outputTriple, "xl");
 		PrismAsserts.assertTripleNoPlus(outputTriple);
 		PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -820,13 +861,13 @@ public class TestMappingDynamicSimple {
     	// GIVEN
     	final String TEST_NAME = "testScriptRootNodeRef";
     	TestUtil.displayTestTile(TEST_NAME);
-    	Mapping<PrismPropertyValue<PolyString>,PrismPropertyDefinition<PolyString>> mapping = evaluator.createMapping("mapping-script-root-node.xml", 
-    			TEST_NAME, "locality", null);
+    	Mapping<PrismPropertyValue<PolyString>,PrismPropertyDefinition<PolyString>> mapping =
+				evaluator.<PolyString>createMappingBuilder("mapping-script-root-node.xml", TEST_NAME, "locality", null)
+				.rootNode(MiscSchemaUtil.createObjectReference(
+						"c0c010c0-d34d-b33f-f00d-111111111111",
+						UserType.COMPLEX_TYPE))
+				.build();
     	
-        mapping.setRootNode(MiscSchemaUtil.createObjectReference(
-            	"c0c010c0-d34d-b33f-f00d-111111111111",
-            	UserType.COMPLEX_TYPE));
-        
     	OperationResult opResult = new OperationResult(TEST_NAME);
     	    	
     	// WHEN
@@ -834,6 +875,7 @@ public class TestMappingDynamicSimple {
     	
     	// THEN
 		PrismValueDeltaSetTriple<PrismPropertyValue<PolyString>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		PrismAsserts.assertTripleZero(outputTriple, new PolyString("Black Pearl", "black pearl"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -844,12 +886,14 @@ public class TestMappingDynamicSimple {
     	// GIVEN
     	final String TEST_NAME = "testScriptRootNodeJaxb";
     	TestUtil.displayTestTile(TEST_NAME);
-    	Mapping<PrismPropertyValue<PolyString>,PrismPropertyDefinition<PolyString>> mapping = evaluator.createMapping("mapping-script-root-node.xml", 
-    			TEST_NAME, "locality", null);
-    	
-    	PrismObject<UserType> user = PrismTestUtil.parseObject(new File(MidPointTestConstants.OBJECTS_DIR, "c0c010c0-d34d-b33f-f00d-111111111111.xml"));
-        mapping.setRootNode(user.asObjectable());
-        
+		PrismObject<UserType> user = PrismTestUtil.parseObject(new File(MidPointTestConstants.OBJECTS_DIR, "c0c010c0-d34d-b33f-f00d-111111111111.xml"));
+
+		Mapping<PrismPropertyValue<PolyString>,PrismPropertyDefinition<PolyString>> mapping =
+				evaluator.<PolyString>createMappingBuilder("mapping-script-root-node.xml",
+						TEST_NAME, "locality", null)
+						.rootNode(user.asObjectable())
+						.build();
+
     	OperationResult opResult = new OperationResult(TEST_NAME);
     	    	
     	// WHEN
@@ -857,6 +901,7 @@ public class TestMappingDynamicSimple {
     	
     	// THEN
 		PrismValueDeltaSetTriple<PrismPropertyValue<PolyString>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		PrismAsserts.assertTripleZero(outputTriple, new PolyString("Black Pearl", "black pearl"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -873,6 +918,7 @@ public class TestMappingDynamicSimple {
     			PrismTestUtil.createPolyString("Antropomorphic Personifications"));	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple,
     			PrismTestUtil.createPolyString("The Guild of Brethren of the Coast"), 
     			PrismTestUtil.createPolyString("The Guild of Davie Jones' Locker"));
@@ -891,6 +937,7 @@ public class TestMappingDynamicSimple {
     			PrismTestUtil.createPolyString("Antropomorphic Personifications"));	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple,
     			PrismTestUtil.createPolyString("The Guild of Brethren of the Coast"), 
     			PrismTestUtil.createPolyString("The Guild of Davie Jones' Locker"));
@@ -920,6 +967,7 @@ public class TestMappingDynamicSimple {
     			PrismTestUtil.createPolyString("Antropomorphic Personifications"));	// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, 
     			PrismTestUtil.createPolyString("Brethren of the Coast"), 
     			PrismTestUtil.createPolyString("Davie Jones' Locker"));
@@ -939,6 +987,7 @@ public class TestMappingDynamicSimple {
     			"DRUNKARD");				// changed values
     	
     	// THEN
+    	outputTriple.checkConsistence();
     	PrismAsserts.assertTripleZero(outputTriple, "foobar");
 	  	PrismAsserts.assertTripleNoPlus(outputTriple);
 	  	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -982,6 +1031,7 @@ public class TestMappingDynamicSimple {
     	
     	// THEN
 		PrismValueDeltaSetTriple<PrismPropertyValue<PolyString>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		PrismAsserts.assertTripleNoZero(outputTriple);
 	  	PrismAsserts.assertTriplePlus(outputTriple, PrismTestUtil.createPolyString("The CAPTAIN"));
 	  	PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -1036,11 +1086,12 @@ public class TestMappingDynamicSimple {
 		assertNull("Unexpected value in outputTriple", outputTriple);
     }
     
-    public void testScriptTransformMulti() throws Exception {
-    	// GIVEN
-    	final String TEST_NAME = "testScriptSystemVariablesConditionTrueToTrueXPath";
+    @Test
+    public void testScriptTransformMultiAddDelete() throws Exception {
+    	final String TEST_NAME = "testScriptTransformMultiAddDelete";
     	TestUtil.displayTestTile(TEST_NAME);
     	
+    	// GIVEN
     	ObjectDelta<UserType> delta = ObjectDelta.createEmptyModifyDelta(UserType.class, evaluator.USER_OLD_OID, evaluator.getPrismContext());
     	PropertyDelta<String> propDelta = delta.createPropertyModification(evaluator.toPath("employeeType"));
     	propDelta.addValueToAdd(new PrismPropertyValue<String>("CAPTAIN"));
@@ -1054,19 +1105,63 @@ public class TestMappingDynamicSimple {
 		PrismObject<UserType> user = (PrismObject<UserType>) mapping.getSourceContext().getOldObject();
 		user.asObjectable().getEmployeeType().add("LANDLUBER");
 		mapping.getSourceContext().recompute();
+		display("user before", user);
+		display("delta", delta);
     	        
     	OperationResult opResult = new OperationResult(TEST_NAME);
     	    	
     	// WHEN
+    	TestUtil.displayWhen(TEST_NAME);
 		mapping.evaluate(null, opResult);
     	
     	// THEN
+		TestUtil.displayThen(TEST_NAME);
 		PrismValueDeltaSetTriple<PrismPropertyValue<PolyString>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		PrismAsserts.assertTripleZero(outputTriple, PrismTestUtil.createPolyString("The pirate deck"));
 	  	PrismAsserts.assertTriplePlus(outputTriple, PrismTestUtil.createPolyString("The captain deck"));
 	  	PrismAsserts.assertTripleMinus(outputTriple, PrismTestUtil.createPolyString("The landluber deck"));
     }
-    
+
+    /**
+     * MID-3700
+     */
+    @Test
+    public void testScriptTransformMultiReplace() throws Exception {
+    	final String TEST_NAME = "testScriptTransformMultiReplace";
+    	TestUtil.displayTestTile(TEST_NAME);
+    	
+    	// GIVEN
+    	ObjectDelta<UserType> delta = ObjectDelta.createEmptyModifyDelta(UserType.class, evaluator.USER_OLD_OID, evaluator.getPrismContext());
+    	PropertyDelta<String> propDelta = delta.createPropertyModification(evaluator.toPath("employeeType"));
+    	propDelta.addValueToReplace(new PrismPropertyValue<String>("CAPTAIN"));
+    	delta.addModification(propDelta);
+    	
+		Mapping<PrismPropertyValue<PolyString>,PrismPropertyDefinition<PolyString>> mapping = evaluator.createMapping(
+				"mapping-script-transform.xml", 
+    			TEST_NAME, "organizationalUnit", delta);
+		
+		PrismObject<UserType> user = (PrismObject<UserType>) mapping.getSourceContext().getOldObject();
+		
+		display("user before", user);
+		display("delta", delta);
+    	        
+    	OperationResult opResult = new OperationResult(TEST_NAME);
+    	    	
+    	// WHEN
+    	TestUtil.displayWhen(TEST_NAME);
+		mapping.evaluate(null, opResult);
+    	
+    	// THEN
+		TestUtil.displayThen(TEST_NAME);
+		PrismValueDeltaSetTriple<PrismPropertyValue<PolyString>> outputTriple = mapping.getOutputTriple();
+		display("output triple", outputTriple);
+		outputTriple.checkConsistence();
+		PrismAsserts.assertTripleNoZero(outputTriple);
+	  	PrismAsserts.assertTriplePlus(outputTriple, PrismTestUtil.createPolyString("The captain deck"));
+	  	PrismAsserts.assertTripleMinus(outputTriple, PrismTestUtil.createPolyString("The pirate deck"));
+    }
+
     @Test
     public void testInboundMapping() throws Exception{
     	final String TEST_NAME = "testInboundMapping";
@@ -1084,6 +1179,7 @@ public class TestMappingDynamicSimple {
     	mapping.evaluate(null, opResult);
     	
     	PrismValueDeltaSetTriple<PrismPropertyValue<PolyString>> outputTriple = mapping.getOutputTriple();
+    	outputTriple.checkConsistence();
     	assertTripleZero(outputTriple, PrismTestUtil.createPolyString("pavolr"));
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	assertTripleNoMinus(outputTriple);
@@ -1099,28 +1195,6 @@ public class TestMappingDynamicSimple {
     	Mapping<PrismPropertyValue<String>,PrismPropertyDefinition<String>> mapping = evaluator.createMapping("mapping-generate.xml", 
     			TEST_NAME, stringPolicy, "employeeNumber", null);
     	
-//    	StringPolicyResolver stringPolicyResolver = new StringPolicyResolver() {
-//			private ItemPath outputPath;
-//			private ItemDefinition outputDefinition;
-//			@Override
-//			public void setOutputPath(ItemPath outputPath) {
-//				this.outputPath = outputPath;
-//			}
-//			
-//			@Override
-//			public void setOutputDefinition(ItemDefinition outputDefinition) {
-//				this.outputDefinition = outputDefinition;
-//			}
-//			
-//			@Override
-//			public StringPolicyType resolve() {
-//				// No path. The the path is default
-////				assertNotNull("Null outputPath", outputPath);
-//				assertNotNull("Null outputDefinition", outputDefinition);
-//				return stringPolicy;
-//			}
-//		};
-    	
 		OperationResult opResult = new OperationResult(TEST_NAME);
     	
 		// WHEN (1)
@@ -1135,11 +1209,14 @@ public class TestMappingDynamicSimple {
 		System.out.println("Generated value (1): " + value1);
 		assertGeneratedValue(value1, stringPolicy, null, false, false);
 
+		mapping = evaluator.createMapping("mapping-generate.xml", TEST_NAME, stringPolicy, "employeeNumber", null);
+		
 		// WHEN (2)
 		mapping.evaluate(null, opResult);
 
 		// THEN (2)
 		outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		String value2 = MappingTestEvaluator.getSingleValue("plus set", outputTriple.getZeroSet());
 		System.out.println("Generated value (2): " + value2);
 		assertGeneratedValue(value2, stringPolicy, null, false, false);
@@ -1198,6 +1275,7 @@ public class TestMappingDynamicSimple {
 
 		// THEN (1)
 		PrismValueDeltaSetTriple<PrismPropertyValue<String>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		String value1 = MappingTestEvaluator.getSingleValue("plus set", outputTriple.getZeroSet());
 		PrismAsserts.assertTripleNoPlus(outputTriple);
 		PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -1206,11 +1284,15 @@ public class TestMappingDynamicSimple {
 		assertNotNull("Generated null value", value1);
 		assertGeneratedValue(value1, stringPolicy, pattern, false, ignoreMax);
 
+		// GIVEN (2)
+		mapping = evaluator.createMapping(mappingFileName, TEST_NAME, stringPolicy, "employeeNumber", null);
+		
 		// WHEN (2)
 		mapping.evaluate(null, opResult);
 
 		// THEN (2)
 		outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		String value2 = MappingTestEvaluator.getSingleValue("plus set", outputTriple.getZeroSet());
 		System.out.println("Generated value (2): " + value2);
 		assertNotNull("Generated null value", value2);
@@ -1268,10 +1350,11 @@ public class TestMappingDynamicSimple {
     			new File(MidPointTestConstants.OBJECTS_DIR, policyFileName));
     	final StringPolicyType stringPolicy = valuePolicy.asObjectable().getStringPolicy();
     	// GIVEN
-    	Mapping<PrismPropertyValue<T>,PrismPropertyDefinition<T>> mapping = evaluator.createMapping(mappingFileName, 
+    	Mapping<PrismPropertyValue<T>,PrismPropertyDefinition<T>> mapping = evaluator.<T>createMappingBuilder(mappingFileName,
     			TEST_NAME, stringPolicy, new ItemPath(
     					UserType.F_EXTENSION,
-    					new QName(NS_EXTENSION, extensionPropName)), null);
+    					new QName(NS_EXTENSION, extensionPropName)), null)
+				.build();
     	    	
 		OperationResult opResult = new OperationResult(TEST_NAME);
     	
@@ -1280,6 +1363,7 @@ public class TestMappingDynamicSimple {
 
 		// THEN (1)
 		PrismValueDeltaSetTriple<PrismPropertyValue<T>> outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		T value1 = MappingTestEvaluator.getSingleValue("plus set", outputTriple.getZeroSet());
 		PrismAsserts.assertTripleNoPlus(outputTriple);
 		PrismAsserts.assertTripleNoMinus(outputTriple);
@@ -1289,11 +1373,20 @@ public class TestMappingDynamicSimple {
 		// We need to ignore the minLength. Conversion string -> number -> string may lose the leading zeroes
 		assertGeneratedValue(value1.toString(), stringPolicy, PATTERN_NUMERIC, true, false);
 
+		// GIVEN (2)
+		
+		mapping = evaluator.<T>createMappingBuilder(mappingFileName,
+    			TEST_NAME, stringPolicy, new ItemPath(
+    					UserType.F_EXTENSION,
+    					new QName(NS_EXTENSION, extensionPropName)), null)
+				.build();
+		
 		// WHEN (2)
 		mapping.evaluate(null, opResult);
 
 		// THEN (2)
 		outputTriple = mapping.getOutputTriple();
+		outputTriple.checkConsistence();
 		T value2 = MappingTestEvaluator.getSingleValue("plus set", outputTriple.getZeroSet());
 		System.out.println("Generated value (2): " + value2);
 		assertNotNull("Generated null value", value2);
@@ -1318,6 +1411,7 @@ public class TestMappingDynamicSimple {
 
 		// THEN
     	PrismValueDeltaSetTriple<PrismPropertyValue<ProtectedStringType>> outputTriple = mapping.getOutputTriple();
+    	outputTriple.checkConsistence();
     	ProtectedStringType value1 = MappingTestEvaluator.getSingleValue("plus set", outputTriple.getZeroSet());
     	PrismAsserts.assertTripleNoPlus(outputTriple);
     	PrismAsserts.assertTripleNoMinus(outputTriple);

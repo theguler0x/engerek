@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014-2015 Evolveum
+ * Copyright (c) 2014-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,14 +15,17 @@
  */
 package com.evolveum.midpoint.security.api;
 
+import org.jetbrains.annotations.Nullable;
 import org.springframework.security.access.AccessDecisionManager;
 
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.schema.result.OperationResult;
+import com.evolveum.midpoint.util.Producer;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.AbstractRoleType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationPhaseType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
@@ -40,7 +43,7 @@ public interface SecurityEnforcer extends AccessDecisionManager {
 
     void setupPreAuthenticatedSecurityContext(Authentication authentication);
 
-	void setupPreAuthenticatedSecurityContext(PrismObject<UserType> user);
+	void setupPreAuthenticatedSecurityContext(PrismObject<UserType> user) throws SchemaException;
 	
 	boolean isAuthenticated();
 	
@@ -50,6 +53,13 @@ public interface SecurityEnforcer extends AccessDecisionManager {
 	 */
 	MidPointPrincipal getPrincipal() throws SecurityViolationException;
 
+	/**
+	 * Produces authorization error with proper message and logs it using proper logger.
+	 */
+	<O extends ObjectType, T extends ObjectType> void failAuthorization(String operationUrl, AuthorizationPhaseType phase, PrismObject<O> object,
+			ObjectDelta<O> delta, PrismObject<T> target, OperationResult result)
+			throws SecurityViolationException;
+	
 	/**
 	 * Returns true if the currently logged-in user is authorized for specified action, returns false otherwise.
 	 * Does not throw SecurityViolationException.
@@ -81,5 +91,33 @@ public interface SecurityEnforcer extends AccessDecisionManager {
 	 * The objectType parameter defines the class of the object for which should be the returned filter applicable.
 	 */
 	<T extends ObjectType, O extends ObjectType> ObjectFilter preProcessObjectFilter(String operationUrl, AuthorizationPhaseType phase,
-			Class<T> objectType, PrismObject<O> object, ObjectFilter origFilter) throws SchemaException; 
+			Class<T> searchResultType, PrismObject<O> object, ObjectFilter origFilter) throws SchemaException;
+	
+	/**
+	 * @param includeSpecial include special authorizations such as "self"
+	 */
+	<T extends ObjectType, O extends ObjectType> boolean canSearch(String operationUrl, AuthorizationPhaseType phase,
+			Class<T> searchResultType, PrismObject<O> object, boolean includeSpecial, ObjectFilter filter) throws SchemaException;
+	
+	<T> T runAs(Producer<T> producer, PrismObject<UserType> user) throws SchemaException ;
+	
+	<T> T runPrivileged(Producer<T> producer);
+
+	/**
+	 * Returns decisions for individual items for "assign" authorization. This is usually applicable to assignment parameters.
+	 */
+	<O extends ObjectType, R extends AbstractRoleType> ItemSecurityDecisions getAllowedRequestAssignmentItems(MidPointPrincipal midPointPrincipal,
+			String operationUrl, PrismObject<O> object, PrismObject<R> target, OwnerResolver ownerResolver) throws SchemaException;
+
+	/**
+	 * Store connection information for later use within current thread.
+	 */
+	void storeConnectionInformation(@Nullable HttpConnectionInformation value);
+
+	/**
+	 * Returns stored connection information.
+	 * Should be used for non-HTTP threads that have no access to stored Request object (see {@link SecurityUtil#getCurrentConnectionInformation()}).
+	 */
+	@Nullable
+	HttpConnectionInformation getStoredConnectionInformation();
 }

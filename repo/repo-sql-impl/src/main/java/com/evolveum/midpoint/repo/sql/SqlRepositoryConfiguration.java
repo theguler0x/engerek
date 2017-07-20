@@ -28,6 +28,13 @@ import org.apache.commons.configuration.Configuration;
 import org.apache.commons.lang.StringUtils;
 import org.h2.Driver;
 import org.hibernate.dialect.*;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
+import static com.evolveum.midpoint.repo.sql.SqlRepositoryConfiguration.Database.*;
 
 /**
  * This class is used for SQL repository configuration. It reads values from Apache configuration object (xml).
@@ -39,8 +46,52 @@ public class SqlRepositoryConfiguration {
     private static final Trace LOGGER = TraceManager.getTrace(SqlRepositoryConfiguration.class);
 
     enum Database {
-        H2, MYSQL, POSTGRESQL, SQLSERVER, ORACLE
-    }
+
+    	// we might include other dialects if needed (but the ones listed here are the recommended ones)
+        H2(DRIVER_H2, H2Dialect.class.getName()),
+		MYSQL(DRIVER_MYSQL, MidPointMySQLDialect.class.getName()),
+		POSTGRESQL(DRIVER_POSTGRESQL, MidPointPostgreSQLDialect.class.getName()),
+		SQLSERVER(DRIVER_SQLSERVER, UnicodeSQLServer2008Dialect.class.getName()),
+		ORACLE(DRIVER_ORACLE, Oracle10gDialect.class.getName()),
+		MARIADB(DRIVER_MARIADB, MidPointMySQLDialect.class.getName());
+
+        // order is important! (the first value is the default)
+		@NotNull List<String> drivers;
+		@NotNull List<String> dialects;
+
+		Database(String driver, String... dialects) {
+			this.drivers = Collections.singletonList(driver);
+			this.dialects = Arrays.asList(dialects);
+		}
+
+		public static Database findDatabase(String databaseName) {
+			if (StringUtils.isBlank(databaseName)) {
+				return null;
+			}
+			for (Database database : values()) {
+				if (database.name().equalsIgnoreCase(databaseName)) {
+					return database;
+				}
+			}
+			throw new IllegalArgumentException("Unsupported database type: " + databaseName);
+		}
+
+		public String getDefaultHibernateDialect() {
+			return dialects.get(0);
+		}
+
+		public String getDefaultDriverClassName() {
+			return drivers.get(0);
+		}
+
+		public boolean containsDriver(String driverClassName) {
+			return drivers.contains(driverClassName);
+		}
+
+		public boolean containsDialect(String hibernateDialect) {
+			return dialects.contains(hibernateDialect);
+		}
+	}
 
     public static final String PROPERTY_DATABASE = "database";
     public static final String PROPERTY_BASE_DIR = "baseDir";
@@ -79,7 +130,14 @@ public class SqlRepositoryConfiguration {
     public static final String PROPERTY_SKIP_ORG_CLOSURE_STRUCTURE_CHECK = "skipOrgClosureStructureCheck";
     public static final String PROPERTY_STOP_ON_ORG_CLOSURE_STARTUP_FAILURE = "stopOnOrgClosureStartupFailure";
 
-    private String database = Database.H2.name();
+    private static final String DRIVER_H2 = Driver.class.getName();
+    private static final String DRIVER_MYSQL = "com.mysql.jdbc.Driver";
+    private static final String DRIVER_MARIADB = "org.mariadb.jdbc.Driver";
+    private static final String DRIVER_SQLSERVER = "com.microsoft.sqlserver.jdbc.SQLServerDriver";
+    private static final String DRIVER_POSTGRESQL = "org.postgresql.Driver";
+    private static final String DRIVER_ORACLE = "oracle.jdbc.OracleDriver";
+
+    private String database = null;
 
     //embedded configuration
     private boolean embedded = true;
@@ -118,8 +176,9 @@ public class SqlRepositoryConfiguration {
 
     public SqlRepositoryConfiguration(Configuration configuration) {
         setDatabase(configuration.getString(PROPERTY_DATABASE, database));
+		setDataSource(configuration.getString(PROPERTY_DATASOURCE, null));
 
-        computeDefaultDatabaseParameters();
+		computeDefaultDatabaseParameters();
 
         setAsServer(configuration.getBoolean(PROPERTY_AS_SERVER, embedded));
         setBaseDir(configuration.getString(PROPERTY_BASE_DIR, baseDir));
@@ -134,7 +193,6 @@ public class SqlRepositoryConfiguration {
         setTcpSSL(configuration.getBoolean(PROPERTY_TCP_SSL, tcpSSL));
         setFileName(configuration.getString(PROPERTY_FILE_NAME, fileName));
         setDropIfExists(configuration.getBoolean(PROPERTY_DROP_IF_EXISTS, dropIfExists));
-        setDataSource(configuration.getString(PROPERTY_DATASOURCE, null));
         setMinPoolSize(configuration.getInt(PROPERTY_MIN_POOL_SIZE, minPoolSize));
         setMaxPoolSize(configuration.getInt(PROPERTY_MAX_POOL_SIZE, maxPoolSize));
         setUseZip(configuration.getBoolean(PROPERTY_USE_ZIP, useZip));
@@ -160,30 +218,23 @@ public class SqlRepositoryConfiguration {
     }
 
     private void computeDefaultDatabaseParameters() {
-        if (Database.H2.name().equalsIgnoreCase(getDatabase())) {
-            embedded = true;
-            hibernateHbm2ddl = "update";
-
-            hibernateDialect = H2Dialect.class.getName();
-            driverClassName = Driver.class.getName();
-        } else {
-            embedded = false;
-            hibernateHbm2ddl = "validate";
-
-            if (Database.MYSQL.name().equalsIgnoreCase(getDatabase())) {
-                hibernateDialect = MidPointMySQLDialect.class.getName();
-                driverClassName = "com.mysql.jdbc.Driver";
-            } else if (Database.POSTGRESQL.name().equalsIgnoreCase(getDatabase())) {
-                hibernateDialect = MidPointPostgreSQLDialect.class.getName();
-                driverClassName = "org.postgresql.Driver";
-            } else if (Database.ORACLE.name().equalsIgnoreCase(getDatabase())) {
-                hibernateDialect = Oracle10gDialect.class.getName();
-                driverClassName = "oracle.jdbc.OracleDriver";
-            } else if (Database.SQLSERVER.name().equalsIgnoreCase(getDatabase())) {
-                hibernateDialect = UnicodeSQLServer2008Dialect.class.getName();
-                driverClassName = "com.microsoft.sqlserver.jdbc.SQLServerDriver";
-            }
-        }
+		Database db = Database.findDatabase(getDatabase());
+		if (db == null) {
+			if (dataSource != null) {
+				return;		// no defaults in this case
+			} else {
+				db = H2;
+			}
+		}
+		if (db == H2) {
+			embedded = true;
+			hibernateHbm2ddl = "update";
+		} else {
+			embedded = false;
+			hibernateHbm2ddl = "validate";
+		}
+		hibernateDialect = db.getDefaultHibernateDialect();
+		driverClassName = db.getDefaultDriverClassName();
     }
 
     private void computeDefaultConcurrencyParameters() {
@@ -192,7 +243,7 @@ public class SqlRepositoryConfiguration {
             lockForUpdateViaHibernate = false;
             lockForUpdateViaSql = false;
             useReadOnlyTransactions = false;        // h2 does not support "SET TRANSACTION READ ONLY" command
-        } else if (isUsingMySQL()) {
+        } else if (isUsingMySQL() || isUsingMariaDB()) {
             transactionIsolation = TransactionIsolation.SERIALIZABLE;
             lockForUpdateViaHibernate = false;
             lockForUpdateViaSql = false;
@@ -230,7 +281,7 @@ public class SqlRepositoryConfiguration {
         if (isUsingH2()) {
             iterativeSearchByPaging = true;
             iterativeSearchByPagingBatchSize = 50;
-        } else if (isUsingMySQL()) {
+        } else if (isUsingMySQL() || isUsingMariaDB()) {
             iterativeSearchByPaging = true;
             iterativeSearchByPagingBatchSize = 50;
         } else {
@@ -545,36 +596,36 @@ public class SqlRepositoryConfiguration {
     }
 
     public boolean isUsingH2() {
-        if (hibernateDialect == null) {
-            return true;
-        }
-        return isUsingDialect(H2Dialect.class);
+        return isUsing(H2);
     }
 
-    public boolean isUsingOracle() {
-        return isUsingDialect(Oracle10gDialect.class);
+	private boolean isUsing(Database db) {
+		return db.name().equalsIgnoreCase(database)
+				|| db.containsDriver(driverClassName)
+				|| db.containsDialect(hibernateDialect);
+	}
+
+	public boolean isUsingOracle() {
+        return isUsing(ORACLE);
     }
 
     public boolean isUsingMySQL() {
-        return isUsingDialect(MidPointMySQLDialect.class);
+        return isUsing(MYSQL);
+    }
+
+    public boolean isUsingMariaDB() {
+		// Note that MySQL and MariaDB share the same hibernateDialect.
+		// So if this is the only information (e.g. when using tomcat datasource configuration),
+		// we want only isUsingMySQL to return 'true'.
+        return isUsing(MARIADB) && !isUsing(MYSQL);
     }
 
     public boolean isUsingPostgreSQL() {
-        return isUsingDialect(PostgresPlusDialect.class)
-                || isUsingDialect(PostgreSQLDialect.class)
-                || isUsingDialect(MidPointPostgreSQLDialect.class);
+        return isUsing(POSTGRESQL);
     }
 
     public boolean isUsingSQLServer() {
-        return isUsingDialect(UnicodeSQLServer2008Dialect.class);
-    }
-
-    private boolean isUsingDialect(Class<? extends Dialect> dialect) {
-        if (dialect.getName().equals(hibernateDialect)) {
-            return true;
-        }
-
-        return false;
+        return isUsing(SQLSERVER);
     }
 
     public void setStopOnOrgClosureStartupFailure(boolean stopOnOrgClosureStartupFailure) {

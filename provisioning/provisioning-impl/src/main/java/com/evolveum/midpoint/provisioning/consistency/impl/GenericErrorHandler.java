@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,14 +26,11 @@ import org.springframework.stereotype.Component;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ItemDelta;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
-import com.evolveum.midpoint.provisioning.api.ProvisioningOperationOptions;
 import com.evolveum.midpoint.provisioning.api.ProvisioningService;
 import com.evolveum.midpoint.provisioning.consistency.api.ErrorHandler;
-import com.evolveum.midpoint.provisioning.impl.ShadowCacheReconciler;
 import com.evolveum.midpoint.provisioning.ucf.api.GenericFrameworkException;
 import com.evolveum.midpoint.repo.api.RepositoryService;
 import com.evolveum.midpoint.schema.DeltaConvertor;
-import com.evolveum.midpoint.schema.ObjectOperationOption;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.result.OperationResultStatus;
 import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
@@ -42,14 +39,13 @@ import com.evolveum.midpoint.schema.util.ShadowUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AvailabilityStatusType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FailedOperationTypeType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.prism.xml.ns._public.types_3.ObjectDeltaType;
 
@@ -74,9 +70,19 @@ public class GenericErrorHandler extends ErrorHandler{
 	
 	
 	@Override
-	public <T extends ShadowType> T handleError(T shadow, FailedOperation op, Exception ex, boolean compensate, 
+	public <T extends ShadowType> T handleError(T shadow, FailedOperation op, Exception ex, 
+			boolean doDiscovery, boolean compensate, 
 			Task task, OperationResult parentResult) throws SchemaException, GenericFrameworkException, CommunicationException,
-			ObjectNotFoundException, ObjectAlreadyExistsException, ConfigurationException, SecurityViolationException {
+			ObjectNotFoundException, ObjectAlreadyExistsException, ConfigurationException, SecurityViolationException, ExpressionEvaluationException {
+		
+		if (!doDiscovery) {
+			parentResult.recordFatalError(ex);
+			if (ex instanceof GenericFrameworkException) {
+				throw (GenericFrameworkException)ex;
+			} else {
+				throw new GenericFrameworkException(ex.getMessage(), ex);
+			}
+		}
 		
 //		OperationResult result = OperationResult.createOperationResult(shadow.getResult());
 		String operation = (shadow.getFailedOperationType() == null ? "null" : shadow.getFailedOperationType().name());
@@ -100,13 +106,13 @@ public class GenericErrorHandler extends ErrorHandler{
 
 				if (shadow.getFailedOperationType() == null) {
 					String message = "Generic error in the connector. Can't process shadow "
-							+ ObjectTypeUtil.toShortString(shadow) + ". ";
+							+ ObjectTypeUtil.toShortString(shadow) + ": " + ex.getMessage();
 					result.recordFatalError(message, ex);
 					throw new GenericFrameworkException(message, ex);
 				}
 				try {
 					//ProvisioningOperationOptions.createCompletePostponed(false);
-					provisioningService.finishOperation(shadow.asPrismObject(), null, task, result);
+					provisioningService.refreshShadow(shadow.asPrismObject(), null, task, result);
 					result.computeStatus();
 					if (result.isSuccess()) {
 						LOGGER.trace("Postponed operation was finished successfully while getting shadow. Getting new object.");
@@ -114,7 +120,7 @@ public class GenericErrorHandler extends ErrorHandler{
 								shadow.getOid(), null, task, result);
 						if (!prismShadow.hasCompleteDefinition()){
 							LOGGER.trace("applying definitions to shadow");
-							provisioningService.applyDefinition(prismShadow, result);
+							provisioningService.applyDefinition(prismShadow, task, result);
 						}
 					if (LOGGER.isTraceEnabled()) {
 						LOGGER.trace("Got {} after finishing postponed operation.", prismShadow.debugDump());
@@ -146,7 +152,7 @@ public class GenericErrorHandler extends ErrorHandler{
 							.asPrismObject().getDefinition());
 			}
 			PropertyDelta.applyTo(modifications, shadow.asPrismObject());
-			provisioningService.finishOperation(shadow.asPrismObject(), null, task, result);						
+			provisioningService.refreshShadow(shadow.asPrismObject(), null, task, result);						
 			result.computeStatus();
 
 			if (!result.isSuccess()) {

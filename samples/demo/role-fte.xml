@@ -1,5 +1,5 @@
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -75,5 +75,10 @@
 
     	</construction>
     </inducement>
+	<inducement id="3">
+		<description>End user role membership</description>
+		<targetRef oid="00000000-0000-0000-0000-000000000008" type="c:RoleType"><!-- End user --></targetRef>
+	</inducement>
+
 </role>
 

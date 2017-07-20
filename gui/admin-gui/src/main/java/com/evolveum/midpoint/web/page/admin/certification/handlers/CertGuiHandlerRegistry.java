@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,8 +38,16 @@ public class CertGuiHandlerRegistry {
         switch (uri) {
             case AccessCertificationApiConstants.DIRECT_ASSIGNMENT_HANDLER_URI:
                 return new DirectAssignmentCertGuiHandler();
+            case AccessCertificationApiConstants.EXCLUSION_HANDLER_URI:
+                return new DirectAssignmentCertGuiHandler();        // TODO
             default:
                 throw new IllegalArgumentException("Unknown handler URI: " + uri);
         }
+    }
+    
+    @SuppressWarnings("unused")
+	private void doNothing() {
+    	// no nothing. Just for maven dependency analyze to properly detect the dependency.
+    	AccessCertificationApiConstants.noop();
     }
 }

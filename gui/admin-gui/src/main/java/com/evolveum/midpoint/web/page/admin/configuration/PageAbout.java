@@ -16,12 +16,19 @@
 
 package com.evolveum.midpoint.web.page.admin.configuration;
 
+import com.evolveum.midpoint.gui.api.model.LoadableModel;
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
+import com.evolveum.midpoint.model.api.ModelPublicConstants;
+import com.evolveum.midpoint.model.api.WorkflowService;
 import com.evolveum.midpoint.schema.LabeledString;
 import com.evolveum.midpoint.schema.ProvisioningDiag;
 import com.evolveum.midpoint.schema.RepositoryDiag;
+import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.security.api.AuthorizationConstants;
+import com.evolveum.midpoint.security.api.MidPointPrincipal;
 import com.evolveum.midpoint.task.api.Task;
+import com.evolveum.midpoint.task.api.TaskManager;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
@@ -30,11 +37,10 @@ import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.application.AuthorizationAction;
 import com.evolveum.midpoint.web.application.PageDescriptor;
 import com.evolveum.midpoint.web.component.AjaxButton;
-import com.evolveum.midpoint.web.component.util.LoadableModel;
-import com.evolveum.midpoint.web.page.admin.home.PageAdminHome;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
-
+import com.evolveum.midpoint.web.page.login.PageLogin;
+import com.evolveum.midpoint.web.security.SecurityUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.wicket.RestartResponseException;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.list.ListItem;
@@ -64,15 +70,20 @@ public class PageAbout extends PageAdminConfiguration {
     private static final String OPERATION_TEST_REPOSITORY = DOT_CLASS + "testRepository";
     private static final String OPERATION_TEST_REPOSITORY_CHECK_ORG_CLOSURE = DOT_CLASS + "testRepositoryCheckOrgClosure";
     private static final String OPERATION_GET_REPO_DIAG = DOT_CLASS + "getRepoDiag";
+    private static final String OPERATION_SUBMIT_REINDEX = DOT_CLASS + "submitReindex";
+    private static final String OPERATION_CLEANUP_ACTIVITI_PROCESSES = DOT_CLASS + "cleanupActivitiProcesses";
     private static final String OPERATION_GET_PROVISIONING_DIAG = DOT_CLASS + "getProvisioningDiag";
 
+    private static final String ID_BUILD = "build";
     private static final String ID_REVISION = "revision";
     private static final String ID_PROPERTY = "property";
     private static final String ID_VALUE = "value";
     private static final String ID_LIST_SYSTEM_ITEMS = "listSystemItems";
     private static final String ID_TEST_REPOSITORY = "testRepository";
     private static final String ID_TEST_REPOSITORY_CHECK_ORG_CLOSURE = "testRepositoryCheckOrgClosure";
+    private static final String ID_REINDEX_REPOSITORY_OBJECTS = "reindexRepositoryObjects";
     private static final String ID_TEST_PROVISIONING = "testProvisioning";
+    private static final String ID_CLEANUP_ACTIVITI_PROCESSES = "cleanupActivitiProcesses";
     private static final String ID_IMPLEMENTATION_SHORT_NAME = "implementationShortName";
     private static final String ID_IMPLEMENTATION_DESCRIPTION = "implementationDescription";
     private static final String ID_IS_EMBEDDED = "isEmbedded";
@@ -117,6 +128,10 @@ public class PageAbout extends PageAdminConfiguration {
         revision.setRenderBodyOnly(true);
         add(revision);
 
+        Label build = new Label(ID_BUILD, createStringResource("PageAbout.build"));
+        build.setRenderBodyOnly(true);
+        add(build);
+
         ListView<SystemItem> listSystemItems = new ListView<SystemItem>(ID_LIST_SYSTEM_ITEMS, getItems()) {
 
             @Override
@@ -142,7 +157,7 @@ public class PageAbout extends PageAdminConfiguration {
         addLabel(ID_REPOSITORY_URL, "repositoryUrl");
 
         ListView<LabeledString> additionalDetails = new ListView<LabeledString>(ID_ADDITIONAL_DETAILS,
-                new PropertyModel<List<? extends LabeledString>>(repoDiagModel, "additionalDetails")) {
+                new PropertyModel<List<LabeledString>>(repoDiagModel, "additionalDetails")) {
 
             @Override
             protected void populateItem(ListItem<LabeledString> item) {
@@ -160,7 +175,7 @@ public class PageAbout extends PageAdminConfiguration {
         add(additionalDetails);
 
         ListView<LabeledString> provisioningAdditionalDetails = new ListView<LabeledString>(ID_PROVISIONING_ADDITIONAL_DETAILS,
-                new PropertyModel<List<? extends LabeledString>>(provisioningDiagModel, "additionalDetails")) {
+                new PropertyModel<List<LabeledString>>(provisioningDiagModel, "additionalDetails")) {
 
             @Override
             protected void populateItem(ListItem<LabeledString> item) {
@@ -224,6 +239,16 @@ public class PageAbout extends PageAdminConfiguration {
         };
         add(testRepositoryCheckOrgClosure);
 
+		AjaxButton reindexRepositoryObjects = new AjaxButton(ID_REINDEX_REPOSITORY_OBJECTS,
+                createStringResource("PageAbout.button.reindexRepositoryObjects")) {
+
+            @Override
+            public void onClick(AjaxRequestTarget target) {
+                reindexRepositoryObjectsPerformed(target);
+            }
+        };
+        add(reindexRepositoryObjects);
+
         AjaxButton testProvisioning = new AjaxButton(ID_TEST_PROVISIONING,
                 createStringResource("PageAbout.button.testProvisioning")) {
 
@@ -233,6 +258,16 @@ public class PageAbout extends PageAdminConfiguration {
             }
         };
         add(testProvisioning);
+
+        AjaxButton cleanupActivitiProcesses = new AjaxButton(ID_CLEANUP_ACTIVITI_PROCESSES,
+                createStringResource("PageAbout.button.cleanupActivitiProcesses")) {
+
+            @Override
+            public void onClick(AjaxRequestTarget target) {
+                cleanupActivitiProcessesPerformed(target);
+            }
+        };
+        add(cleanupActivitiProcesses);
     }
 
     private RepositoryDiag loadRepoDiagModel() {
@@ -244,12 +279,12 @@ public class PageAbout extends PageAdminConfiguration {
 
             result.recordSuccessIfUnknown();
         } catch (Exception ex) {
-            LoggingUtils.logException(LOGGER, "Couldn't get repo diagnostics", ex);
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't get repo diagnostics", ex);
             result.recordFatalError("Couldn't get repo diagnostics.", ex);
         }
         result.recomputeStatus();
 
-        if (!WebMiscUtil.isSuccessOrHandledError(result)) {
+        if (!WebComponentUtil.isSuccessOrHandledError(result)) {
             showResult(result);
         }
 
@@ -265,12 +300,12 @@ public class PageAbout extends PageAdminConfiguration {
 
             result.recordSuccessIfUnknown();
         } catch (Exception ex) {
-            LoggingUtils.logException(LOGGER, "Couldn't get provisioning diagnostics", ex);
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't get provisioning diagnostics", ex);
             result.recordFatalError("Couldn't get provisioning diagnostics.", ex);
         }
         result.recomputeStatus();
 
-        if (!WebMiscUtil.isSuccessOrHandledError(result)) {
+        if (!WebComponentUtil.isSuccessOrHandledError(result)) {
             showResult(result);
         }
 
@@ -301,7 +336,7 @@ public class PageAbout extends PageAdminConfiguration {
     }
 
     private void testRepositoryCheckOrgClosurePerformed(AjaxRequestTarget target) {
-        OperationResult result = new OperationResult(OPERATION_GET_PROVISIONING_DIAG);
+        OperationResult result = new OperationResult(OPERATION_TEST_REPOSITORY_CHECK_ORG_CLOSURE);
         try {
             Task task = createSimpleTask(OPERATION_TEST_REPOSITORY_CHECK_ORG_CLOSURE);
             getModelDiagnosticService().repositoryTestOrgClosureConsistency(task, true, result);
@@ -315,12 +350,52 @@ public class PageAbout extends PageAdminConfiguration {
         target.add(getFeedbackPanel());
     }
 
+    private void reindexRepositoryObjectsPerformed(AjaxRequestTarget target) {
+        OperationResult result = new OperationResult(OPERATION_SUBMIT_REINDEX);
+        try {
+			TaskManager taskManager = getTaskManager();
+			Task task = taskManager.createTaskInstance();
+			MidPointPrincipal user = SecurityUtils.getPrincipalUser();
+			if (user == null) {
+				throw new RestartResponseException(PageLogin.class);
+			} else {
+				task.setOwner(user.getUser().asPrismObject());
+			}
+			getSecurityEnforcer().authorize(AuthorizationConstants.AUTZ_ALL_URL, null, null, null, null, null, result);
+			task.setChannel(SchemaConstants.CHANNEL_GUI_USER_URI);
+			task.setHandlerUri(ModelPublicConstants.REINDEX_TASK_HANDLER_URI);
+			task.setName("Reindex repository objects");
+			taskManager.switchToBackground(task, result);
+			result.setBackgroundTaskOid(task.getOid());
+        } catch (SecurityViolationException|SchemaException|RuntimeException e) {
+            result.recordFatalError(e);
+        } finally {
+            result.computeStatusIfUnknown();
+        }
+        showResult(result);
+        target.add(getFeedbackPanel());
+    }
+
     private void testProvisioningPerformed(AjaxRequestTarget target) {
         Task task = createSimpleTask(OPERATION_TEST_REPOSITORY);
 
         OperationResult result = getModelDiagnosticService().provisioningSelfTest(task);
         showResult(result);
 
+        target.add(getFeedbackPanel());
+    }
+
+    private void cleanupActivitiProcessesPerformed(AjaxRequestTarget target) {
+        OperationResult result = new OperationResult(OPERATION_CLEANUP_ACTIVITI_PROCESSES);
+        try {
+            WorkflowService workflowService = getWorkflowService();
+            workflowService.cleanupActivitiProcesses(result);
+        } catch (SecurityViolationException|SchemaException|RuntimeException e) {
+            result.recordFatalError(e);
+        } finally {
+            result.computeStatusIfUnknown();
+        }
+        showResult(result);
         target.add(getFeedbackPanel());
     }
 

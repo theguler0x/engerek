@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,5 +48,11 @@ public class OperationConstants {
 	public static final String CREATE_REPORT_FILE = PREFIX + ".createReportFile";
 
 	public static final String CHECK_SHADOW_INTEGRITY = PREFIX + ".checkShadowIntegrity";
+	public static final String CHECK_OBJECT_INTEGRITY = PREFIX + ".checkObjectIntegrity";
+	public static final String REINDEX = PREFIX + ".reindex";
+	public static final String AUDIT_REINDEX = PREFIX + ".auditReindex";
+	public static final String SHADOW_REFRESH = PREFIX + ".shadowRefresh";
+
+	public static final String OPERATION_SEARCH_RESULT = "com.evolveum.midpoint.schema.result.searchResult";
 
 }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2014 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
     <packagesToScan>com.evolveum.midpoint.web.page</packagesToScan>
     <packagesToScan>com.evolveum.midpoint.web.page.admin.home</packagesToScan>
     <packagesToScan>com.evolveum.midpoint.web.page.admin.users</packagesToScan>
+    <packagesToScan>com.evolveum.midpoint.web.page.admin.services</packagesToScan>
     <packagesToScan>com.evolveum.midpoint.web.page.admin.roles</packagesToScan>
     <packagesToScan>com.evolveum.midpoint.web.page.admin.resources</packagesToScan>
     <packagesToScan>com.evolveum.midpoint.web.page.admin.resources.content</packagesToScan>
@@ -32,5 +33,9 @@
     <packagesToScan>com.evolveum.midpoint.web.page.error</packagesToScan>
     <packagesToScan>com.evolveum.midpoint.web.page.forgetpassword</packagesToScan>
     <packagesToScan>com.evolveum.midpoint.web.page.self</packagesToScan>
+<<<<<<< HEAD
     <packagesToScan>com.evolveum.midpoint.web.page.selfregistration</packagesToScan>
 </descriptor>
+=======
+</descriptor>
+>>>>>>> midpoint/master

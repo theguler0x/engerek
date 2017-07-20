@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,8 @@
 
 package com.evolveum.midpoint.prism;
 
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 
 import javax.xml.namespace.QName;
 
@@ -31,6 +29,7 @@ import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.polystring.PolyString;
 import com.evolveum.midpoint.util.exception.SchemaException;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Common supertype for all identity objects. Defines basic properties that each
@@ -43,21 +42,20 @@ import com.evolveum.midpoint.util.exception.SchemaException;
  * attributes). The QName (namespace and local name) of the element holding the
  * property is considered to be a property name.
  *
- * This class is named MidPointObject instead of Object to avoid confusion with
+ * This class is named PrismObject instead of Object to avoid confusion with
  * java.lang.Object.
  *
  * @author Radovan Semancik
  *
+ * Class invariant: has at most one value (potentially empty).
+ * When making this object immutable and there's no value, we create one; in order
+ * to prevent exceptions on later getValue calls.
  */
 public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 
     private static final long serialVersionUID = 7321429132391159949L;
     
     private static final String PROPERTY_NAME_LOCALPART = "name";
-
-    protected String oid;
-	protected String version;
-	private O objectable = null;
 
 	public PrismObject(QName name, Class<O> compileTimeClass) {
 		super(name, compileTimeClass);
@@ -71,6 +69,54 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 		super(name, definition, prismContext);
 	}
 
+	public PrismObjectValue<O> createNewValue() {
+		checkMutability();
+		PrismObjectValue<O> newValue = new PrismObjectValue<>(prismContext);
+		try {
+			add(newValue, false);
+			return newValue;
+		} catch (SchemaException e) {
+			// This should not happen
+			throw new SystemException("Internal Error: " + e.getMessage(), e);
+		}
+	}
+
+	@NotNull
+	public PrismObjectValue<O> getValue() {
+		if (values.isEmpty()) {
+			return createNewValue();
+		} else if (values.size() > 1) {
+			throw new IllegalStateException("PrismObject with more than one value: " + values);
+		}
+		return (PrismObjectValue<O>) values.get(0);
+	}
+
+	@Override
+	public void setValue(@NotNull PrismContainerValue<O> value) throws SchemaException {
+		clear();
+		add(value, false);
+	}
+
+	@Override
+	public boolean add(@NotNull PrismContainerValue newValue, boolean checkUniqueness) throws SchemaException {
+		if (!(newValue instanceof PrismObjectValue)) {
+			throw new IllegalArgumentException("Couldn't add non-PrismObjectValue to a PrismObject: value = "
+					+ newValue + ", object = " + this);
+		}
+		if (values.size() > 1) {
+			throw new IllegalStateException("PrismObject with more than one value: " + this);
+		} else if (values.size() == 1) {
+			PrismObjectValue<O> value = (PrismObjectValue<O>) values.get(0);
+			if (value.isEmpty() && value.getOid() == null) {
+				clear();
+			} else {
+				throw new IllegalStateException("PrismObject cannot have more than one value. New value = " + newValue
+						+ ", object = " + this);
+			}
+		}
+		return super.add(newValue, checkUniqueness);
+	}
+
 	/**
 	 * Returns Object ID (OID).
 	 *
@@ -79,19 +125,21 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 	 * @return Object ID (OID)
 	 */
 	public String getOid() {
-		return oid;
+		return getValue().getOid();
 	}
 
 	public void setOid(String oid) {
-		this.oid = oid;
+		checkMutability();
+		getValue().setOid(oid);
 	}
 
 	public String getVersion() {
-		return version;
+		return getValue().getVersion();
 	}
 
 	public void setVersion(String version) {
-		this.version = version;
+		checkMutability();
+		getValue().setVersion(version);
 	}
 
 	@Override
@@ -99,26 +147,9 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 		return (PrismObjectDefinition<O>) super.getDefinition();
 	}
 
+	@NotNull
 	public O asObjectable() {
-		if (objectable != null) {
-			return objectable;
-		}
-		Class<O> clazz = getCompileTimeClass();
-        if (clazz == null) {
-            throw new SystemException("Unknown compile time class of this prism object '" + getElementName() + "'.");
-        }
-        if (Modifier.isAbstract(clazz.getModifiers())) {
-            throw new SystemException("Can't create instance of class '" + clazz.getSimpleName() + "', it's abstract.");
-        }
-        try {
-            objectable = clazz.newInstance();
-            objectable.setupContainer(this);
-            return (O) objectable;
-        } catch (SystemException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            throw new SystemException("Couldn't create jaxb object instance of '" + clazz + "': "+ex.getMessage(), ex);
-        }
+		return getValue().asObjectable();
 	}
 	
 	public PolyString getName() {
@@ -174,26 +205,6 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 	}
 
 	@Override
-	public <IV extends PrismValue,ID extends ItemDefinition,I extends Item<IV,ID>> I findItem(ItemPath path, Class<I> type) {
-		try {
-			return findCreateItem(path, type, null, false);
-		} catch (SchemaException e) {
-			// This should not happen
-			throw new SystemException("Internal Error:(path="+path+",type="+type+"): "+e.getMessage(),e);
-		}
-	}
-
-	@Override
-	public <IV extends PrismValue,ID extends ItemDefinition> Item<IV,ID> findItem(ItemPath path) {
-		try {
-			return findCreateItem(path, Item.class, null, false);
-		} catch (SchemaException e) {
-			// This should not happen
-			throw new SystemException("Internal Error:(path="+path+"): "+e.getMessage(),e);
-		}
-	}
-
-	@Override
 	public <IV extends PrismValue,ID extends ItemDefinition,I extends Item<IV,ID>> void removeItem(ItemPath path, Class<I> itemType) {
 		// Objects are only a single-valued containers. The path of the object itself is "empty".
 		// Fix this special behavior here.
@@ -206,25 +217,34 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 
 	@Override
 	public PrismObject<O> clone() {
+		if (prismContext != null && prismContext.getMonitor() != null) {
+			prismContext.getMonitor().beforeObjectClone(this);
+		}
+		
 		PrismObject<O> clone = new PrismObject<O>(getElementName(), getDefinition(), prismContext);
 		copyValues(clone);
+		
+		if (prismContext != null && prismContext.getMonitor() != null) {
+			prismContext.getMonitor().afterObjectClone(this, clone);
+		}
+		
 		return clone;
 	}
 
 	protected void copyValues(PrismObject<O> clone) {
 		super.copyValues(clone);
-		clone.oid = this.oid;
-		clone.version = this.version;
 	}
 	
 	public PrismObjectDefinition<O> deepCloneDefinition(boolean ultraDeep) {
 		return (PrismObjectDefinition<O>) super.deepCloneDefinition(ultraDeep);
 	}
 
+	@NotNull
 	public ObjectDelta<O> diff(PrismObject<O> other) {
 		return diff(other, true, false);
 	}
 
+	@NotNull
 	public ObjectDelta<O> diff(PrismObject<O> other, boolean ignoreMetadata, boolean isLiteral) {
 		if (other == null) {
 			ObjectDelta<O> objectDelta = new ObjectDelta<O>(getCompileTimeClass(), ChangeType.DELETE, getPrismContext());
@@ -235,7 +255,7 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 		ObjectDelta<O> objectDelta = new ObjectDelta<O>(getCompileTimeClass(), ChangeType.MODIFY, getPrismContext());
 		objectDelta.setOid(getOid());
 
-		Collection<? extends ItemDelta> itemDeltas = new ArrayList<ItemDelta>();
+		Collection<? extends ItemDelta> itemDeltas = new ArrayList<>();
 		diffInternal(other, itemDeltas, ignoreMetadata, isLiteral);
 		objectDelta.addModifications(itemDeltas);
 
@@ -243,7 +263,7 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 	}
 
 	public ObjectDelta<O> createDelta(ChangeType changeType) {
-		ObjectDelta<O> delta = new ObjectDelta<O>(getCompileTimeClass(), changeType, getPrismContext());
+		ObjectDelta<O> delta = new ObjectDelta<>(getCompileTimeClass(), changeType, getPrismContext());
 		delta.setOid(getOid());
 		return delta;
 	}
@@ -282,56 +302,27 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 		return ItemPath.EMPTY_PATH;
 	}
 	
-	/**
-	 * Note: hashcode and equals compare the objects in the "java way". That means the objects must be
-	 * almost preciselly equal to match (e.g. including source demarcation in values and other "annotations").
-	 * For a method that compares the "meaningful" parts of the objects see equivalent().
-	 */
-	@Override
-	public int hashCode() {
-		final int prime = 31;
-		int result = super.hashCode();
-		result = prime * result + ((oid == null) ? 0 : oid.hashCode());
-		return result;
-	}
-
-	/**
-	 * Note: hashcode and equals compare the objects in the "java way". That means the objects must be
-	 * almost preciselly equal to match (e.g. including source demarcation in values and other "annotations").
-	 * For a method that compares the "meaningful" parts of the objects see equivalent().
-	 */
 	@Override
 	public boolean equals(Object obj) {
-		if (this == obj)
-			return true;
-		if (!super.equals(obj))
-			return false;
-		if (getClass() != obj.getClass())
-			return false;
-		PrismObject other = (PrismObject) obj;
-		if (oid == null) {
-			if (other.oid != null)
-				return false;
-		} else if (!oid.equals(other.oid))
-			return false;
-		return true;
+		if (prismContext != null && prismContext.getMonitor() != null) {
+			prismContext.getMonitor().recordPrismObjectCompareCount(this, obj);
+		}
+		return super.equals(obj);
 	}
-
+	
 	/**
 	 * this method ignores some part of the object during comparison (e.g. source demarcation in values)
 	 * These methods compare the "meaningful" parts of the objects.
 	 */
 	public boolean equivalent(Object obj) {
+		if (prismContext != null && prismContext.getMonitor() != null) {
+			prismContext.getMonitor().recordPrismObjectCompareCount(this, obj);
+		}
 		if (this == obj)
 			return true;
 		if (getClass() != obj.getClass())
 			return false;
 		PrismObject other = (PrismObject) obj;
-		if (oid == null) {
-			if (other.oid != null)
-				return false;
-		} else if (!oid.equals(other.oid))
-			return false;
 		ObjectDelta<O> delta = diff(other, true, false);
 		return delta.isEmpty();
 	}
@@ -368,7 +359,7 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 		}
 		return realValue.getOrig();
 	}
-
+	
 	/**
 	 * Returns short string identification of object type. It should be in a form
 	 * suitable for log messages. There is no requirement for the type name to be unique,
@@ -393,8 +384,7 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 	}
 
 	@Override
-	protected String additionalDumpDescription() {
-		StringBuilder sb = new StringBuilder();
+	protected void appendDebugDumpSuffix(StringBuilder sb) {
 		sb.append("(").append(getOid());
 		if (getVersion() != null) {
 			sb.append(", v").append(getVersion());
@@ -404,20 +394,41 @@ public class PrismObject<O extends Objectable> extends PrismContainer<O> {
 			sb.append(", ").append(DebugUtil.formatElementName(def.getTypeName()));
 		}
 		sb.append(")");
-		return sb.toString();
 	}
         
-        /**
+    /**
 	 * Return display name intended for business users of midPoint
 	 */        
-        public String getBusinessDisplayName() {
-            return getNamePropertyStringValue();
-        }
+    public String getBusinessDisplayName() {
+        return getNamePropertyStringValue();
+    }
 
-//	public Node serializeToDom() throws SchemaException {
-//		Node doc = DOMUtil.getDocument();
-//		serializeToDom(doc);
-//		return doc;
-//	}
+	@Override
+	public void checkConsistenceInternal(Itemable rootItem, boolean requireDefinitions, boolean prohibitRaw,
+			ConsistencyCheckScope scope) {
+		super.checkConsistenceInternal(rootItem, requireDefinitions, prohibitRaw, scope);
+		if (size() > 1) {
+			throw new IllegalStateException("PrismObject holding more than one value: " + size() + ": " + this);
+		}
+		getValue();			// checks the type by casting to POV
+	}
+
+	@Override
+	public void setImmutable(boolean immutable) {
+		if (!this.immutable && immutable && values.isEmpty()) {
+			createNewValue();
+		}
+		super.setImmutable(immutable);
+	}
+
+	public PrismObject<O> cloneIfImmutable() {
+        return isImmutable() ? clone() : this;
+	}
+
+	public PrismObject<O> createImmutableClone() {
+		PrismObject<O> clone = clone();
+		clone.setImmutable(true);
+		return clone;
+	}
 
 }

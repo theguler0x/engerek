@@ -1,6 +1,20 @@
+/*
+ * Copyright (c) 2010-2017 Evolveum
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.evolveum.midpoint.model.intest;
 
-import static com.evolveum.midpoint.test.IntegrationTestTools.display;
 import static org.testng.AssertJUnit.assertEquals;
 import static org.testng.AssertJUnit.assertFalse;
 import static org.testng.AssertJUnit.assertNull;
@@ -17,16 +31,12 @@ import org.apache.commons.lang.StringUtils;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.ContextConfiguration;
-import org.testng.AssertJUnit;
 import org.testng.annotations.Test;
 
 import com.evolveum.midpoint.model.api.ModelExecuteOptions;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
-import com.evolveum.midpoint.prism.Definition;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.PrismObjectDefinition;
 import com.evolveum.midpoint.prism.PrismReferenceValue;
-import com.evolveum.midpoint.prism.delta.ChangeType;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.PropertyDelta;
 import com.evolveum.midpoint.prism.delta.ReferenceDelta;
@@ -36,10 +46,10 @@ import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.test.util.TestUtil;
 import com.evolveum.midpoint.util.MiscUtil;
+import com.evolveum.midpoint.util.exception.PolicyViolationException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnforcementType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 
@@ -74,7 +84,7 @@ public class TestTolerantAttributes extends AbstractInitializedModelIntegrationT
 		userDelta.addModification(accountDelta);
 		Collection<ObjectDelta<? extends ObjectType>> deltas = (Collection)MiscUtil.createCollection(userDelta);
 		
-		dummyResource.purgeScriptHistory();
+		getDummyResource().purgeScriptHistory();
 		dummyAuditService.clear();
         dummyTransport.clearMessages();
         notificationManager.setDisabled(false);
@@ -102,12 +112,12 @@ public class TestTolerantAttributes extends AbstractInitializedModelIntegrationT
         
 		// Check shadow
         PrismObject<ShadowType> accountShadow = repositoryService.getObject(ShadowType.class, accountOid, null, result);
-        assertAccountShadowRepo(accountShadow, accountOid, "jack", resourceDummyBlackType);
+        assertAccountShadowRepo(accountShadow, accountOid, "jack", getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME));
         assertEnableTimestampShadow(accountShadow, startTime, endTime);
         
         // Check account
         PrismObject<ShadowType> accountModel = modelService.getObject(ShadowType.class, accountOid, null, task, result);
-        assertAccountShadowModel(accountModel, accountOid, "jack", resourceDummyBlackType);
+        assertAccountShadowModel(accountModel, accountOid, "jack", getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME));
         
         accountDefinition = accountModel.getDefinition();
         
@@ -149,11 +159,11 @@ public class TestTolerantAttributes extends AbstractInitializedModelIntegrationT
 	        
 			// Check shadow
 	        PrismObject<ShadowType> accountShadow = repositoryService.getObject(ShadowType.class, accountOid, null, result);
-	        assertAccountShadowRepo(accountShadow, accountOid, "jack", resourceDummyBlackType);
+	        assertAccountShadowRepo(accountShadow, accountOid, "jack", getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME));
 	        
 	        // Check account
 	        PrismObject<ShadowType> accountModel = modelService.getObject(ShadowType.class, accountOid, null, task, result);
-	        assertAccountShadowModel(accountModel, accountOid, "jack", resourceDummyBlackType);
+	        assertAccountShadowModel(accountModel, accountOid, "jack", getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME));
 	        
 	        // Check account in dummy resource
 	        assertAccount(userJack, RESOURCE_DUMMY_BLACK_OID);
@@ -197,11 +207,11 @@ public class TestTolerantAttributes extends AbstractInitializedModelIntegrationT
 	        
 			// Check shadow
 	        PrismObject<ShadowType> accountShadow = repositoryService.getObject(ShadowType.class, accountOid, null, result);
-	        assertAccountShadowRepo(accountShadow, accountOid, "jack", resourceDummyBlackType);
+	        assertAccountShadowRepo(accountShadow, accountOid, "jack", getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME));
 	        
 	        // Check account
 	        PrismObject<ShadowType> accountModel = modelService.getObject(ShadowType.class, accountOid, null, task, result);
-	        assertAccountShadowModel(accountModel, accountOid, "jack", resourceDummyBlackType);
+	        assertAccountShadowModel(accountModel, accountOid, "jack", getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME));
 	        
 	        // Check account in dummy resource
 	        assertAccount(userJack, RESOURCE_DUMMY_BLACK_OID);
@@ -245,11 +255,11 @@ public class TestTolerantAttributes extends AbstractInitializedModelIntegrationT
 	        
 			// Check shadow
 	        PrismObject<ShadowType> accountShadow = repositoryService.getObject(ShadowType.class, accountOid, null, result);
-	        assertAccountShadowRepo(accountShadow, accountOid, "jack", resourceDummyBlackType);
+	        assertAccountShadowRepo(accountShadow, accountOid, "jack", getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME));
 	        
 	        // Check account
 	        PrismObject<ShadowType> accountModel = modelService.getObject(ShadowType.class, accountOid, null, task, result);
-	        assertAccountShadowModel(accountModel, accountOid, "jack", resourceDummyBlackType);
+	        assertAccountShadowModel(accountModel, accountOid, "jack", getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME));
 	        
 	        // Check account in dummy resource
 	        assertAccount(userJack, RESOURCE_DUMMY_BLACK_OID);
@@ -269,7 +279,7 @@ public class TestTolerantAttributes extends AbstractInitializedModelIntegrationT
 	        assumeAssignmentPolicy(AssignmentPolicyEnforcementType.POSITIVE);
 	        
 	        ObjectDelta<UserType> userDelta = ObjectDelta.createEmptyModifyDelta(UserType.class, USER_JACK_OID, prismContext);
-	        ItemPath drinkItemPath = new ItemPath(new QName(resourceDummyBlackType.getNamespace(), "drink"));
+	        ItemPath drinkItemPath = new ItemPath(new QName(getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME).getNamespace(), "drink"));
 	        PropertyDelta propertyDelta = PropertyDelta.createModificationReplaceProperty(new ItemPath(UserType.F_EMPLOYEE_NUMBER), getUserDefinition(), "thiIsOk");
 			userDelta.addModification(propertyDelta);
 			Collection<ObjectDelta<? extends ObjectType>> deltas = (Collection)MiscUtil.createCollection(userDelta);
@@ -293,11 +303,11 @@ public class TestTolerantAttributes extends AbstractInitializedModelIntegrationT
 	        
 			// Check shadow
 	        PrismObject<ShadowType> accountShadow = repositoryService.getObject(ShadowType.class, accountOid, null, result);
-	        assertAccountShadowRepo(accountShadow, accountOid, "jack", resourceDummyBlackType);
+	        assertAccountShadowRepo(accountShadow, accountOid, "jack", getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME));
 	        
 	        // Check account
 	        PrismObject<ShadowType> accountModel = modelService.getObject(ShadowType.class, accountOid, null, task, result);
-	        assertAccountShadowModel(accountModel, accountOid, "jack", resourceDummyBlackType);
+	        assertAccountShadowModel(accountModel, accountOid, "jack", getDummyResourceType(RESOURCE_DUMMY_BLACK_NAME));
 	        
 	        // Check account in dummy resource
 	        assertAccount(userJack, RESOURCE_DUMMY_BLACK_OID);

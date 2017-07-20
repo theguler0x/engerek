@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Evolveum
+ * Copyright (c) 2013-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,21 @@ package com.evolveum.midpoint.model.impl.expr;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
+import com.evolveum.midpoint.repo.common.expression.Expression;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluationContext;
 import com.evolveum.midpoint.model.impl.lens.LensContext;
-import com.evolveum.midpoint.model.impl.lens.LensContextPlaceholder;
+import com.evolveum.midpoint.model.impl.lens.LensProjectionContext;
+import com.evolveum.midpoint.prism.PrismPropertyDefinition;
+import com.evolveum.midpoint.prism.PrismPropertyValue;
+import com.evolveum.midpoint.prism.PrismReferenceDefinition;
+import com.evolveum.midpoint.prism.PrismReferenceValue;
+import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.FocusType;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
+import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
+import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 
 /**
  * @author Radovan Semancik
@@ -32,75 +40,98 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
  */
 public class ModelExpressionThreadLocalHolder {
 
-	private static ThreadLocal<Deque<LensContext<ObjectType>>> lensContextStackTl =
-			new ThreadLocal<Deque<LensContext<ObjectType>>>();
-	private static ThreadLocal<Deque<OperationResult>> currentResultStackTl = new ThreadLocal<Deque<OperationResult>>();
-	private static ThreadLocal<Deque<Task>> currentTaskStackTl = new ThreadLocal<Deque<Task>>();
+	private static ThreadLocal<Deque<ExpressionEnvironment<ObjectType>>> expressionEnvironmentStackTl =
+			new ThreadLocal<>();
 	
-	public static <F extends ObjectType> void pushLensContext(LensContext<F> ctx) {
-		Deque<LensContext<ObjectType>> stack = lensContextStackTl.get();
+	public static <F extends ObjectType> void pushExpressionEnvironment(ExpressionEnvironment<F> env) {
+		Deque<ExpressionEnvironment<ObjectType>> stack = expressionEnvironmentStackTl.get();
 		if (stack == null) {
-			stack = new ArrayDeque<LensContext<ObjectType>>();
-			lensContextStackTl.set(stack);
+			stack = new ArrayDeque<>();
+			expressionEnvironmentStackTl.set(stack);
 		}
-		stack.push((LensContext<ObjectType>)ctx);
+		stack.push((ExpressionEnvironment<ObjectType>)env);
 	}
 	
-	public static <F extends ObjectType> void popLensContext() {
-		Deque<LensContext<ObjectType>> stack = lensContextStackTl.get();
+	public static <F extends ObjectType> void popExpressionEnvironment() {
+		Deque<ExpressionEnvironment<ObjectType>> stack = expressionEnvironmentStackTl.get();
 		stack.pop();
 	}
 
+	public static <F extends ObjectType> ExpressionEnvironment<F> getExpressionEnvironment() {
+		Deque<ExpressionEnvironment<ObjectType>> stack = expressionEnvironmentStackTl.get();
+		if (stack == null) {
+			return null;
+		}
+		return (ExpressionEnvironment<F>) stack.peek();
+	}
+	
 	public static <F extends ObjectType> LensContext<F> getLensContext() {
-		Deque<LensContext<ObjectType>> stack = lensContextStackTl.get();
-		if (stack == null) {
+		ExpressionEnvironment<ObjectType> env = getExpressionEnvironment();
+		if (env == null) {
 			return null;
 		}
-		return (LensContext<F>) stack.peek();
+		return (LensContext<F>) env.getLensContext();
 	}
 	
-	public static void pushCurrentResult(OperationResult result) {
-		Deque<OperationResult> stack = currentResultStackTl.get();
-		if (stack == null) {
-			stack = new ArrayDeque<OperationResult>();
-			currentResultStackTl.set(stack);
-		}
-		stack.push(result);
-	}
-	
-	public static void popCurrentResult() {
-		Deque<OperationResult> stack = currentResultStackTl.get();
-		stack.pop();
-	}
-
-	public static OperationResult getCurrentResult() {
-		Deque<OperationResult> stack = currentResultStackTl.get();
-		if (stack == null) {
+	public static <F extends ObjectType> LensProjectionContext getProjectionContext() {
+		ExpressionEnvironment<ObjectType> env = getExpressionEnvironment();
+		if (env == null) {
 			return null;
 		}
-		return stack.peek();
-	}
-
-	public static void pushCurrentTask(Task task) {
-		Deque<Task> stack = currentTaskStackTl.get();
-		if (stack == null) {
-			stack = new ArrayDeque<Task>();
-			currentTaskStackTl.set(stack);
-		}
-		stack.push(task);
+		return env.getProjectionContext();
 	}
 	
-	public static void popCurrentTask() {
-		Deque<Task> stack = currentTaskStackTl.get();
-		stack.pop();
-	}
-
 	public static Task getCurrentTask() {
-		Deque<Task> stack = currentTaskStackTl.get();
-		if (stack == null) {
+		ExpressionEnvironment<ObjectType> env = getExpressionEnvironment();
+		if (env == null) {
 			return null;
 		}
-		return stack.peek();
+		return env.getCurrentTask();
+	}
+	
+	public static OperationResult getCurrentResult() {
+		ExpressionEnvironment<ObjectType> env = getExpressionEnvironment();
+		if (env == null) {
+			return null;
+		}
+		return env.getCurrentResult();
+	}
+	
+	// TODO move to better place
+	public static <T> PrismValueDeltaSetTriple<PrismPropertyValue<T>> evaluateExpressionInContext(Expression<PrismPropertyValue<T>,
+			PrismPropertyDefinition<T>> expression, ExpressionEvaluationContext context, Task task, OperationResult result)
+			throws SchemaException, ExpressionEvaluationException, ObjectNotFoundException {
+		ModelExpressionThreadLocalHolder.pushExpressionEnvironment(new ExpressionEnvironment<>(task, result));
+		try {
+			return expression.evaluate(context);
+		} finally {
+			ModelExpressionThreadLocalHolder.popExpressionEnvironment();
+		}
 	}
 
+	public static PrismValueDeltaSetTriple<PrismReferenceValue> evaluateRefExpressionInContext(Expression<PrismReferenceValue,
+			PrismReferenceDefinition> expression, ExpressionEvaluationContext context, Task task, OperationResult result)
+			throws SchemaException, ExpressionEvaluationException, ObjectNotFoundException {
+		ModelExpressionThreadLocalHolder.pushExpressionEnvironment(new ExpressionEnvironment<>(task, result));
+		try {
+			return expression.evaluate(context);
+		} finally {
+			ModelExpressionThreadLocalHolder.popExpressionEnvironment();
+		}
+	}
+
+	public static <T> PrismValueDeltaSetTriple<PrismPropertyValue<T>> evaluateExpressionInContext(Expression<PrismPropertyValue<T>,
+			PrismPropertyDefinition<T>> expression, ExpressionEvaluationContext context,
+			LensContext<?> lensContext, LensProjectionContext projectionContext, Task task, OperationResult result)
+			throws SchemaException, ExpressionEvaluationException, ObjectNotFoundException {
+		ExpressionEnvironment<?> env = new ExpressionEnvironment<>(lensContext, projectionContext, task, result);
+		ModelExpressionThreadLocalHolder.pushExpressionEnvironment(env);
+		PrismValueDeltaSetTriple<PrismPropertyValue<T>> exprResultTriple;
+		try {
+			exprResultTriple = expression.evaluate(context);
+		} finally {
+			ModelExpressionThreadLocalHolder.popExpressionEnvironment();
+		}
+		return exprResultTriple;
+	}
 }

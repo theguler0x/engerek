@@ -16,16 +16,14 @@
 
 package com.evolveum.midpoint.web.page.admin.certification.dto;
 
+import com.evolveum.midpoint.gui.api.page.PageBase;
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
+import com.evolveum.midpoint.gui.api.util.WebModelServiceUtils;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.CertCampaignTypeUtil;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.web.component.data.column.InlineMenuable;
-import com.evolveum.midpoint.web.component.menu.cog.InlineMenuItem;
 import com.evolveum.midpoint.web.component.util.Selectable;
-import com.evolveum.midpoint.web.page.PageBase;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
-import com.evolveum.midpoint.web.util.WebModelUtils;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignStateType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationCampaignType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AccessCertificationStageType;
@@ -33,11 +31,8 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 
-import java.io.Serializable;
-import java.util.List;
-
-import static com.evolveum.midpoint.web.page.PageBase.createEnumResourceKey;
-import static com.evolveum.midpoint.web.page.PageBase.createStringResourceStatic;
+import static com.evolveum.midpoint.gui.api.page.PageBase.createEnumResourceKey;
+import static com.evolveum.midpoint.gui.api.page.PageBase.createStringResourceStatic;
 
 /**
  * @author mederly
@@ -52,7 +47,8 @@ public class CertCampaignDto extends Selectable {
     public static final String F_CAMPAIGN_START = "campaignStart";
     public static final String F_CAMPAIGN_END = "campaignEnd";
     public static final String F_STAGE_START = "stageStart";
-    public static final String F_STAGE_END = "stageEnd";
+    public static final String F_STAGE_DEADLINE = "stageDeadline";
+    public static final String F_ESCALATION_LEVEL_INFO = "escalationLevelInfo";
 
     private AccessCertificationCampaignType campaign;           // TODO consider replacing this by constituent primitive data items
     private String ownerName;
@@ -72,21 +68,21 @@ public class CertCampaignDto extends Selectable {
         if (ownerRef == null) {
             return null;
         }
-        PrismObject<? extends ObjectType> ownerObject = WebModelUtils.resolveReference(ownerRef, page, task, result);
+        PrismObject<? extends ObjectType> ownerObject = WebModelServiceUtils.resolveReferenceRaw(ownerRef, page, task, result);
         if (ownerObject == null) {
             return null;
         }
         ObjectType owner = ownerObject.asObjectable();
         if (owner instanceof UserType) {
             UserType user = (UserType) owner;
-            return WebMiscUtil.getName(user) + " (" + WebMiscUtil.getOrigStringFromPoly(user.getFullName()) + ")";
+            return WebComponentUtil.getName(user) + " (" + WebComponentUtil.getOrigStringFromPoly(user.getFullName()) + ")";
         } else {
-            return WebMiscUtil.getName(owner);
+            return WebComponentUtil.getName(owner);
         }
     }
 
     public String getName() {
-        return WebMiscUtil.getName(campaign);
+        return WebComponentUtil.getName(campaign);
     }
 
     public String getDescription() {
@@ -113,29 +109,39 @@ public class CertCampaignDto extends Selectable {
             case REVIEW_STAGE_DONE:
                 AccessCertificationStageType stage = CertCampaignTypeUtil.getCurrentStage(campaign);
                 String stageName = stage != null ? stage.getName() : null;
-                String key = createEnumResourceKey(state) + "_FULL";
-                return createStringResourceStatic(page, key, stageNumber, stageName).getString();
+                if (stageName != null) {
+					String key = createEnumResourceKey(state) + "_FULL";
+					return createStringResourceStatic(page, key, stageNumber, stageName).getString();
+				} else {
+					String key = createEnumResourceKey(state);
+					return createStringResourceStatic(page, key).getString() + " " + stageNumber;
+				}
             default:
                 return null;        // todo warning/error?
         }
     }
 
     public String getCampaignStart() {
-        return WebMiscUtil.formatDate(campaign.getStart());
+        return WebComponentUtil.formatDate(campaign.getStartTimestamp());
     }
 
     public String getCampaignEnd() {
-        return WebMiscUtil.formatDate(campaign.getEnd());
+        return WebComponentUtil.formatDate(campaign.getEndTimestamp());
     }
 
     public String getStageStart() {
         AccessCertificationStageType stage = CertCampaignTypeUtil.getCurrentStage(campaign);
-        return stage != null ? WebMiscUtil.formatDate(stage.getStart()) : null;
+        return stage != null ? WebComponentUtil.formatDate(stage.getStartTimestamp()) : null;
+    }
+
+    public String getStageDeadline() {
+        AccessCertificationStageType stage = CertCampaignTypeUtil.getCurrentStage(campaign);
+        return stage != null ? WebComponentUtil.formatDate(stage.getDeadline()) : null;
     }
 
     public String getStageEnd() {
         AccessCertificationStageType stage = CertCampaignTypeUtil.getCurrentStage(campaign);
-        return stage != null ? WebMiscUtil.formatDate(stage.getEnd()) : null;
+        return stage != null ? WebComponentUtil.formatDate(stage.getEndTimestamp()) : null;
     }
 
     public AccessCertificationCampaignStateType getState() {
@@ -148,5 +154,9 @@ public class CertCampaignDto extends Selectable {
 
     public String getHandlerUri() {
         return campaign.getHandlerUri();
+    }
+
+    public String getEscalationLevelInfo() {
+        return CertCampaignTypeUtil.getEscalationLevelInfo(campaign);
     }
 }

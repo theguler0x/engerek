@@ -24,6 +24,8 @@ import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.repo.api.RepositoryService;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.ObjectQueryUtil;
+import com.evolveum.midpoint.schema.util.SystemConfigurationTypeUtil;
+import com.evolveum.midpoint.security.api.SecurityUtil;
 import com.evolveum.midpoint.task.api.TaskManagerInitializationException;
 import com.evolveum.midpoint.task.quartzimpl.TaskManagerQuartzImpl;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
@@ -140,23 +142,23 @@ public class ClusterManager {
                         checkClusterConfiguration(result);                          // if error, the scheduler will be stopped
                         nodeRegistrar.updateNodeObject(result);    // however, we want to update repo even in that case
                     } catch (Throwable t) {
-                        LoggingUtils.logException(LOGGER, "Unexpected exception while checking cluster configuration; continuing execution.", t);
+                        LoggingUtils.logUnexpectedException(LOGGER, "Unexpected exception while checking cluster configuration; continuing execution.", t);
                     }
 
                     try {
                         checkWaitingTasks(result);
                     } catch (Throwable t) {
-                        LoggingUtils.logException(LOGGER, "Unexpected exception while checking waiting tasks; continuing execution.", t);
+                        LoggingUtils.logUnexpectedException(LOGGER, "Unexpected exception while checking waiting tasks; continuing execution.", t);
                     }
 
                     try {
                         checkStalledTasks(result);
                     } catch (Throwable t) {
-                        LoggingUtils.logException(LOGGER, "Unexpected exception while checking stalled tasks; continuing execution.", t);
+                        LoggingUtils.logUnexpectedException(LOGGER, "Unexpected exception while checking stalled tasks; continuing execution.", t);
                     }
 
                 } catch(Throwable t) {
-                    LoggingUtils.logException(LOGGER, "Unexpected exception in ClusterManager thread; continuing execution.", t);
+                    LoggingUtils.logUnexpectedException(LOGGER, "Unexpected exception in ClusterManager thread; continuing execution.", t);
                 }
 
                 LOGGER.trace("ClusterManager thread sleeping for " + delay + " msec");
@@ -187,7 +189,7 @@ public class ClusterManager {
             try {
                 clusterManagerThread.join(waitTime);
             } catch (InterruptedException e) {
-                LoggingUtils.logException(LOGGER, "Waiting for ClusterManagerThread shutdown was interrupted", e);
+                LoggingUtils.logUnexpectedException(LOGGER, "Waiting for ClusterManagerThread shutdown was interrupted", e);
             }
             if (clusterManagerThread.isAlive()) {
                 result.recordWarning("ClusterManagerThread shutdown requested but after " + waitTime + " ms it is still running.");
@@ -274,22 +276,26 @@ public class ClusterManager {
 
             // we do not try to determine which one is "newer" - we simply use the one from repo
             if (!versionInRepo.equals(versionApplied)) {
-            	
-            	Configuration systemConfigFromFile = taskManager.getMidpointConfiguration().getConfiguration(MidpointConfiguration.SYSTEM_CONFIGURATION_SECTION);
-            	boolean skip = false;
-            	if (systemConfigFromFile != null && versionApplied == null) {
-            		skip = systemConfigFromFile.getBoolean(LoggingConfigurationManager.SYSTEM_CONFIGURATION_SKIP_REPOSITORY_LOGGING_SETTINGS, false);
-            	}
-            	if (skip) {
-            		LOGGER.warn("Skipping application of repository logging configuration because {}=true (version={})", LoggingConfigurationManager.SYSTEM_CONFIGURATION_SKIP_REPOSITORY_LOGGING_SETTINGS, versionInRepo);
-            		// But pretend that this was applied so the next update works normally
-            		LoggingConfigurationManager.setCurrentlyUsedVersion(versionInRepo);
-            	} else {
-	                LoggingConfigurationType loggingConfig = ProfilingConfigurationManager.checkSystemProfilingConfiguration(config);
-	                LoggingConfigurationManager.configure(loggingConfig, versionInRepo, result);
-            	}
+                Configuration systemConfigFromFile = taskManager.getMidpointConfiguration()
+                        .getConfiguration(MidpointConfiguration.SYSTEM_CONFIGURATION_SECTION);
+                if (systemConfigFromFile != null && versionApplied == null && systemConfigFromFile
+						.getBoolean(LoggingConfigurationManager.SYSTEM_CONFIGURATION_SKIP_REPOSITORY_LOGGING_SETTINGS, false)) {
+                    LOGGER.warn("Skipping application of repository logging configuration because {}=true (version={})",
+                            LoggingConfigurationManager.SYSTEM_CONFIGURATION_SKIP_REPOSITORY_LOGGING_SETTINGS, versionInRepo);
+                    // But pretend that this was applied so the next update works normally
+                    LoggingConfigurationManager.setCurrentlyUsedVersion(versionInRepo);
+                } else {
+                    LoggingConfigurationType loggingConfig = ProfilingConfigurationManager
+                            .checkSystemProfilingConfiguration(config);
+                    LoggingConfigurationManager.configure(loggingConfig, versionInRepo, result);
+                }
 
-                SystemConfigurationHolder.setCurrentConfiguration(config.asObjectable());       // we rely on LoggingConfigurationManager to correctly record the current version
+                SystemConfigurationHolder.setCurrentConfiguration(
+                        config.asObjectable());       // we rely on LoggingConfigurationManager to correctly record the current version
+                SecurityUtil.setRemoteHostAddressHeaders(config.asObjectable());
+
+				getRepositoryService().applyFullTextSearchConfiguration(config.asObjectable().getFullTextSearch());
+                SystemConfigurationTypeUtil.applyOperationResultHandling(config.asObjectable());
             } else {
                 if (LOGGER.isTraceEnabled()) {
                     LOGGER.trace("System configuration change check: version in repo = version currently applied = {}", versionApplied);

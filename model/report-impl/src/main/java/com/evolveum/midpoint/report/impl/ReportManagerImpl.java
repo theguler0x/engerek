@@ -16,33 +16,6 @@
 
 package com.evolveum.midpoint.report.impl;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.InputStream;
-import java.io.Serializable;
-import java.io.UnsupportedEncodingException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-
-import javax.annotation.PostConstruct;
-import javax.xml.datatype.Duration;
-import javax.xml.datatype.XMLGregorianCalendar;
-
-import net.sf.jasperreports.engine.JRException;
-import net.sf.jasperreports.engine.JasperCompileManager;
-import net.sf.jasperreports.engine.JasperReport;
-import net.sf.jasperreports.engine.design.JasperDesign;
-import net.sf.jasperreports.engine.xml.JRXmlLoader;
-
-import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
 import com.evolveum.midpoint.model.api.ModelService;
 import com.evolveum.midpoint.model.api.context.ModelContext;
 import com.evolveum.midpoint.model.api.context.ModelElementContext;
@@ -51,18 +24,12 @@ import com.evolveum.midpoint.model.api.hooks.ChangeHook;
 import com.evolveum.midpoint.model.api.hooks.HookOperationMode;
 import com.evolveum.midpoint.model.api.hooks.HookRegistry;
 import com.evolveum.midpoint.model.api.hooks.ReadHook;
-import com.evolveum.midpoint.prism.Containerable;
 import com.evolveum.midpoint.prism.PrismContainer;
-import com.evolveum.midpoint.prism.PrismContainerDefinition;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismProperty;
-import com.evolveum.midpoint.prism.PrismPropertyDefinition;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
-import com.evolveum.midpoint.prism.path.ItemPath;
-import com.evolveum.midpoint.prism.query.LessFilter;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
-import com.evolveum.midpoint.prism.schema.PrismSchema;
+import com.evolveum.midpoint.prism.query.builder.QueryBuilder;
 import com.evolveum.midpoint.prism.xml.XmlTypeConverter;
 import com.evolveum.midpoint.report.api.ReportManager;
 import com.evolveum.midpoint.schema.GetOperationOptions;
@@ -70,27 +37,38 @@ import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.result.OperationResultStatus;
 import com.evolveum.midpoint.schema.util.MiscSchemaUtil;
-import com.evolveum.midpoint.schema.util.ParamsTypeUtil;
 import com.evolveum.midpoint.schema.util.ReportTypeUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.task.api.TaskManager;
-import com.evolveum.midpoint.util.exception.CommunicationException;
-import com.evolveum.midpoint.util.exception.ConfigurationException;
-import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
-import com.evolveum.midpoint.util.exception.SchemaException;
-import com.evolveum.midpoint.util.exception.SecurityViolationException;
-import com.evolveum.midpoint.util.exception.SystemException;
+import com.evolveum.midpoint.util.exception.*;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.CleanupPolicyType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.MetadataType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportConfigurationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportOutputType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportParameterType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ReportType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ThreadStopActionType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
+import net.sf.jasperreports.engine.JRException;
+import net.sf.jasperreports.engine.JasperCompileManager;
+import net.sf.jasperreports.engine.JasperReport;
+import net.sf.jasperreports.engine.design.JasperDesign;
+import net.sf.jasperreports.engine.xml.JRXmlLoader;
+import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.StringUtils;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import javax.xml.datatype.Duration;
+import javax.xml.datatype.XMLGregorianCalendar;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.List;
 
 
 /**
@@ -103,7 +81,7 @@ public class ReportManagerImpl implements ReportManager, ChangeHook, ReadHook {
     
     private static final Trace LOGGER = TraceManager.getTrace(ReportManagerImpl.class);
     
-    private static final String CLASS_NAME_WITH_DOT = ReportManagerImpl.class + ".";
+    private static final String CLASS_NAME_WITH_DOT = ReportManagerImpl.class.getSimpleName() + ".";
     private static final String CLEANUP_REPORT_OUTPUTS = CLASS_NAME_WITH_DOT + "cleanupReportOutputs";
     private static final String DELETE_REPORT_OUTPUT = CLASS_NAME_WITH_DOT + "deleteReportOutput";
     private static final String REPORT_OUTPUT_DATA = CLASS_NAME_WITH_DOT + "getReportOutputData";
@@ -173,6 +151,7 @@ public class ReportManagerImpl implements ReportManager, ChangeHook, ReadHook {
     	task.makeSingle();
     	
     	taskManager.switchToBackground(task, parentResult);
+		parentResult.setBackgroundTaskOid(task.getOid());
     }
     /**
      * Transforms change:
@@ -186,7 +165,7 @@ public class ReportManagerImpl implements ReportManager, ChangeHook, ReadHook {
      * @throws UnsupportedEncodingException 
      */
     @Override
-    public HookOperationMode invoke(ModelContext context, Task task, OperationResult parentResult)  {
+    public HookOperationMode invoke(@NotNull ModelContext context, @NotNull Task task, @NotNull OperationResult parentResult)  {
     	ModelState state = context.getState();
          if (state != ModelState.FINAL) {
              if (LOGGER.isTraceEnabled()) {
@@ -240,23 +219,6 @@ public class ReportManagerImpl implements ReportManager, ChangeHook, ReadHook {
             	 LOGGER.error(message);
                  result.recordFatalError(message, new SystemException());
              }
-//             {
-//            	 PrismSchema reportSchema = null;
-//            	 PrismContainer<ReportConfigurationType> parameterConfiguration = null;  
-//            	 try
-//            	 {
-//            		reportSchema = ReportUtils.getParametersSchema(reportType, prismContext);
-//            		parameterConfiguration = ReportUtils.getParametersContainer(reportType, reportSchema);
-//             		
-//            	 } catch (Exception ex){
-//            		 String message = "Cannot create parameter configuration: " + ex.getMessage();
-//            		 LOGGER.error(message);
-//            		 result.recordFatalError(message, ex);
-//            	 }
-//            	 
-//            	 jasperDesign = ReportUtils.createJasperDesign(reportType, parameterConfiguration, reportSchema) ;
-//            	 LOGGER.trace("create jasper design : {}", jasperDesign);
-//             }
              else
              {
             	 byte[] reportTemplateBase64 = reportType.getTemplate();
@@ -285,7 +247,7 @@ public class ReportManagerImpl implements ReportManager, ChangeHook, ReadHook {
     
     
     @Override
-    public void invokeOnException(ModelContext context, Throwable throwable, Task task, OperationResult result) {
+    public void invokeOnException(@NotNull ModelContext context, @NotNull Throwable throwable, @NotNull Task task, @NotNull OperationResult result) {
     	
     }
   
@@ -311,9 +273,9 @@ public class ReportManagerImpl implements ReportManager, ChangeHook, ReadHook {
         
         List<PrismObject<ReportOutputType>> obsoleteReportOutputs = new ArrayList<PrismObject<ReportOutputType>>();
         try {
-            ObjectQuery obsoleteReportOutputsQuery = ObjectQuery.createObjectQuery(LessFilter.createLess(
-            		new ItemPath(ReportOutputType.F_METADATA, MetadataType.F_CREATE_TIMESTAMP), 
-            		ReportOutputType.class, prismContext, timeXml, true));
+            ObjectQuery obsoleteReportOutputsQuery = QueryBuilder.queryFor(ReportOutputType.class, prismContext)
+					.item(ReportOutputType.F_METADATA, MetadataType.F_CREATE_TIMESTAMP).le(timeXml)
+					.build();
             obsoleteReportOutputs = modelService.searchObjects(ReportOutputType.class, obsoleteReportOutputsQuery, null, null, result);
         } catch (Exception e) {
             throw new SystemException("Couldn't get the list of obsolete report outputs: " + e.getMessage(), e);
@@ -360,18 +322,37 @@ public class ReportManagerImpl implements ReportManager, ChangeHook, ReadHook {
         }
     }
     
-    private void deleteReportOutput(ReportOutputType reportOutput, OperationResult parentResult) throws Exception {
+    @Override
+    public void deleteReportOutput(ReportOutputType reportOutput, OperationResult parentResult) throws Exception {
     	String oid = reportOutput.getOid();
 
     	Task task = taskManager.createTaskInstance(DELETE_REPORT_OUTPUT);
     	parentResult.addSubresult(task.getResult());
     	OperationResult result = parentResult.createSubresult(DELETE_REPORT_OUTPUT);
 
+
+        String filePath = reportOutput.getFilePath();
         result.addParam("oid", oid);
         try {
-            File reportFile = new File(reportOutput.getFilePath());
-            reportFile.delete();
-            
+			File reportFile = new File(filePath);
+
+			if (reportFile.exists()) {
+				reportFile.delete();
+			} else {
+				// TODO deduplicate this code
+				ObjectReferenceType nodeRef = reportOutput.getNodeRef();
+				String nodeOid = nodeRef.getOid();
+				NodeType node = modelService.getObject(NodeType.class, nodeOid, null, null, parentResult).asObjectable();
+				String hostName = node.getHostname();
+				SystemConfigurationType systemConfig = modelService
+						.getObject(SystemConfigurationType.class, SystemObjectsType.SYSTEM_CONFIGURATION.value(), null, task,
+								result).asObjectable();
+				String icUrlPattern = systemConfig.getInfrastructure().getIntraClusterHttpUrlPattern();
+				String[] splitted = filePath.split("/");
+				String filename = splitted[splitted.length - 1];
+				ReportNodeUtils.executeOperation(hostName, filename, icUrlPattern, "DELETE");
+			}
+
 			ObjectDelta<ReportOutputType> delta = ObjectDelta.createDeleteDelta(ReportOutputType.class, oid, prismContext);
 			Collection<ObjectDelta<? extends ObjectType>> deltas = MiscSchemaUtil.createCollection(delta);
 
@@ -386,8 +367,9 @@ public class ReportManagerImpl implements ReportManager, ChangeHook, ReadHook {
     }
 	
    
+    //TODO re-throw exceptions?
     @Override
-    public InputStream getReportOutputData(String reportOutputOid, OperationResult parentResult) {
+    public InputStream getReportOutputData(String reportOutputOid, OperationResult parentResult) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException, IOException {
     	Task task = taskManager.createTaskInstance(REPORT_OUTPUT_DATA);
 
     	OperationResult result = parentResult.createSubresult(REPORT_OUTPUT_DATA);
@@ -396,20 +378,39 @@ public class ReportManagerImpl implements ReportManager, ChangeHook, ReadHook {
     	InputStream reportData = null;
         try {
         	ReportOutputType reportOutput = modelService.getObject(ReportOutputType.class, reportOutputOid, null,
-                    task, result).asObjectable();
-
+				        task, result).asObjectable();
+			
             String filePath = reportOutput.getFilePath();
             if (StringUtils.isEmpty(filePath)) {
                 parentResult.recordFatalError("Report output file path is not defined.");
                 return null;
             }
             File file = new File(filePath);
-            reportData = FileUtils.openInputStream(file);
-
+            if (file.exists()) {
+                reportData = FileUtils.openInputStream(file);
+            } else {
+            	// TODO deduplicate this code
+				ObjectReferenceType nodeRef = reportOutput.getNodeRef();
+				String nodeOid = nodeRef.getOid();
+				NodeType node = modelService.getObject(NodeType.class, nodeOid, null, null, parentResult).asObjectable();
+				String hostName = node.getHostname();
+				SystemConfigurationType systemConfig = modelService
+						.getObject(SystemConfigurationType.class, SystemObjectsType.SYSTEM_CONFIGURATION.value(), null, task,
+								result).asObjectable();
+				String icUrlPattern = systemConfig.getInfrastructure().getIntraClusterHttpUrlPattern();
+				String[] splitted = filePath.split("/");
+				String filename = splitted[splitted.length - 1];
+				reportData = ReportNodeUtils.executeOperation(hostName, filename, icUrlPattern, "GET");
+			}
             result.recordSuccessIfUnknown();
-        } catch (Exception e) {
-            LOGGER.trace("Cannot read the report data : {}", e.getMessage());
-        	result.recordFatalError("Cannot read the report data.", e);
+        } catch (IOException ex) {
+        	LoggingUtils.logException(LOGGER, "Error while fetching file. File might not exist on the corresponding file system", ex);
+        	result.recordPartialError("Error while fetching file. File might not exist on the corresponding file system. Reason: " + ex.getMessage(), ex);
+        	throw ex;
+        }  catch (ObjectNotFoundException | SchemaException | SecurityViolationException | CommunicationException
+				| ConfigurationException | ExpressionEvaluationException e) {
+			result.recordFatalError("Problem with reading report output. Reason: " + e.getMessage(), e);
+			throw e;
         } finally {
             result.computeStatusIfUnknown();
         }

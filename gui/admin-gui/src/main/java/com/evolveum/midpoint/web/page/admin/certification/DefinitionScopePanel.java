@@ -16,14 +16,13 @@
 
 package com.evolveum.midpoint.web.page.admin.certification;
 
+import com.evolveum.midpoint.gui.api.component.BasePanel;
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
 import com.evolveum.midpoint.web.component.input.DropDownChoicePanel;
-import com.evolveum.midpoint.web.component.util.SimplePanel;
 import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
 import com.evolveum.midpoint.web.page.admin.certification.dto.DefinitionScopeDto;
 import com.evolveum.midpoint.web.page.admin.certification.dto.DefinitionScopeObjectType;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
-import org.apache.wicket.ajax.AjaxRequestTarget;
-import org.apache.wicket.ajax.markup.html.form.AjaxCheckBox;
+
 import org.apache.wicket.markup.html.form.*;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.PropertyModel;
@@ -32,24 +31,30 @@ import org.apache.wicket.model.PropertyModel;
  * @author mederly
  */
 
-public class DefinitionScopePanel extends SimplePanel<DefinitionScopeDto> {
+public class DefinitionScopePanel extends BasePanel<DefinitionScopeDto> {
 
     private static final String ID_NAME = "name";
     private static final String ID_DESCRIPTION = "description";
     private static final String ID_OBJECT_TYPE_CHOOSER = "objectTypeChooser";
+    private static final String ID_OBJECT_TYPE_HELP = "scopeObjectTypeHelp";
     private static final String ID_SEARCH_FILTER = "searchFilterEditor";
-    private static final String ID_INCLUDE_RESOURCES = "includeResources";
-    private static final String ID_INCLUDE_ROLES = "includeRoles";
+    private static final String ID_SEARCH_FILTER_HELP = "scopeSearchFilterHelp";
     private static final String ID_INCLUDE_INDUCEMENTS = "includeInducements";
     private static final String ID_INCLUDE_ASSIGNMENTS = "includeAssignments";
+    private static final String ID_ASSIGNMENTS_INDUCEMENTS_HELP = "scopeAssignmentsInducementsHelp";
+	private static final String ID_INCLUDE_RESOURCES = "includeResources";
+	private static final String ID_INCLUDE_ROLES = "includeRoles";
     private static final String ID_INCLUDE_ORGS = "includeOrgs";
+    private static final String ID_INCLUDE_SERVICES = "includeServices";
+	private static final String ID_INCLUDE_TARGET_TYPES_HELP = "scopeIncludeTargetTypesHelp";
     private static final String ID_INCLUDE_ENABLED_ITEMS_ONLY = "includeEnabledItemsOnly";
+    private static final String ID_INCLUDE_BY_STATUS_HELP = "scopeIncludeByStatusHelp";
 
     public DefinitionScopePanel(String id, IModel<DefinitionScopeDto> model) {
         super(id, model);
+		initLayout();
     }
 
-    @Override
     protected void initLayout() {
         final TextField nameField = new TextField(ID_NAME, new PropertyModel<>(getModel(), DefinitionScopeDto.F_NAME));
         nameField.add(new VisibleEnableBehaviour() {
@@ -71,54 +76,27 @@ public class DefinitionScopePanel extends SimplePanel<DefinitionScopeDto> {
 
         DropDownChoicePanel objectTypeChooser = new DropDownChoicePanel(ID_OBJECT_TYPE_CHOOSER,
                 new PropertyModel(getModel(), DefinitionScopeDto.F_OBJECT_TYPE),
-                WebMiscUtil.createReadonlyModelFromEnum(DefinitionScopeObjectType.class),
-                new IChoiceRenderer<DefinitionScopeObjectType>() {
-
-                    @Override
-                    public Object getDisplayValue(DefinitionScopeObjectType item) {
-                        return item.name();
-                    }
-
-                    @Override
-                    public String getIdValue(DefinitionScopeObjectType item, int index) {
-                        return Integer.toString(index);
-                    }
-                });
+                WebComponentUtil.createReadonlyModelFromEnum(DefinitionScopeObjectType.class),
+                new EnumChoiceRenderer<DefinitionScopeObjectType>() );
         add(objectTypeChooser);
+		add(WebComponentUtil.createHelp(ID_OBJECT_TYPE_HELP));
 
         TextArea filterTextArea = new TextArea(ID_SEARCH_FILTER, new PropertyModel<String>(getModel(), DefinitionScopeDto.F_SEARCH_FILTER_TEXT));
         filterTextArea.setOutputMarkupId(true);
         add(filterTextArea);
+		add(WebComponentUtil.createHelp(ID_SEARCH_FILTER_HELP));
 
-        add(new AjaxCheckBox(ID_INCLUDE_ASSIGNMENTS, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_ASSIGNMENTS)) {
-            @Override
-            protected void onUpdate(AjaxRequestTarget target) {
-            }
-        });
-        add(new AjaxCheckBox(ID_INCLUDE_INDUCEMENTS, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_INDUCEMENTS)) {
-            @Override
-            protected void onUpdate(AjaxRequestTarget target) {
-            }
-        });
-        add(new AjaxCheckBox(ID_INCLUDE_RESOURCES, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_RESOURCES)) {
-            @Override
-            protected void onUpdate(AjaxRequestTarget target) {
-            }
-        });
-        add(new AjaxCheckBox(ID_INCLUDE_ROLES, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_RESOURCES)) {
-            @Override
-            protected void onUpdate(AjaxRequestTarget target) {
-            }
-        });
-        add(new AjaxCheckBox(ID_INCLUDE_ORGS, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_ORGS)) {
-            @Override
-            protected void onUpdate(AjaxRequestTarget target) {
-            }
-        });
-        add(new AjaxCheckBox(ID_INCLUDE_ENABLED_ITEMS_ONLY, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_ENABLED_ITEMS_ONLY)) {
-            @Override
-            protected void onUpdate(AjaxRequestTarget target) {
-            }
-        });
+        add(new CheckBox(ID_INCLUDE_ASSIGNMENTS, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_ASSIGNMENTS)));
+        add(new CheckBox(ID_INCLUDE_INDUCEMENTS, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_INDUCEMENTS)));
+		add(WebComponentUtil.createHelp(ID_ASSIGNMENTS_INDUCEMENTS_HELP));
+
+		add(new CheckBox(ID_INCLUDE_RESOURCES, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_RESOURCES)));
+        add(new CheckBox(ID_INCLUDE_ROLES, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_ROLES)));
+        add(new CheckBox(ID_INCLUDE_ORGS, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_ORGS)));
+		add(new CheckBox(ID_INCLUDE_SERVICES, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_SERVICES)));
+		add(WebComponentUtil.createHelp(ID_INCLUDE_TARGET_TYPES_HELP));
+
+        add(new CheckBox(ID_INCLUDE_ENABLED_ITEMS_ONLY, new PropertyModel<Boolean>(getModel(), DefinitionScopeDto.F_INCLUDE_ENABLED_ITEMS_ONLY)));
+		add(WebComponentUtil.createHelp(ID_INCLUDE_BY_STATUS_HELP));
     }
 }

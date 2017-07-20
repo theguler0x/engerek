@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,104 +13,64 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.evolveum.midpoint.web.page.admin.users.component;
 
+import com.evolveum.midpoint.gui.api.component.BasePanel;
+import com.evolveum.midpoint.gui.api.page.PageBase;
+import com.evolveum.midpoint.gui.api.util.ModelServiceLocator;
+import com.evolveum.midpoint.gui.api.util.WebComponentUtil;
+import com.evolveum.midpoint.gui.api.util.WebModelServiceUtils;
+import com.evolveum.midpoint.model.api.ModelAuthorizationAction;
 import com.evolveum.midpoint.model.api.ModelExecuteOptions;
-import com.evolveum.midpoint.model.api.ModelService;
-import com.evolveum.midpoint.prism.*;
-import com.evolveum.midpoint.prism.delta.ChangeType;
+import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.prism.PrismObjectDefinition;
+import com.evolveum.midpoint.prism.delta.ContainerDelta;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
-import com.evolveum.midpoint.prism.delta.ReferenceDelta;
-import com.evolveum.midpoint.prism.match.PolyStringNormMatchingRule;
-import com.evolveum.midpoint.prism.parser.QueryConvertor;
-import com.evolveum.midpoint.prism.path.ItemPath;
-import com.evolveum.midpoint.prism.polystring.PolyStringNormalizer;
-import com.evolveum.midpoint.prism.query.*;
-import com.evolveum.midpoint.schema.constants.ObjectTypes;
-import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.prism.query.ObjectQuery;
+import com.evolveum.midpoint.prism.query.OrgFilter;
+import com.evolveum.midpoint.prism.query.OrgFilter.Scope;
+import com.evolveum.midpoint.prism.query.builder.QueryBuilder;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.security.api.MidPointPrincipal;
+import com.evolveum.midpoint.schema.util.ObjectTypeUtil;
+import com.evolveum.midpoint.security.api.AuthorizationConstants;
 import com.evolveum.midpoint.task.api.Task;
-import com.evolveum.midpoint.util.exception.SchemaException;
+import com.evolveum.midpoint.util.exception.*;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.web.component.BasicSearchPanel;
-import com.evolveum.midpoint.web.component.TabbedPanel;
-import com.evolveum.midpoint.web.component.data.ObjectDataProvider;
-import com.evolveum.midpoint.web.component.data.TablePanel;
-import com.evolveum.midpoint.web.component.data.column.CheckBoxHeaderColumn;
-import com.evolveum.midpoint.web.component.data.column.IconColumn;
-import com.evolveum.midpoint.web.component.data.column.InlineMenuHeaderColumn;
-import com.evolveum.midpoint.web.component.data.column.LinkColumn;
-import com.evolveum.midpoint.web.component.dialog.ConfirmationDialog;
-import com.evolveum.midpoint.web.component.menu.cog.InlineMenu;
+import com.evolveum.midpoint.web.component.data.column.ColumnMenuAction;
+import com.evolveum.midpoint.web.component.dialog.ConfirmationPanel;
 import com.evolveum.midpoint.web.component.menu.cog.InlineMenuItem;
-import com.evolveum.midpoint.web.component.menu.cog.InlineMenuItemAction;
-import com.evolveum.midpoint.web.component.util.LoadableModel;
-import com.evolveum.midpoint.web.component.util.SimplePanel;
-import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
-import com.evolveum.midpoint.web.page.PageBase;
-import com.evolveum.midpoint.web.page.PageTemplate;
-import com.evolveum.midpoint.web.page.admin.configuration.component.HeaderMenuAction;
+import com.evolveum.midpoint.web.component.util.SelectableBean;
+import com.evolveum.midpoint.web.page.admin.orgs.OrgTreeAssignablePanel;
+import com.evolveum.midpoint.web.page.admin.orgs.OrgTreePanel;
 import com.evolveum.midpoint.web.page.admin.users.PageOrgTree;
 import com.evolveum.midpoint.web.page.admin.users.PageOrgUnit;
-import com.evolveum.midpoint.web.page.admin.users.PageUser;
-import com.evolveum.midpoint.web.page.admin.users.dto.*;
-import com.evolveum.midpoint.web.security.MidPointAuthWebSession;
-import com.evolveum.midpoint.web.security.SecurityUtils;
-import com.evolveum.midpoint.web.session.SessionStorage;
-import com.evolveum.midpoint.web.session.UserProfileStorage;
-import com.evolveum.midpoint.web.util.ObjectTypeGuiDescriptor;
 import com.evolveum.midpoint.web.util.OnePageParameterEncoder;
-import com.evolveum.midpoint.web.util.StringResourceChoiceRenderer;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
-import com.evolveum.midpoint.web.util.WebModelUtils;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-import com.evolveum.prism.xml.ns._public.query_3.QueryType;
-import com.evolveum.prism.xml.ns._public.query_3.SearchFilterType;
-
-import org.apache.commons.lang.StringUtils;
-import org.apache.wicket.AttributeModifier;
-import org.apache.wicket.Component;
-import org.apache.wicket.ajax.AjaxEventBehavior;
+import org.apache.wicket.RestartResponseException;
 import org.apache.wicket.ajax.AjaxRequestTarget;
-import org.apache.wicket.extensions.markup.html.repeater.data.table.IColumn;
-import org.apache.wicket.extensions.markup.html.repeater.data.table.PropertyColumn;
-import org.apache.wicket.extensions.markup.html.repeater.tree.ISortableTreeProvider;
-import org.apache.wicket.extensions.markup.html.repeater.tree.ITreeProvider;
-import org.apache.wicket.extensions.markup.html.repeater.tree.TableTree;
-import org.apache.wicket.extensions.markup.html.repeater.tree.table.TreeColumn;
-import org.apache.wicket.extensions.markup.html.repeater.tree.theme.WindowsTheme;
-import org.apache.wicket.extensions.markup.html.tabs.ITab;
-import org.apache.wicket.markup.head.IHeaderResponse;
-import org.apache.wicket.markup.head.OnDomReadyHeaderItem;
-import org.apache.wicket.markup.html.WebMarkupContainer;
-import org.apache.wicket.markup.html.form.DropDownChoice;
-import org.apache.wicket.markup.html.form.Form;
-import org.apache.wicket.markup.repeater.Item;
 import org.apache.wicket.model.AbstractReadOnlyModel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
-import org.apache.wicket.model.PropertyModel;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 
-import java.io.Serializable;
+import javax.xml.namespace.QName;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Used as a main component of the Org tree page.
  * 
- * todo create function computeHeight() in midpoint.js, update height properly when in "mobile" mode... [lazyman]
- * todo implement midpoint theme for tree [lazyman]
+ * todo create function computeHeight() in midpoint.js, update height properly
+ * when in "mobile" mode... [lazyman] todo implement midpoint theme for tree
+ * [lazyman]
  *
  * @author lazyman
+ * @author katkav
  */
+<<<<<<< HEAD
 public class TreeTablePanel extends AbstractTreeTablePanel {
 
     private static final Trace LOGGER = TraceManager.getTrace(TreeTablePanel.class);
@@ -1259,169 +1219,479 @@ public class TreeTablePanel extends AbstractTreeTablePanel {
                 if(LOGGER.isTraceEnabled()){
                     LOGGER.trace(taskDelta.debugDump());
                 }
+=======
+public class TreeTablePanel extends BasePanel<String> {
 
-                ObjectDelta emptyDelta = ObjectDelta.createEmptyModifyDelta(OrgType.class,
-                        org.getOid(), getPageBase().getPrismContext());
-                ModelExecuteOptions options = new ModelExecuteOptions();
-                options.setReconcile(true);
-                getPageBase().getModelService().executeChanges(WebMiscUtil.createDeltaCollection(emptyDelta, taskDelta), options, task, result);
-            }
+	private static final long serialVersionUID = 1L;
+	private PageBase parentPage;
 
-            result.recordSuccess();
-        } catch (Exception e){
-            result.recordFatalError(getString("TreeTablePanel.message.recomputeError"), e);
-            LoggingUtils.logException(LOGGER, getString("TreeTablePanel.message.recomputeError"), e);
-        }
+	@Override
+	public PageBase getPageBase() {
+		return parentPage;
+	}
 
-        getPageBase().showResult(result);
-        target.add(getPageBase().getFeedbackPanel());
-        refreshTabbedPanel(target);
-    }
+	protected static final String DOT_CLASS = TreeTablePanel.class.getName() + ".";
+	protected static final String OPERATION_DELETE_OBJECTS = DOT_CLASS + "deleteObjects";
+	protected static final String OPERATION_DELETE_OBJECT = DOT_CLASS + "deleteObject";
+	protected static final String OPERATION_CHECK_PARENTS = DOT_CLASS + "checkParents";
+	protected static final String OPERATION_MOVE_OBJECTS = DOT_CLASS + "moveObjects";
+	protected static final String OPERATION_MOVE_OBJECT = DOT_CLASS + "moveObject";
+	protected static final String OPERATION_UPDATE_OBJECTS = DOT_CLASS + "updateObjects";
+	protected static final String OPERATION_UPDATE_OBJECT = DOT_CLASS + "updateObject";
+	protected static final String OPERATION_RECOMPUTE = DOT_CLASS + "recompute";
+	protected static final String OPERATION_SEARCH_MANAGERS = DOT_CLASS + "searchManagers";
+	protected static final String OPERATION_COUNT_CHILDREN = DOT_CLASS + "countChildren";
 
-    private PrismObject<TaskType> prepareRecomputeTask(OrgTableDto org) throws SchemaException{
-        PrismPropertyDefinition propertyDef = getPageBase().getPrismContext().getSchemaRegistry()
-                .findPropertyDefinitionByElementName(SchemaConstants.MODEL_EXTENSION_OBJECT_QUERY);
+	private static final String ID_TREE_PANEL = "treePanel";
+	private static final String ID_MEMBER_PANEL = "memberPanel";
 
-        ObjectFilter refFilter = RefFilter.createReferenceEqual(UserType.F_PARENT_ORG_REF,
-                UserType.class, getPageBase().getPrismContext(), org.getOid());
+	private static final Trace LOGGER = TraceManager.getTrace(TreeTablePanel.class);
 
-        SearchFilterType filterType = QueryConvertor.createSearchFilterType(refFilter, getPageBase().getPrismContext());
-        QueryType queryType = new QueryType();
-        queryType.setFilter(filterType);
+	public TreeTablePanel(String id, IModel<String> rootOid, PageBase parentPage) {
+		super(id, rootOid);
+		this.parentPage = parentPage;
+		setParent(parentPage);
+		initLayout(parentPage);
+	}
 
-        PrismProperty<QueryType> property = propertyDef.instantiate();
-        property.setRealValue(queryType);
+	protected void initLayout(ModelServiceLocator serviceLocator) {
 
-        TaskType taskType = new TaskType();
+		OrgTreePanel treePanel = new OrgTreePanel(ID_TREE_PANEL, getModel(), false, serviceLocator) {
+			private static final long serialVersionUID = 1L;
 
-        taskType.setName(WebMiscUtil.createPolyFromOrigString(createStringResource("TreeTablePanel.recomputeTask", org.getName()).getString()));
-        taskType.setBinding(TaskBindingType.LOOSE);
-        taskType.setExecutionStatus(TaskExecutionStatusType.RUNNABLE);
-        taskType.setRecurrence(TaskRecurrenceType.SINGLE);
+			@Override
+			protected void selectTreeItemPerformed(SelectableBean<OrgType> selected,
+					AjaxRequestTarget target) {
+				TreeTablePanel.this.selectTreeItemPerformed(selected, target);
+			}
 
-        MidPointPrincipal owner = SecurityUtils.getPrincipalUser();
+			protected List<InlineMenuItem> createTreeMenu() {
+				return TreeTablePanel.this.createTreeMenu();
+			}
 
-        ObjectReferenceType ownerRef = new ObjectReferenceType();
-        ownerRef.setOid(owner.getOid());
-        ownerRef.setType(owner.getUser().COMPLEX_TYPE);
-        taskType.setOwnerRef(ownerRef);
+			@Override
+			protected List<InlineMenuItem> createTreeChildrenMenu(OrgType org) {
+				return TreeTablePanel.this.createTreeChildrenMenu(org);
+			}
 
-        ExtensionType extensionType = new ExtensionType();
-        taskType.setExtension(extensionType);
+		};
+		treePanel.setOutputMarkupId(true);
+		add(treePanel);
+		add(createMemberPanel(treePanel.getSelected().getValue()));
+		setOutputMarkupId(true);
+	}
 
-        getPageBase().getPrismContext().adopt(taskType);
+	private OrgMemberPanel createMemberPanel(OrgType org) {
+		OrgMemberPanel memberPanel = new OrgMemberPanel(ID_MEMBER_PANEL, new Model<OrgType>(org), parentPage);
+		memberPanel.setOutputMarkupId(true);
+		return memberPanel;
+	}
 
-        extensionType.asPrismContainerValue().add(property);
+	private OrgTreePanel getTreePanel() {
+		return (OrgTreePanel) get(ID_TREE_PANEL);
+	}
 
-        taskType.setHandlerUri("http://midpoint.evolveum.com/xml/ns/public/model/synchronization/task/recompute/handler-3");
+	private List<InlineMenuItem> createTreeMenu() {
+		List<InlineMenuItem> items = new ArrayList<>();
+		return items;
+	}
 
-        return taskType.asPrismObject();
-    }
+	private List<InlineMenuItem> createTreeChildrenMenu(OrgType org) {
+		List<InlineMenuItem> items = new ArrayList<>();
+		try {
+			boolean allowModify = org == null ||
+					// TODO: the modify authorization here is probably wrong.
+					// It is a model autz. UI autz should be here instead?
+					parentPage.getSecurityEnforcer().isAuthorized(ModelAuthorizationAction.MODIFY.getUrl(),
+							AuthorizationPhaseType.REQUEST, org.asPrismObject(),
+							null, null, null);
+			boolean allowRead = org == null ||
+					// TODO: the authorization URI here is probably wrong.
+					// It is a model autz. UI autz should be here instead?
+					parentPage.getSecurityEnforcer().isAuthorized(ModelAuthorizationAction.READ.getUrl(),
+							AuthorizationPhaseType.REQUEST, org.asPrismObject(),
+							null, null, null);
+			InlineMenuItem item;
+			if (allowModify) {
+				item = new InlineMenuItem(createStringResource("TreeTablePanel.move"),
+						new ColumnMenuAction<SelectableBean<OrgType>>() {
+							private static final long serialVersionUID = 1L;
 
-    private void deleteRootPerformed(AjaxRequestTarget target) {
-        if (selected.getObject() == null) {
-            warn(getString("TreeTablePanel.message.nothingSelected"));
-            target.add(getPageBase().getFeedbackPanel());
-            return;
-        }
+							@Override
+							public void onClick(AjaxRequestTarget target) {
+								moveRootPerformed(getRowModel().getObject(), target);
+							}
+						});
+				items.add(item);
 
-        ConfirmationDialog dialog = (ConfirmationDialog) get(ID_CONFIRM_DELETE_POPUP);
-        dialog.setConfirmType(CONFIRM_DELETE_ROOT);
-        dialog.show(target);
-    }
+				item = new InlineMenuItem(createStringResource("TreeTablePanel.makeRoot"),
+						new ColumnMenuAction<SelectableBean<OrgType>>() {
+							private static final long serialVersionUID = 1L;
 
-    private void deleteRootConfirmedPerformed(AjaxRequestTarget target) {
-        OperationResult result = new OperationResult(OPERATION_DELETE_OBJECT);
+							@Override
+							public void onClick(AjaxRequestTarget target) {
+								makeRootPerformed(getRowModel().getObject(), target);
+							}
+						});
+				items.add(item);
+			}
 
-        PageBase page = getPageBase();
+			boolean allowDelete = org == null ||
+					// TODO: the authorization URI here is probably wrong.
+					// It is a model autz. UI autz should be here instead?
+					parentPage.getSecurityEnforcer().isAuthorized(ModelAuthorizationAction.DELETE.getUrl(),
+							AuthorizationPhaseType.REQUEST, org.asPrismObject(),
+							null, null, null);
+			if (allowDelete) {
+				item = new InlineMenuItem(createStringResource("TreeTablePanel.delete"),
+						new ColumnMenuAction<SelectableBean<OrgType>>() {
+							private static final long serialVersionUID = 1L;
 
-        OrgTreeDto dto = getRootFromProvider();
-        WebModelUtils.deleteObject(OrgType.class, dto.getOid(), result, page);
+							@Override
+							public void onClick(AjaxRequestTarget target) {
+								deleteNodePerformed(getRowModel().getObject(), target);
+							}
+						});
+				items.add(item);
+			}
+			if (allowModify) {
+				item = new InlineMenuItem(createStringResource("TreeTablePanel.recompute"),
+						new ColumnMenuAction<SelectableBean<OrgType>>() {
+							private static final long serialVersionUID = 1L;
 
-        result.computeStatusIfUnknown();
-        page.showResultInSession(result);
+							@Override
+							public void onClick(AjaxRequestTarget target) {
+								recomputeRootPerformed(getRowModel().getObject(), target);
+							}
+						});
+				items.add(item);
 
-        refreshTabbedPanel(target);
-    }
+				item = new InlineMenuItem(createStringResource("TreeTablePanel.edit"), Model.of(allowModify), Model.of(allowModify),
+						new ColumnMenuAction<SelectableBean<OrgType>>() {
+							private static final long serialVersionUID = 1L;
 
-    private static class TreeStateModel extends AbstractReadOnlyModel<Set<OrgTreeDto>> {
+							@Override
+							public void onClick(AjaxRequestTarget target) {
+								editRootPerformed(getRowModel().getObject(), target);
+							}
+						});
+				items.add(item);
+			} else if (allowRead){
+				item = new InlineMenuItem(createStringResource("TreeTablePanel.viewDetails"), Model.of(allowRead), Model.of(allowRead),
+						new ColumnMenuAction<SelectableBean<OrgType>>() {
+							private static final long serialVersionUID = 1L;
 
-        private TreeStateSet<OrgTreeDto> set = new TreeStateSet<OrgTreeDto>();
-        private ISortableTreeProvider provider;
-        private TreeTablePanel panel;
+							@Override
+							public void onClick(AjaxRequestTarget target) {
+								editRootPerformed(getRowModel().getObject(), target);
+							}
+						});
+				items.add(item);
+			}
 
-        TreeStateModel(TreeTablePanel panel, ISortableTreeProvider provider) {
-            this.panel = panel;
-            this.provider = provider;
-        }
+			// TODO: the modify authorization here is probably wrong.
+			// It is a model autz. UI autz should be here instead?
+			boolean allowAddNew = parentPage.getSecurityEnforcer().isAuthorized(ModelAuthorizationAction.ADD.getUrl(),
+					AuthorizationPhaseType.REQUEST, (new OrgType(parentPage.getPrismContext())).asPrismObject(),
+					null, null, null);
+			if (allowModify && allowAddNew) {
+				item = new InlineMenuItem(createStringResource("TreeTablePanel.createChild"),
+						new ColumnMenuAction<SelectableBean<OrgType>>() {
+							private static final long serialVersionUID = 1L;
 
-        @Override
-        public Set<OrgTreeDto> getObject() {
-            MidPointAuthWebSession session = panel.getSession();
-            SessionStorage storage = session.getSessionStorage();
-            Set<OrgTreeDto> dtos = storage.getUsers().getExpandedItems();
-            OrgTreeDto collapsedItem = storage.getUsers().getCollapsedItem();
-            Iterator<OrgTreeDto> iterator = provider.getRoots();
+							@Override
+							public void onClick(AjaxRequestTarget target) {
+								try {
+									initObjectForAdd(
+											ObjectTypeUtil.createObjectRef(getRowModel().getObject().getValue()),
+											OrgType.COMPLEX_TYPE, null, target);
+								} catch (SchemaException e) {
+									throw new SystemException(e.getMessage(), e);
+								}
+							}
+						});
+				items.add(item);
+			}
+		} catch (SchemaException ex){
+			LoggingUtils.logUnexpectedException(LOGGER, "Failed to check menu items authorizations", ex);
+		}
+		return items;
+	}
 
-            if (collapsedItem != null){
-                if (set.contains(collapsedItem)){
-                    set.remove(collapsedItem);
-                    storage.getUsers().setCollapsedItem(null);
-                }
-            }
-            if (dtos != null && (dtos instanceof TreeStateSet)) {
-                for (OrgTreeDto orgTreeDto : dtos) {
-                    if (!set.contains(orgTreeDto)) {
-                        set.add(orgTreeDto);
-                    }
-                }
-            }
-            //just to have root expanded at all time
-            if (iterator.hasNext()){
-                OrgTreeDto root = iterator.next();
-                if (set.isEmpty() || !set.contains(root)) {
-                    set.add(root);
-                }
-            }
-            return set;
-        }
+	// TODO: merge this with AbstractRoleMemeberPanel.initObjectForAdd, also see MID-3233
+	private void initObjectForAdd(ObjectReferenceType parentOrgRef, QName type, QName relation,
+			AjaxRequestTarget target) throws SchemaException {
+		TreeTablePanel.this.getPageBase().hideMainPopup(target);
+		PrismContext prismContext = TreeTablePanel.this.getPageBase().getPrismContext();
+		PrismObjectDefinition def = prismContext.getSchemaRegistry().findObjectDefinitionByType(type);
+		PrismObject obj = def.instantiate();
 
-        public void expandAll() {
-            set.expandAll();
-        }
+		ObjectType objType = (ObjectType) obj.asObjectable();
+		if (FocusType.class.isAssignableFrom(obj.getCompileTimeClass())) {
+			AssignmentType assignment = new AssignmentType();
+			assignment.setTargetRef(parentOrgRef);
+			((FocusType) objType).getAssignment().add(assignment);
+		}
 
-        public void collapseAll() {
-            set.collapseAll();
-        }
-    }
+		// Set parentOrgRef in any case. This is not strictly correct.
+		// The parentOrgRef should be added by the projector. But
+		// this is needed to successfully pass through security
+		// TODO: fix MID-3234
+		if (parentOrgRef == null) {
+			ObjectType org = getTreePanel().getSelected().getValue();
+			parentOrgRef = ObjectTypeUtil.createObjectRef(org);
+			parentOrgRef.setRelation(relation);
+			objType.getParentOrgRef().add(parentOrgRef);
+		} else {
+			objType.getParentOrgRef().add(parentOrgRef.clone());
+		}
 
-    private void editRootPerformed(AjaxRequestTarget target){
-        OrgTreeDto root = getRootFromProvider();
-        PageParameters parameters = new PageParameters();
-        parameters.add(OnePageParameterEncoder.PARAMETER, root.getOid());
-        setResponsePage(PageOrgUnit.class, parameters);
-    }
+		WebComponentUtil.dispatchToObjectDetailsPage(obj, this);
 
-    private void addToHierarchyPerformed(AjaxRequestTarget target){
-        showAddDeletePopup(target, OrgUnitAddDeletePopup.ActionState.ADD);
-    }
+	}
 
-    private void removeFromHierarchyPerformed(AjaxRequestTarget target){
-        showAddDeletePopup(target, OrgUnitAddDeletePopup.ActionState.DELETE);
-    }
+	private void selectTreeItemPerformed(SelectableBean<OrgType> selected, AjaxRequestTarget target) {
+		if (selected.getValue() == null) {
+			return;
+		}
+		getTreePanel().setSelected(selected);
+		target.add(addOrReplace(createMemberPanel(selected.getValue())));
+	}
 
-    private void showAddDeletePopup(AjaxRequestTarget target, OrgUnitAddDeletePopup.ActionState state){
-        OrgUnitAddDeletePopup dialog = (OrgUnitAddDeletePopup) get(ID_ADD_DELETE_POPUP);
-        dialog.setState(state, target);
+	private void moveRootPerformed(SelectableBean<OrgType> root, AjaxRequestTarget target) {
+		if (root == null) {
+			root = getTreePanel().getRootFromProvider();
+		}
 
-        dialog.show(target);
-    }
+		final SelectableBean<OrgType> orgToMove = root;
 
-    private void addOrgUnitToUserPerformed(AjaxRequestTarget target, OrgType org){
-        //TODO
-    }
+		OrgTreeAssignablePanel orgAssignablePanel = new OrgTreeAssignablePanel(
+				parentPage.getMainPopupBodyId(), false, parentPage) {
+			private static final long serialVersionUID = 1L;
 
-    private void removeOrgUnitToUserPerformed(AjaxRequestTarget target, OrgType org){
-        //TODO
-    }
+			@Override
+			protected void onItemSelect(SelectableBean<OrgType> selected, AjaxRequestTarget target) {
+				moveConfirmPerformed(orgToMove, selected, target);
+			}
+		};
+
+		parentPage.showMainPopup(orgAssignablePanel, target);
+
+	}
+
+	private void moveConfirmPerformed(SelectableBean<OrgType> orgToMove, SelectableBean<OrgType> selected,
+			AjaxRequestTarget target) {
+		getPageBase().hideMainPopup(target);
+
+		Task task = getPageBase().createSimpleTask(OPERATION_MOVE_OBJECT);
+		OperationResult result = new OperationResult(OPERATION_MOVE_OBJECT);
+
+		OrgType toMove = orgToMove.getValue();
+		if (toMove == null || selected.getValue() == null) {
+			return;
+		}
+		ObjectDelta<OrgType> moveOrgDelta = ObjectDelta.createEmptyModifyDelta(OrgType.class, toMove.getOid(),
+				getPageBase().getPrismContext());
+
+		try {
+			for (OrgType parentOrg : toMove.getParentOrg()) {
+				AssignmentType oldRoot = new AssignmentType();
+				oldRoot.setTargetRef(ObjectTypeUtil.createObjectRef(parentOrg));
+
+				moveOrgDelta.addModification(ContainerDelta.createModificationDelete(OrgType.F_ASSIGNMENT,
+						OrgType.class, getPageBase().getPrismContext(), oldRoot.asPrismContainerValue()));
+				// moveOrgDelta.addModification(ReferenceDelta.createModificationDelete(OrgType.F_PARENT_ORG_REF,
+				// toMove.asPrismObject().getDefinition(),
+				// ObjectTypeUtil.createObjectRef(parentOrg).asReferenceValue()));
+			}
+
+			AssignmentType newRoot = new AssignmentType();
+			newRoot.setTargetRef(ObjectTypeUtil.createObjectRef(selected.getValue()));
+			moveOrgDelta.addModification(ContainerDelta.createModificationAdd(OrgType.F_ASSIGNMENT,
+					OrgType.class, getPageBase().getPrismContext(), newRoot.asPrismContainerValue()));
+			// moveOrgDelta.addModification(ReferenceDelta.createModificationAdd(OrgType.F_PARENT_ORG_REF,
+			// toMove.asPrismObject().getDefinition(),
+			// ObjectTypeUtil.createObjectRef(selected.getValue()).asReferenceValue()));
+
+			getPageBase().getPrismContext().adopt(moveOrgDelta);
+			getPageBase().getModelService()
+					.executeChanges(WebComponentUtil.createDeltaCollection(moveOrgDelta), null, task, result);
+			result.computeStatus();
+		} catch (ObjectAlreadyExistsException | ObjectNotFoundException | SchemaException
+				| ExpressionEvaluationException | CommunicationException | ConfigurationException
+				| PolicyViolationException | SecurityViolationException e) {
+			result.recordFatalError("Failed to move organization unit " + toMove, e);
+			LoggingUtils.logUnexpectedException(LOGGER, "Failed to move organization unit" + toMove, e);
+		}
+
+		parentPage.showResult(result);
+		target.add(parentPage.getFeedbackPanel());
+		setResponsePage(PageOrgTree.class);
+
+	}
+
+	private void makeRootPerformed(SelectableBean<OrgType> newRoot, AjaxRequestTarget target) {
+		Task task = getPageBase().createSimpleTask(OPERATION_MOVE_OBJECT);
+		OperationResult result = new OperationResult(OPERATION_MOVE_OBJECT);
+
+		OrgType toMove = newRoot.getValue();
+		if (toMove == null) {
+			return;
+		}
+		ObjectDelta<OrgType> moveOrgDelta = ObjectDelta.createEmptyModifyDelta(OrgType.class, toMove.getOid(),
+				getPageBase().getPrismContext());
+
+		try {
+			for (ObjectReferenceType parentOrg : toMove.getParentOrgRef()) {
+				AssignmentType oldRoot = new AssignmentType();
+				oldRoot.setTargetRef(parentOrg);
+
+				moveOrgDelta.addModification(ContainerDelta.createModificationDelete(OrgType.F_ASSIGNMENT,
+						OrgType.class, getPageBase().getPrismContext(), oldRoot.asPrismContainerValue()));
+			}
+
+			getPageBase().getPrismContext().adopt(moveOrgDelta);
+			getPageBase().getModelService()
+					.executeChanges(WebComponentUtil.createDeltaCollection(moveOrgDelta), null, task, result);
+			result.computeStatus();
+		} catch (ObjectAlreadyExistsException | ObjectNotFoundException | SchemaException
+				| ExpressionEvaluationException | CommunicationException | ConfigurationException
+				| PolicyViolationException | SecurityViolationException e) {
+			result.recordFatalError("Failed to move organization unit " + toMove, e);
+			LoggingUtils.logUnexpectedException(LOGGER, "Failed to move organization unit" + toMove, e);
+		}
+
+		parentPage.showResult(result);
+		target.add(parentPage.getFeedbackPanel());
+		// target.add(getTreePanel());
+		setResponsePage(PageOrgTree.class);
+	}
+
+	private void recomputeRootPerformed(SelectableBean<OrgType> root, AjaxRequestTarget target) {
+		if (root == null) {
+			root = getTreePanel().getRootFromProvider();
+		}
+
+		recomputePerformed(root, target);
+	}
+
+	private void recomputePerformed(SelectableBean<OrgType> orgToRecompute, AjaxRequestTarget target) {
+
+		Task task = getPageBase().createSimpleTask(OPERATION_RECOMPUTE);
+		OperationResult result = new OperationResult(OPERATION_RECOMPUTE);
+		if (orgToRecompute.getValue() == null) {
+			return;
+		}
+		try {
+			ObjectDelta emptyDelta = ObjectDelta.createEmptyModifyDelta(OrgType.class,
+					orgToRecompute.getValue().getOid(), getPageBase().getPrismContext());
+			ModelExecuteOptions options = new ModelExecuteOptions();
+			options.setReconcile(true);
+			getPageBase().getModelService().executeChanges(WebComponentUtil.createDeltaCollection(emptyDelta),
+					options, task, result);
+
+			result.recordSuccess();
+		} catch (Exception e) {
+			result.recordFatalError(getString("TreeTablePanel.message.recomputeError"), e);
+			LoggingUtils.logUnexpectedException(LOGGER, getString("TreeTablePanel.message.recomputeError"), e);
+		}
+
+		getPageBase().showResult(result);
+		target.add(getPageBase().getFeedbackPanel());
+		getTreePanel().refreshTabbedPanel(target);
+	}
+
+	private void deleteNodePerformed(final SelectableBean<OrgType> orgToDelete, AjaxRequestTarget target) {
+
+		ConfirmationPanel confirmationPanel = new ConfirmationPanel(getPageBase().getMainPopupBodyId(),
+				new AbstractReadOnlyModel<String>() {
+
+					private static final long serialVersionUID = 1L;
+
+					@Override
+					public String getObject() {
+						if (hasChildren(orgToDelete)) {
+							return createStringResource("TreeTablePanel.message.warn.deleteTreeObjectConfirm",
+									WebComponentUtil.getEffectiveName(orgToDelete.getValue(),
+											OrgType.F_DISPLAY_NAME)).getObject();
+						}
+						return createStringResource("TreeTablePanel.message.deleteTreeObjectConfirm",
+								WebComponentUtil.getEffectiveName(orgToDelete.getValue(),
+										OrgType.F_DISPLAY_NAME)).getObject();
+					}
+				}) {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public void yesPerformed(AjaxRequestTarget target) {
+					deleteNodeConfirmedPerformed(orgToDelete, target);
+			}
+		};
+
+		confirmationPanel.setOutputMarkupId(true);
+		getPageBase().showMainPopup(confirmationPanel, target);
+	}
+
+	private boolean hasChildren(SelectableBean<OrgType> orgToDelete) {
+		ObjectQuery query = QueryBuilder.queryFor(ObjectType.class, getPageBase().getPrismContext())
+				.isChildOf(orgToDelete.getValue().getOid())			// TODO what if orgToDelete.getValue()==null
+				.build();
+		Task task = getPageBase().createSimpleTask(OPERATION_COUNT_CHILDREN);
+		OperationResult result = new OperationResult(OPERATION_COUNT_CHILDREN);
+		try {
+			int count = getPageBase().getModelService().countObjects(ObjectType.class,
+					query, null, task, result);
+			return (count > 0);
+		} catch (SchemaException | ObjectNotFoundException | SecurityViolationException
+				| ConfigurationException | CommunicationException | ExpressionEvaluationException e) {
+			LoggingUtils.logUnexpectedException(LOGGER, e.getMessage(), e);
+			result.recordFatalError("Could not count members for org " + orgToDelete.getValue(), e);
+			return false;
+		}
+	}
+
+
+	private void deleteNodeConfirmedPerformed(SelectableBean<OrgType> orgToDelete, AjaxRequestTarget target) {
+		getPageBase().hideMainPopup(target);
+		OperationResult result = new OperationResult(OPERATION_DELETE_OBJECT);
+
+		PageBase page = getPageBase();
+
+		if (orgToDelete == null) {
+			orgToDelete = getTreePanel().getRootFromProvider();
+		}
+		if (orgToDelete.getValue() == null) {
+			return;
+		}
+		String oidToDelete = orgToDelete.getValue().getOid();
+		WebModelServiceUtils.deleteObject(OrgType.class, oidToDelete, result, page);
+
+		result.computeStatusIfUnknown();
+		page.showResult(result);
+
+		// even if we theoretically could refresh page only if non-leaf node is deleted,
+		// for simplicity we do it each time
+		//
+		// Instruction to refresh only the part would be:
+		//  - getTreePanel().refreshTabbedPanel(target);
+		//
+		// But how to refresh whole page? target.add(getPage()) is not sufficient - content is unchanged;
+		// so we use the following.
+		// TODO is this ok? [pmed]
+		throw new RestartResponseException(getPage().getClass());
+	}
+
+	private void editRootPerformed(SelectableBean<OrgType> root, AjaxRequestTarget target) {
+		if (root == null) {
+			root = getTreePanel().getRootFromProvider();
+		}
+		if (root.getValue() == null) {
+			return;
+		}
+		PageParameters parameters = new PageParameters();
+		parameters.add(OnePageParameterEncoder.PARAMETER, root.getValue().getOid());
+		getPageBase().navigateToNext(PageOrgUnit.class, parameters);
+	}
+>>>>>>> midpoint/master
+
 }

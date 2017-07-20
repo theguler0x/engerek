@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2014 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ import com.evolveum.midpoint.schema.util.ShadowUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
@@ -47,6 +48,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.OperationResultStatu
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 import org.apache.commons.lang.StringUtils;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -158,7 +160,9 @@ public class DefaultGuiProgressListener implements ProgressListener, Serializabl
         si.setActivityType(progressInformation.getActivityType());
         si.setResourceShadowDiscriminator(progressInformation.getResourceShadowDiscriminator());
         if (progressInformation.getResourceShadowDiscriminator() != null) {
-            si.setResourceName(getResourceName(progressInformation.getResourceShadowDiscriminator().getResourceOid()));
+            String resourceOid = progressInformation.getResourceShadowDiscriminator().getResourceOid();
+            String resourceName = resourceOid != null ? getResourceName(resourceOid) : "";
+            si.setResourceName(resourceName);
         }
         if (progressInformation.getStateType() == null) {
             si.setStatus(null);
@@ -179,7 +183,9 @@ public class DefaultGuiProgressListener implements ProgressListener, Serializabl
 
         // information about modifications on a resource
         if (progressInformation.getActivityType() == RESOURCE_OBJECT_OPERATION &&
-                progressInformation.getStateType() == EXITING && progressInformation.getResourceShadowDiscriminator() != null) {
+                progressInformation.getStateType() == EXITING &&
+                progressInformation.getResourceShadowDiscriminator() != null &&
+                progressInformation.getResourceShadowDiscriminator().getResourceOid() != null) {
             ModelProjectionContext mpc = modelContext.findProjectionContext(progressInformation.getResourceShadowDiscriminator());
             if (mpc != null) {      // it shouldn't be null!
 
@@ -231,7 +237,7 @@ public class DefaultGuiProgressListener implements ProgressListener, Serializabl
 
     private Map<String,String> nameCache = new HashMap<>();
 
-    private String getResourceName(String oid) {
+    private String getResourceName(@NotNull String oid) {
         String name = nameCache.get(oid);
         if (name != null) {
             return name;
@@ -242,8 +248,8 @@ public class DefaultGuiProgressListener implements ProgressListener, Serializabl
         try {
             PrismObject<ResourceType> object = parentPage.getModelService().getObject(ResourceType.class, oid, raw, task, result);
             name = PolyString.getOrig(object.asObjectable().getName());
-        } catch (ObjectNotFoundException|SchemaException|SecurityViolationException|CommunicationException|ConfigurationException e) {
-            LoggingUtils.logException(LOGGER, "Couldn't determine the name of resource {}", e, oid);
+        } catch (ObjectNotFoundException|SchemaException|SecurityViolationException|CommunicationException|ConfigurationException|ExpressionEvaluationException e) {
+            LoggingUtils.logUnexpectedException(LOGGER, "Couldn't determine the name of resource {}", e, oid);
             name = "(" + oid + ")";
         }
         nameCache.put(oid, name);

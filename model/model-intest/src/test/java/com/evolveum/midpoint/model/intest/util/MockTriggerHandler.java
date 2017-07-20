@@ -20,9 +20,11 @@ import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
+import com.evolveum.midpoint.test.IntegrationTestTools;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.TriggerType;
 
 /**
  * @author Radovan Semancik
@@ -35,22 +37,29 @@ public class MockTriggerHandler implements TriggerHandler {
 	protected static final Trace LOGGER = TraceManager.getTrace(MockTriggerHandler.class);
 	
 	private PrismObject<?> lastObject;
+	private int invocationCount;
 	
 	public PrismObject<?> getLastObject() {
 		return lastObject;
+	}
+
+	public int getInvocationCount() {
+		return invocationCount;
 	}
 
 	/* (non-Javadoc)
 	 * @see com.evolveum.midpoint.model.trigger.TriggerHandler#handle(com.evolveum.midpoint.prism.PrismObject)
 	 */
 	@Override
-	public <O extends ObjectType> void handle(PrismObject<O> object, Task task, OperationResult result) {
-		LOGGER.info("Mock trigger handler called with {}", object);
+	public <O extends ObjectType> void handle(PrismObject<O> object, TriggerType trigger, Task task, OperationResult result) {
+		IntegrationTestTools.display("Mock trigger handler called with " + object);
 		lastObject = object.clone();
+		invocationCount++;
 	}
 	
 	public void reset() {
 		lastObject = null;
+		invocationCount = 0;
 	}
 
 }

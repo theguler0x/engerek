@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,20 +23,19 @@ import javax.xml.namespace.QName;
 import com.evolveum.midpoint.task.api.Task;
 import org.apache.commons.lang.Validate;
 
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluator;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluatorFactory;
+import com.evolveum.midpoint.model.common.stringpolicy.ValuePolicyProcessor;
 import com.evolveum.midpoint.prism.ItemDefinition;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.crypto.Protector;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluator;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluatorFactory;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.ObjectResolver;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.GenerateExpressionEvaluatorType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectFactory;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.StringPolicyType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ValuePolicyType;
 
 /**
  * @author semancik
@@ -47,12 +46,14 @@ public class GenerateExpressionEvaluatorFactory implements ExpressionEvaluatorFa
 	private Protector protector;
 	private PrismContext prismContext;
 	private ObjectResolver objectResolver;
+	private ValuePolicyProcessor valuePolicyGenerator;
 
-	public GenerateExpressionEvaluatorFactory(Protector protector, ObjectResolver objectResolver, PrismContext prismContext) {
+	public GenerateExpressionEvaluatorFactory(Protector protector, ObjectResolver objectResolver, ValuePolicyProcessor valuePolicyGenerator, PrismContext prismContext) {
 		super();
 		this.protector = protector;
 		this.prismContext = prismContext;
 		this.objectResolver = objectResolver;
+		this.valuePolicyGenerator = valuePolicyGenerator;
 	}
 
 	@Override
@@ -85,14 +86,7 @@ public class GenerateExpressionEvaluatorFactory implements ExpressionEvaluatorFa
         
         GenerateExpressionEvaluatorType generateEvaluatorType = (GenerateExpressionEvaluatorType)evaluatorTypeObject;
         
-        StringPolicyType elementStringPolicy = null;
-        if (generateEvaluatorType.getValuePolicyRef() != null) {
-        	ValuePolicyType valuePolicyType = objectResolver.resolve(generateEvaluatorType.getValuePolicyRef(), ValuePolicyType.class,
-        			null, "resolving value policy reference in "+contextDescription, task, result);
-        	elementStringPolicy = valuePolicyType.getStringPolicy();
-        }
-        
-		return new GenerateExpressionEvaluator<V,D>(generateEvaluatorType, outputDefinition, protector, elementStringPolicy, prismContext);
+		return new GenerateExpressionEvaluator<V,D>(generateEvaluatorType, outputDefinition, protector, objectResolver, valuePolicyGenerator, prismContext);
 	}
 
 }

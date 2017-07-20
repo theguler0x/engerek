@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,18 +19,17 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.SecurityPolicyType;
 
 import org.apache.commons.lang.Validate;
-import org.springframework.security.core.GrantedAuthority;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import com.evolveum.midpoint.util.DebugDumpable;
 import com.evolveum.midpoint.util.DebugUtil;
-import com.evolveum.midpoint.util.MiscUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationStatusType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ActivationType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AdminGuiConfigurationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.CredentialsType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
 import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
 
@@ -41,12 +40,15 @@ import com.evolveum.prism.xml.ns._public.types_3.PolyStringType;
 public class MidPointPrincipal implements UserDetails,  DebugDumpable {
 	
 	private static final long serialVersionUID = 8299738301872077768L;
-    private UserType user;
-    private Collection<Authorization> authorizations = new ArrayList<Authorization>();
+    @NotNull private final UserType user;
+    private Collection<Authorization> authorizations = new ArrayList<>();
     private ActivationStatusType effectiveActivationStatus;
     private AdminGuiConfigurationType adminGuiConfiguration;
+    private SecurityPolicyType applicableSecurityPolicy;
+    // TODO: or a set?
+    @NotNull private final Collection<DelegatorWithOtherPrivilegesLimitations> delegatorWithOtherPrivilegesLimitationsCollection = new ArrayList<>();
 
-    public MidPointPrincipal(UserType user) {
+    public MidPointPrincipal(@NotNull UserType user) {
         Validate.notNull(user, "User must not be null.");
         this.user = user;
     }
@@ -109,46 +111,20 @@ public class MidPointPrincipal implements UserDetails,  DebugDumpable {
 	@Override
 	public boolean isEnabled() {
         if (effectiveActivationStatus == null) {
-            effectiveActivationStatus = createEffectiveActivationStatus();
+        	ActivationType activation = user.getActivation();
+            if (activation == null) {
+            	effectiveActivationStatus = ActivationStatusType.ENABLED;
+            } else {
+            	effectiveActivationStatus = activation.getEffectiveStatus();
+	            if (effectiveActivationStatus == null) {
+	            	throw new IllegalArgumentException("Null effective activation status in "+user);
+	            }
+            }
         }
 		return effectiveActivationStatus == ActivationStatusType.ENABLED;
 	}
 
-    private ActivationStatusType createEffectiveActivationStatus() {
-        //todo improve
-
-//        CredentialsType credentials = user.getCredentials();
-//        if (credentials == null || credentials.getPassword() == null){
-//            return ActivationStatusType.DISABLED;
-//        }
-
-        if (user.getActivation() == null) {
-            return ActivationStatusType.ENABLED;
-        }
-
-        ActivationType activation = user.getActivation();
-        
-        if (activation.getAdministrativeStatus() != null) {
-            return activation.getAdministrativeStatus();
-        }
-        
-        long time = System.currentTimeMillis();
-        if (activation.getValidFrom() != null) {
-            long from = MiscUtil.asDate(activation.getValidFrom()).getTime();
-            if (time < from) {
-                return ActivationStatusType.DISABLED;
-            }
-        }
-        if (activation.getValidTo() != null) {
-            long to = MiscUtil.asDate(activation.getValidTo()).getTime();
-            if (to < time) {
-                return ActivationStatusType.DISABLED;
-            }
-        }
-        
-        return ActivationStatusType.ENABLED;
-    }
-
+	@NotNull
 	public UserType getUser() {
         return user;
     }
@@ -184,6 +160,42 @@ public class MidPointPrincipal implements UserDetails,  DebugDumpable {
 		this.adminGuiConfiguration = adminGuiConfiguration;
 	}
 
+	public SecurityPolicyType getApplicableSecurityPolicy() {
+		return applicableSecurityPolicy;
+	}
+
+	public void setApplicableSecurityPolicy(SecurityPolicyType applicableSecurityPolicy) {
+		this.applicableSecurityPolicy = applicableSecurityPolicy;
+	}
+
+	@NotNull
+	public Collection<DelegatorWithOtherPrivilegesLimitations> getDelegatorWithOtherPrivilegesLimitationsCollection() {
+		return delegatorWithOtherPrivilegesLimitationsCollection;
+	}
+
+	public void addDelegatorWithOtherPrivilegesLimitations(DelegatorWithOtherPrivilegesLimitations value) {
+		delegatorWithOtherPrivilegesLimitationsCollection.add(value);
+	}
+
+	/**
+	 * Semi-shallow clone.
+	 */
+	public MidPointPrincipal clone() {
+		MidPointPrincipal clone = new MidPointPrincipal(this.user);
+		clone.adminGuiConfiguration = this.adminGuiConfiguration;
+		clone.applicableSecurityPolicy = this.applicableSecurityPolicy;
+		clone.authorizations = cloneAuthorities();
+		clone.effectiveActivationStatus = this.effectiveActivationStatus;
+		clone.delegatorWithOtherPrivilegesLimitationsCollection.addAll(delegatorWithOtherPrivilegesLimitationsCollection);
+		return clone;
+	}
+
+	private Collection<Authorization> cloneAuthorities() {
+		Collection<Authorization> clone = new ArrayList<>(authorizations.size());
+		clone.addAll(authorizations);
+		return clone;
+	}
+
 	/* (non-Javadoc)
 	 * @see com.evolveum.midpoint.util.DebugDumpable#debugDump()
 	 */
@@ -198,11 +210,10 @@ public class MidPointPrincipal implements UserDetails,  DebugDumpable {
 	@Override
 	public String debugDump(int indent) {
 		StringBuilder sb = new StringBuilder();
-		DebugUtil.debugDumpLabel(sb, "MidPointPrincipal", indent);
-		sb.append("\n");
-		DebugUtil.debugDumpWithLabel(sb, "User", user.asPrismObject(), indent + 1);
-		sb.append("\n");
-		DebugUtil.debugDumpWithLabel(sb, "Authorizations", authorizations, indent + 1);
+		DebugUtil.debugDumpLabelLn(sb, "MidPointPrincipal", indent);
+		DebugUtil.debugDumpWithLabelLn(sb, "User", user.asPrismObject(), indent + 1);
+		DebugUtil.debugDumpWithLabelLn(sb, "Authorizations", authorizations, indent + 1);
+		DebugUtil.debugDumpWithLabel(sb, "Delegators with other privilege limitations", delegatorWithOtherPrivilegesLimitationsCollection, indent + 1);
 		return sb.toString();
 	}
 
@@ -212,7 +223,7 @@ public class MidPointPrincipal implements UserDetails,  DebugDumpable {
 	}
 
     public ObjectReferenceType toObjectReference() {
-        if (user == null || user.getOid() == null) {
+        if (user.getOid() == null) {
             return null;
         }
         ObjectReferenceType rv = new ObjectReferenceType();

@@ -19,10 +19,8 @@ package com.evolveum.midpoint.repo.sql;
 import com.evolveum.midpoint.repo.api.RepositoryService;
 import com.evolveum.midpoint.repo.api.RepositoryServiceFactory;
 import com.evolveum.midpoint.repo.api.RepositoryServiceFactoryException;
-import com.evolveum.midpoint.repo.sql.query.QueryDefinitionRegistry;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
@@ -32,7 +30,6 @@ import org.h2.tools.Server;
 import org.hibernate.dialect.H2Dialect;
 
 import java.io.File;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.BindException;
 import java.net.ServerSocket;
@@ -44,12 +41,13 @@ import java.util.List;
  */
 public class SqlRepositoryFactory implements RepositoryServiceFactory {
 
-    private static final Trace LOGGER = TraceManager.getTrace(SqlRepositoryFactory.class);
+	private static final Trace LOGGER = TraceManager.getTrace(SqlRepositoryFactory.class);
     private static final String USER_HOME_VARIABLE = "user.home";
     private static final String MIDPOINT_HOME_VARIABLE = "midpoint.home";
     private static final long C3P0_CLOSE_WAIT = 500L;
     private static final long H2_CLOSE_WAIT = 2000L;
-    private boolean initialized;
+	private static final String H2_IMPLICIT_RELATIVE_PATH = "h2.implicitRelativePath";
+	private boolean initialized;
     private SqlRepositoryConfiguration sqlConfiguration;
     private Server server;
 
@@ -121,25 +119,23 @@ public class SqlRepositoryFactory implements RepositoryServiceFactory {
         config.validate();
         sqlConfiguration = config;
 
-        if (getSqlConfiguration().isEmbedded()) {
+        if (config.isUsingH2()) {
+            if (System.getProperty(H2_IMPLICIT_RELATIVE_PATH) == null) {
+                System.setProperty(H2_IMPLICIT_RELATIVE_PATH, "true");        // to ensure backwards compatibility (H2 1.3.x)
+            }
+        }
+
+        if (config.isEmbedded()) {
             dropDatabaseIfExists(config);
-            if (getSqlConfiguration().isAsServer()) {
+            if (config.isAsServer()) {
                 LOGGER.info("Starting h2 in server mode.");
                 startServer();
             } else {
                 LOGGER.info("H2 prepared to run in local mode (from file).");
             }
-            LOGGER.info("H2 files are in '{}'.",
-                    new Object[]{new File(sqlConfiguration.getBaseDir()).getAbsolutePath()});
+            LOGGER.info("H2 files are in '{}'.", new File(config.getBaseDir()).getAbsolutePath());
         } else {
             LOGGER.info("Repository is not running in embedded mode.");
-        }
-
-        try {
-            QueryDefinitionRegistry.getInstance();
-        } catch (Exception ex) {
-            throw new RepositoryServiceFactoryException("Couldn't initialize query registry, reason: "
-                    + ex.getMessage(), ex);
         }
 
         performanceMonitor = new SqlPerformanceMonitor();
@@ -170,12 +166,14 @@ public class SqlRepositoryFactory implements RepositoryServiceFactory {
 
         StringBuilder jdbcUrl = new StringBuilder(prepareJdbcUrlPrefix(config));
 
+		jdbcUrl.append(";MVCC=FALSE");	    		// turn off MVCC, revert to table locking
+		//jdbcUrl.append(";MV_STORE=FALSE");			// use old page store
         //disable database closing on exit. By default, a database is closed when the last connection is closed.
         jdbcUrl.append(";DB_CLOSE_ON_EXIT=FALSE");
         //Both read locks and write locks are kept until the transaction commits.
         jdbcUrl.append(";LOCK_MODE=1");
         //fix for "Timeout trying to lock table [50200-XXX]" in H2 database. Default value is 1000ms.
-        jdbcUrl.append(";LOCK_TIMEOUT=10000");
+        jdbcUrl.append(";LOCK_TIMEOUT=100");        // experimental setting - let's resolve locking conflicts by midPoint itself
         //we want to store blob datas (full xml object right in table (it's always only a few kb)
         jdbcUrl.append(";MAX_LENGTH_INPLACE_LOB=10240");
 
@@ -208,19 +206,13 @@ public class SqlRepositoryFactory implements RepositoryServiceFactory {
             LOGGER.debug("Base dir path in configuration was not defined.");
             if (StringUtils.isNotEmpty(System.getProperty(MIDPOINT_HOME_VARIABLE))) {
                 config.setBaseDir(System.getProperty(MIDPOINT_HOME_VARIABLE));
-
-                LOGGER.info("Using {} with value {} as base dir for configuration.",
-                        new Object[]{MIDPOINT_HOME_VARIABLE, config.getBaseDir()});
+                LOGGER.info("Using {} with value {} as base dir for configuration.", MIDPOINT_HOME_VARIABLE, config.getBaseDir());
             } else if (StringUtils.isNotEmpty(System.getProperty(USER_HOME_VARIABLE))) {
                 config.setBaseDir(System.getProperty(USER_HOME_VARIABLE));
-
-                LOGGER.info("Using {} with value {} as base dir for configuration.",
-                        new Object[]{USER_HOME_VARIABLE, config.getBaseDir()});
+                LOGGER.info("Using {} with value {} as base dir for configuration.", USER_HOME_VARIABLE, config.getBaseDir());
             } else {
                 config.setBaseDir(".");
-
-                LOGGER.info("Using '.' as base dir for configuration ({}, or {} was not defined).",
-                        new Object[]{MIDPOINT_HOME_VARIABLE, USER_HOME_VARIABLE});
+                LOGGER.info("Using '.' as base dir for configuration ({}, or {} was not defined).", MIDPOINT_HOME_VARIABLE, USER_HOME_VARIABLE);
             }
         }
 
@@ -245,7 +237,6 @@ public class SqlRepositoryFactory implements RepositoryServiceFactory {
             jdbcUrl.append(databaseFile.getAbsolutePath());
         }
         return jdbcUrl.toString();
-
     }
 
     private String getRelativeBaseDirPath(String baseDir) {
@@ -351,23 +342,21 @@ public class SqlRepositoryFactory implements RepositoryServiceFactory {
         final String fileName = config.getFileName();
         try {
             //removing files based on http://www.h2database.com/html/features.html#database_file_layout
-            File dbFile = new File(file, fileName + ".h2.db");
+            File dbFileOld = new File(file, fileName + ".h2.db");
+            removeFile(dbFileOld);
+            File dbFile = new File(file, fileName + ".mv.db");
             removeFile(dbFile);
             File lockFile = new File(file, fileName + ".lock.db");
             removeFile(lockFile);
             File traceFile = new File(file, fileName + ".trace.db");
             removeFile(traceFile);
 
-            File[] tempFiles = file.listFiles(new FilenameFilter() {
-
-                @Override
-                public boolean accept(File parent, String name) {
-                    if (name.matches("^" + fileName + "\\.[0-9]*\\.temp\\.db$")) {
-                        return true;
-                    }
-                    return false;
-                }
-            });
+            File[] tempFiles = file.listFiles((parent, name) -> {
+				if (name.matches("^" + fileName + "\\.[0-9]*\\.temp\\.db$")) {
+					return true;
+				}
+				return false;
+			});
             if (tempFiles != null) {
                 for (File temp : tempFiles) {
                     removeFile(temp);

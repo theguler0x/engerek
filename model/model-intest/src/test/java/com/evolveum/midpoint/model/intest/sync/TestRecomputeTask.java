@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Evolveum
+ * Copyright (c) 2013-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,34 +19,25 @@ import static org.testng.AssertJUnit.assertTrue;
 import static com.evolveum.midpoint.test.IntegrationTestTools.display;
 import static org.testng.AssertJUnit.assertEquals;
 import static org.testng.AssertJUnit.assertNotNull;
-import static org.testng.AssertJUnit.assertNull;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 
 import javax.xml.bind.JAXBElement;
-import javax.xml.namespace.QName;
 
 import com.evolveum.midpoint.prism.util.ItemPathUtil;
 import com.evolveum.midpoint.prism.xnode.PrimitiveXNode;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
+import com.evolveum.midpoint.schema.internals.InternalCounters;
 import com.evolveum.prism.xml.ns._public.types_3.RawType;
 
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.ContextConfiguration;
 import org.testng.annotations.Test;
-import org.w3c.dom.Element;
 
-import com.evolveum.icf.dummy.resource.BreakMode;
-import com.evolveum.icf.dummy.resource.DummyAccount;
 import com.evolveum.midpoint.audit.api.AuditEventRecord;
 import com.evolveum.midpoint.audit.api.AuditEventStage;
-import com.evolveum.midpoint.audit.api.AuditEventType;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
 import com.evolveum.midpoint.model.intest.AbstractInitializedModelIntegrationTest;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.PrismProperty;
@@ -56,20 +47,14 @@ import com.evolveum.midpoint.prism.path.IdItemPathSegment;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.prism.path.NameItemPathSegment;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.schema.result.OperationResultStatus;
 import com.evolveum.midpoint.schema.util.MiscSchemaUtil;
 import com.evolveum.midpoint.task.api.Task;
 import com.evolveum.midpoint.test.DummyResourceContoller;
 import com.evolveum.midpoint.test.IntegrationTestTools;
-import com.evolveum.midpoint.test.ProvisioningScriptSpec;
 import com.evolveum.midpoint.test.util.TestUtil;
-import com.evolveum.midpoint.util.DOMUtil;
-import com.evolveum.midpoint.util.DebugUtil;
-import com.evolveum.midpoint.util.MiscUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
 import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
-import com.evolveum.midpoint.util.exception.ObjectAlreadyExistsException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
@@ -77,8 +62,6 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentPolicyEnfo
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ConstructionType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.MappingStrengthType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceAttributeDefinitionType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.TaskType;
@@ -97,9 +80,15 @@ public class TestRecomputeTask extends AbstractInitializedModelIntegrationTest {
 	private static final File TASK_USER_RECOMPUTE_FILE = new File(TEST_DIR, "task-user-recompute.xml");
 	private static final String TASK_USER_RECOMPUTE_OID = "91919191-76e0-59e2-86d6-3d4f02d3aaaa";
 	
+	private static final File TASK_USER_RECOMPUTE_LIGHT_FILE = new File(TEST_DIR, "task-user-recompute-light.xml");
+	private static final String TASK_USER_RECOMPUTE_LIGHT_OID = "b7b6af78-fffe-11e6-ac04-2fdd62641ce2";
+	
 	private static final File TASK_USER_RECOMPUTE_CAPTAIN_FILE = new File(TEST_DIR, "task-user-recompute-captain.xml");
 	private static final String TASK_USER_RECOMPUTE_CAPTAIN_OID = "91919191-76e0-59e2-86d6-3d4f02d3aaac";
 		
+	private static final File TASK_USER_RECOMPUTE_HERMAN_BY_EXPRESSION_FILE = new File(TEST_DIR, "task-user-recompute-herman-by-expression.xml");
+	private static final String TASK_USER_RECOMPUTE_HERMAN_BY_EXPRESSION_OID = "91919191-76e0-59e2-86d6-3d4f02d3aadd";
+
 	@Override
 	public void initSystem(Task initTask, OperationResult initResult) throws Exception {
 		super.initSystem(initTask, initResult);
@@ -113,7 +102,7 @@ public class TestRecomputeTask extends AbstractInitializedModelIntegrationTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = createTask(TestRecomputeTask.class.getName() + "." + TEST_NAME);
+        Task task = createTask(TEST_NAME);
         OperationResult result = task.getResult();
         
         // Preconditions
@@ -257,7 +246,7 @@ public class TestRecomputeTask extends AbstractInitializedModelIntegrationTest {
         deleteObject(TaskType.class, TASK_USER_RECOMPUTE_OID, task, result);
 	}
 	
-	private void displayRoles(Task task, OperationResult result) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException {
+	private void displayRoles(Task task, OperationResult result) throws ObjectNotFoundException, SchemaException, SecurityViolationException, CommunicationException, ConfigurationException, ExpressionEvaluationException {
 		PrismObject<RoleType> rolePirate = modelService.getObject(RoleType.class, ROLE_PIRATE_OID, null, task, result);
 		display("Role pirate after modify", rolePirate);
 		IntegrationTestTools.displayXml("Role pirate after modify", rolePirate);
@@ -273,7 +262,7 @@ public class TestRecomputeTask extends AbstractInitializedModelIntegrationTest {
         TestUtil.displayTestTile(this, TEST_NAME);
 
         // GIVEN
-        Task task = createTask(TestRecomputeTask.class.getName() + "." + TEST_NAME);
+        Task task = createTask(TEST_NAME);
         OperationResult result = task.getResult();
         
         // Preconditions
@@ -285,7 +274,7 @@ public class TestRecomputeTask extends AbstractInitializedModelIntegrationTest {
         TestUtil.assertSuccess(result);
         
         // Now do something evil, remove "red" construction from judge role
-        modifyRoleDeleteInducement(ROLE_JUDGE_OID, 1111L, false, null);
+        modifyRoleDeleteInducement(ROLE_JUDGE_OID, 1111L, false, null, null);
         
         displayRoles(task, result);
         
@@ -322,5 +311,151 @@ public class TestRecomputeTask extends AbstractInitializedModelIntegrationTest {
         assertUsers(6);
         
 	}
+
+	/**
+	 * Here we recompute herman as well.
+	 */
+	@Test
+	public void test120RecomputeByExpression() throws Exception {
+		final String TEST_NAME = "test120RecomputeByExpression";
+		TestUtil.displayTestTile(this, TEST_NAME);
+
+		// GIVEN
+		Task task = createTask(TEST_NAME);
+		OperationResult result = task.getResult();
+
+		// Preconditions
+		assertUsers(6);
+		assertDummyAccount(RESOURCE_DUMMY_RED_NAME, ACCOUNT_JACK_DUMMY_USERNAME, "Jack Sparrow", false);
+		assertDummyAccount(RESOURCE_DUMMY_RED_NAME, USER_HERMAN_USERNAME, "Herman Toothrot", true);
+
+		result.computeStatus();
+		TestUtil.assertSuccess(result);
+
+		// WHEN
+		TestUtil.displayWhen(TEST_NAME);
+		addObject(TASK_USER_RECOMPUTE_HERMAN_BY_EXPRESSION_FILE);
+
+		dummyAuditService.clear();
+
+		waitForTaskStart(TASK_USER_RECOMPUTE_HERMAN_BY_EXPRESSION_OID, false);
+
+		// WHEN
+		TestUtil.displayWhen(TEST_NAME);
+
+		waitForTaskFinish(TASK_USER_RECOMPUTE_HERMAN_BY_EXPRESSION_OID, true, 40000);
+
+		// THEN
+		TestUtil.displayThen(TEST_NAME);
+
+		List<PrismObject<UserType>> users = modelService.searchObjects(UserType.class, null, null, task, result);
+		display("Users after recompute", users);
+
+		assertDummyAccount(null, ACCOUNT_GUYBRUSH_DUMMY_USERNAME, "Guybrush Threepwood", true);
+		assertDummyAccountAttribute(null, ACCOUNT_GUYBRUSH_DUMMY_USERNAME,
+				DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME, "cutlass", "dagger");
+		assertNoDummyAccount(RESOURCE_DUMMY_RED_NAME, ACCOUNT_GUYBRUSH_DUMMY_USERNAME);
+
+		// Red resource does not delete accounts on deprovision, it disables them
+		assertDummyAccount(RESOURCE_DUMMY_RED_NAME, ACCOUNT_JACK_DUMMY_USERNAME, "Jack Sparrow", false);
+
+		// Herman should be recomputed now
+		assertDummyAccount(RESOURCE_DUMMY_RED_NAME, USER_HERMAN_USERNAME, "Herman Toothrot", false);
+
+		TaskType recomputeTask = getTask(TASK_USER_RECOMPUTE_HERMAN_BY_EXPRESSION_OID).asObjectable();
+		assertEquals("Wrong success count", 1, recomputeTask.getOperationStats().getIterativeTaskInformation().getTotalSuccessCount());
+		assertEquals("Wrong failure count", 0, recomputeTask.getOperationStats().getIterativeTaskInformation().getTotalFailureCount());
+
+		assertUsers(6);
+
+	}
 	
+	/**
+	 * Light recompute. Very efficient, no resource operations, just fix the focus.
+	 * MID-3384
+	 */
+	@Test
+	public void test130RecomputeLight() throws Exception {
+		final String TEST_NAME = "test130RecomputeLight";
+		TestUtil.displayTestTile(this, TEST_NAME);
+
+		// GIVEN
+		Task task = createTask(TEST_NAME);
+		OperationResult result = task.getResult();
+
+		// Preconditions
+		assertUsers(6);
+
+		PrismObject<UserType> usetJackBefore = getUser(USER_JACK_OID);
+		display("User jack before", usetJackBefore);
+		assertAssignedRole(usetJackBefore, ROLE_JUDGE_OID);
+		assertRoleMembershipRef(usetJackBefore, ROLE_JUDGE_OID);
+		
+		assignOrg(USER_GUYBRUSH_OID, ORG_MINISTRY_OF_OFFENSE_OID, null);
+		PrismObject<UserType> usetGuybrushBefore = getUser(USER_GUYBRUSH_OID);
+		display("User guybrush before", usetGuybrushBefore);
+		assertAssignedRole(usetGuybrushBefore, ROLE_PIRATE_OID);
+		assertRoleMembershipRef(usetGuybrushBefore, ROLE_PIRATE_OID, ORG_MINISTRY_OF_OFFENSE_OID);
+		assertAssignedOrgs(usetGuybrushBefore, ORG_MINISTRY_OF_OFFENSE_OID);
+	    assertHasOrgs(usetGuybrushBefore, ORG_MINISTRY_OF_OFFENSE_OID);
+		
+		clearUserOrgAndRoleRefs(USER_JACK_OID);
+		clearUserOrgAndRoleRefs(USER_GUYBRUSH_OID);
+		
+		rememberCounter(InternalCounters.SHADOW_FETCH_OPERATION_COUNT);
+		rememberCounter(InternalCounters.CONNECTOR_OPERATION_COUNT);
+
+		// WHEN
+		TestUtil.displayWhen(TEST_NAME);
+		addObject(TASK_USER_RECOMPUTE_LIGHT_FILE);
+
+		dummyAuditService.clear();
+
+		waitForTaskStart(TASK_USER_RECOMPUTE_LIGHT_OID, false);
+
+		// WHEN
+		TestUtil.displayWhen(TEST_NAME);
+
+		waitForTaskFinish(TASK_USER_RECOMPUTE_LIGHT_OID, true, 40000);
+
+		// THEN
+		TestUtil.displayThen(TEST_NAME);
+		
+		List<PrismObject<UserType>> users = modelService.searchObjects(UserType.class, null, null, task, result);
+		display("Users after recompute", users);
+
+		assertCounterIncrement(InternalCounters.SHADOW_FETCH_OPERATION_COUNT, 0);
+		assertCounterIncrement(InternalCounters.CONNECTOR_OPERATION_COUNT, 0);
+		
+		assertDummyAccount(null, ACCOUNT_GUYBRUSH_DUMMY_USERNAME, "Guybrush Threepwood", true);
+		assertDummyAccountAttribute(null, ACCOUNT_GUYBRUSH_DUMMY_USERNAME,
+				DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_WEAPON_NAME, "cutlass", "dagger");
+		assertNoDummyAccount(RESOURCE_DUMMY_RED_NAME, ACCOUNT_GUYBRUSH_DUMMY_USERNAME);
+
+		// Red resource does not delete accounts on deprovision, it disables them
+		assertDummyAccount(RESOURCE_DUMMY_RED_NAME, ACCOUNT_JACK_DUMMY_USERNAME, "Jack Sparrow", false);
+
+		// Herman should be recomputed now
+		assertDummyAccount(RESOURCE_DUMMY_RED_NAME, USER_HERMAN_USERNAME, "Herman Toothrot", false);
+
+		TaskType recomputeTask = getTask(TASK_USER_RECOMPUTE_LIGHT_OID).asObjectable();
+		assertEquals("Wrong success count", 6, recomputeTask.getOperationStats().getIterativeTaskInformation().getTotalSuccessCount());
+		assertEquals("Wrong failure count", 0, recomputeTask.getOperationStats().getIterativeTaskInformation().getTotalFailureCount());
+
+		PrismObject<UserType> usetJackAfter = getUser(USER_JACK_OID);
+		display("User jack after", usetJackAfter);
+		assertAssignedRole(usetJackAfter, ROLE_JUDGE_OID);
+		assertRoleMembershipRef(usetJackAfter, ROLE_JUDGE_OID);
+		
+		PrismObject<UserType> usetGuybrushAfter = getUser(USER_GUYBRUSH_OID);
+		display("User guybrush after", usetGuybrushAfter);
+		assertAssignedRole(usetGuybrushAfter, ROLE_PIRATE_OID);
+		assertRoleMembershipRef(usetGuybrushAfter, ROLE_PIRATE_OID, ORG_MINISTRY_OF_OFFENSE_OID);
+		assertAssignedOrgs(usetGuybrushAfter, ORG_MINISTRY_OF_OFFENSE_OID);
+	    assertHasOrgs(usetGuybrushAfter, ORG_MINISTRY_OF_OFFENSE_OID);
+		
+		assertUsers(6);
+
+	}
+
 }

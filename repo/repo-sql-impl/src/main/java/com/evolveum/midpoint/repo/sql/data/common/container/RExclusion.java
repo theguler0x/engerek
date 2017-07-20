@@ -17,6 +17,7 @@
 package com.evolveum.midpoint.repo.sql.data.common.container;
 
 import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.repo.sql.data.RepositoryContext;
 import com.evolveum.midpoint.repo.sql.data.common.RObject;
 import com.evolveum.midpoint.repo.sql.data.common.embedded.REmbeddedReference;
 import com.evolveum.midpoint.repo.sql.data.common.enums.RExclusionPolicy;
@@ -27,6 +28,7 @@ import com.evolveum.midpoint.repo.sql.query2.definition.IdQueryProperty;
 import com.evolveum.midpoint.repo.sql.query2.definition.NotQueryable;
 import com.evolveum.midpoint.repo.sql.util.DtoTranslationException;
 import com.evolveum.midpoint.repo.sql.util.IdGeneratorResult;
+import com.evolveum.midpoint.repo.sql.util.MidPointSingleTablePersister;
 import com.evolveum.midpoint.repo.sql.util.RUtil;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ExclusionPolicyConstraintType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
@@ -34,6 +36,7 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import org.apache.commons.lang.Validate;
 import org.hibernate.annotations.ForeignKey;
 import org.hibernate.annotations.GenericGenerator;
+import org.hibernate.annotations.Persister;
 
 import javax.persistence.*;
 
@@ -48,6 +51,7 @@ import javax.persistence.*;
 @IdClass(RContainerId.class)
 @ForeignKey(name = "fk_exclusion")
 @Deprecated
+@Persister(impl = MidPointSingleTablePersister.class)
 public class RExclusion implements Container {
 
     public static final String F_OWNER = "owner";
@@ -175,8 +179,8 @@ public class RExclusion implements Container {
         }
     }
 
-    public static void copyFromJAXB(ExclusionPolicyConstraintType jaxb, RExclusion repo, ObjectType parent, PrismContext prismContext,
-                                    IdGeneratorResult generatorResult) throws DtoTranslationException {
+    public static void copyFromJAXB(ExclusionPolicyConstraintType jaxb, RExclusion repo, ObjectType parent,
+            RepositoryContext repositoryContext, IdGeneratorResult generatorResult) throws DtoTranslationException {
         Validate.notNull(repo, "Repo object must not be null.");
         Validate.notNull(jaxb, "JAXB object must not be null.");
 
@@ -185,7 +189,7 @@ public class RExclusion implements Container {
         repo.setId(RUtil.toInteger(jaxb.getId()));
 
         repo.setPolicy(RUtil.getRepoEnumValue(jaxb.getPolicy(), RExclusionPolicy.class));
-        repo.setTargetRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getTargetRef(), prismContext));
+        repo.setTargetRef(RUtil.jaxbRefToEmbeddedRepoRef(jaxb.getTargetRef(), repositoryContext.prismContext));
     }
 
     public ExclusionPolicyConstraintType toJAXB(PrismContext prismContext) throws DtoTranslationException {

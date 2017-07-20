@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014-2015 Evolveum
+ * Copyright (c) 2014-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 package com.evolveum.midpoint.model.impl.lens;
 
-import com.evolveum.midpoint.model.common.expression.ItemDeltaItem;
+import com.evolveum.midpoint.repo.common.expression.ItemDeltaItem;
 import com.evolveum.midpoint.prism.PrismContainerDefinition;
 import com.evolveum.midpoint.prism.PrismContainerValue;
 import com.evolveum.midpoint.prism.PrismObject;
@@ -27,12 +27,21 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
  *
  */
 public class AssignmentPathVariables {
-	
+
+	private AssignmentPathImpl assignmentPath;
 	private ItemDeltaItem<PrismContainerValue<AssignmentType>,PrismContainerDefinition<AssignmentType>> magicAssignment;
 	private ItemDeltaItem<PrismContainerValue<AssignmentType>,PrismContainerDefinition<AssignmentType>> immediateAssignment;
 	private ItemDeltaItem<PrismContainerValue<AssignmentType>,PrismContainerDefinition<AssignmentType>> thisAssignment;
 	private ItemDeltaItem<PrismContainerValue<AssignmentType>,PrismContainerDefinition<AssignmentType>> focusAssignment;
 	private PrismObject<? extends AbstractRoleType> immediateRole;
+
+	public AssignmentPathImpl getAssignmentPath() {
+		return assignmentPath;
+	}
+
+	public void setAssignmentPath(AssignmentPathImpl assignmentPath) {
+		this.assignmentPath = assignmentPath;
+	}
 
 	public ItemDeltaItem<PrismContainerValue<AssignmentType>,PrismContainerDefinition<AssignmentType>> getMagicAssignment() {
 		return magicAssignment;

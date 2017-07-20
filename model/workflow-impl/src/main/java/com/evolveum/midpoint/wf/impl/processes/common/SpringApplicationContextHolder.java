@@ -17,11 +17,15 @@
 package com.evolveum.midpoint.wf.impl.processes.common;
 
 import com.evolveum.midpoint.audit.api.AuditService;
+import com.evolveum.midpoint.repo.common.expression.ExpressionFactory;
 import com.evolveum.midpoint.model.api.expr.MidpointFunctions;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.repo.api.RepositoryService;
+import com.evolveum.midpoint.task.api.TaskManager;
+import com.evolveum.midpoint.wf.impl.activiti.ActivitiEngine;
 import com.evolveum.midpoint.wf.impl.activiti.ActivitiInterface;
-import com.evolveum.midpoint.wf.impl.jobs.JobController;
+import com.evolveum.midpoint.wf.impl.processes.itemApproval.ItemApprovalProcessInterface;
+import com.evolveum.midpoint.wf.impl.tasks.WfTaskController;
 import com.evolveum.midpoint.wf.impl.processors.primary.PcpRepoAccessHelper;
 import com.evolveum.midpoint.wf.impl.util.MiscDataUtil;
 
@@ -50,6 +54,10 @@ public class SpringApplicationContextHolder implements ApplicationContextAware {
         return getBean("activitiInterface", ActivitiInterface.class);
     }
 
+    public static ActivitiEngine getActivitiEngine() {
+        return getBean(ActivitiEngine.class);
+    }
+
     private static<T> T getBean(Class<T> aClass) {
         String className = aClass.getSimpleName();
         String beanName = Character.toLowerCase(className.charAt(0)) + className.substring(1);
@@ -76,8 +84,8 @@ public class SpringApplicationContextHolder implements ApplicationContextAware {
         return getBean(PrismContext.class);
     }
 
-    public static JobController getJobController() {
-        return getBean(JobController.class);
+    public static WfTaskController getJobController() {
+        return getBean(WfTaskController.class);
     }
 
     public static AuditService getAuditService() {
@@ -90,6 +98,22 @@ public class SpringApplicationContextHolder implements ApplicationContextAware {
 
     public static PcpRepoAccessHelper getPcpRepoAccessHelper() {
         return getBean("pcpRepoAccessHelper", PcpRepoAccessHelper.class);
+    }
+
+    public static TaskManager getTaskManager() {
+        return getBean(TaskManager.class);
+    }
+
+    public static WfExpressionEvaluationHelper getExpressionEvaluationHelper() {
+		return getBean(WfExpressionEvaluationHelper.class);
+	}
+
+    public static ExpressionFactory getExpressionFactory() {
+		return getBean(ExpressionFactory.class);
+	}
+
+    public static ItemApprovalProcessInterface getItemApprovalProcessInterface() {
+        return getBean(ItemApprovalProcessInterface.class);
     }
 }
 

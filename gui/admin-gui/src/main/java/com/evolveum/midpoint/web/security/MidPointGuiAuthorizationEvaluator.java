@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,19 +20,15 @@ import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.query.ObjectFilter;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.security.api.AuthorizationConstants;
-import com.evolveum.midpoint.security.api.MidPointPrincipal;
-import com.evolveum.midpoint.security.api.ObjectSecurityConstraints;
-import com.evolveum.midpoint.security.api.OwnerResolver;
-import com.evolveum.midpoint.security.api.SecurityEnforcer;
-import com.evolveum.midpoint.security.api.SecurityUtil;
-import com.evolveum.midpoint.security.api.UserProfileService;
+import com.evolveum.midpoint.security.api.*;
 import com.evolveum.midpoint.util.DisplayableValue;
+import com.evolveum.midpoint.util.Producer;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.application.DescriptorLoader;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.AbstractRoleType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.AuthorizationPhaseType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.UserType;
@@ -44,12 +40,11 @@ import org.springframework.security.access.SecurityConfig;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.FilterInvocation;
-import org.springframework.security.web.util.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map;
-import java.util.Set;
 
 public class MidPointGuiAuthorizationEvaluator implements SecurityEnforcer {
 	
@@ -78,7 +73,7 @@ public class MidPointGuiAuthorizationEvaluator implements SecurityEnforcer {
     }
 
     @Override
-    public void setupPreAuthenticatedSecurityContext(PrismObject<UserType> user) {
+    public void setupPreAuthenticatedSecurityContext(PrismObject<UserType> user) throws SchemaException {
 		securityEnforcer.setupPreAuthenticatedSecurityContext(user);
 	}
     
@@ -91,8 +86,15 @@ public class MidPointGuiAuthorizationEvaluator implements SecurityEnforcer {
 	public MidPointPrincipal getPrincipal() throws SecurityViolationException {
 		return securityEnforcer.getPrincipal();
 	}
-
+    
     @Override
+	public <O extends ObjectType, T extends ObjectType> void failAuthorization(String operationUrl,
+			AuthorizationPhaseType phase, PrismObject<O> object, ObjectDelta<O> delta, PrismObject<T> target,
+			OperationResult result) throws SecurityViolationException {
+    	securityEnforcer.failAuthorization(operationUrl, phase, object, delta, target, result);
+	}
+
+	@Override
 	public <O extends ObjectType, T extends ObjectType> boolean isAuthorized(String operationUrl, AuthorizationPhaseType phase,
 			PrismObject<O> object, ObjectDelta<O> delta, PrismObject<T> target, OwnerResolver ownerResolver) throws SchemaException {
 		return securityEnforcer.isAuthorized(operationUrl, phase, object, delta, target, ownerResolver);
@@ -143,8 +145,19 @@ public class MidPointGuiAuthorizationEvaluator implements SecurityEnforcer {
         if (guiConfigAttr.isEmpty()) {
         	configAttributesToUse = configAttributes;
         }
-
-    	securityEnforcer.decide(authentication, object, configAttributesToUse);
+        
+        try {
+        	securityEnforcer.decide(authentication, object, configAttributesToUse);
+        	
+        	if (LOGGER.isTraceEnabled()) {
+            	LOGGER.trace("DECIDE: authentication={}, object={}, configAttributesToUse={}: OK", authentication, object, configAttributesToUse);
+            }
+        } catch (AccessDeniedException | InsufficientAuthenticationException e) {
+        	if (LOGGER.isTraceEnabled()) {
+            	LOGGER.trace("DECIDE: authentication={}, object={}, configAttributesToUse={}: {}", authentication, object, configAttributesToUse, e);
+            }
+        	throw e;
+        }
     }
 
     private void addSecurityConfig(FilterInvocation filterInvocation, Collection<ConfigAttribute> guiConfigAttr,
@@ -154,7 +167,7 @@ public class MidPointGuiAuthorizationEvaluator implements SecurityEnforcer {
         if (!matcher.matches(filterInvocation.getRequest()) || actions == null) {
             return;
         }
-
+        
         for (DisplayableValue<String> action : actions) {
             String actionUri = action.getValue();
             if (StringUtils.isBlank(actionUri)) {
@@ -166,7 +179,10 @@ public class MidPointGuiAuthorizationEvaluator implements SecurityEnforcer {
                 return;
             }
 
-            guiConfigAttr.add(new SecurityConfig(actionUri));
+            SecurityConfig config = new SecurityConfig(actionUri);
+			if (!guiConfigAttr.contains(config)) {
+				guiConfigAttr.add(config);
+			}
         }
     }
 
@@ -181,6 +197,38 @@ public class MidPointGuiAuthorizationEvaluator implements SecurityEnforcer {
 			Class<T> objectType, PrismObject<O> object, ObjectFilter origFilter) throws SchemaException {
 		return securityEnforcer.preProcessObjectFilter(operationUrl, phase, objectType, object, origFilter);
 	}
-    
-    
+
+	@Override
+	public <T extends ObjectType, O extends ObjectType> boolean canSearch(String operationUrl,
+			AuthorizationPhaseType phase, Class<T> objectType, PrismObject<O> object, boolean includeSpecial, ObjectFilter filter)
+			throws SchemaException {
+		return securityEnforcer.canSearch(operationUrl, phase, objectType, object, includeSpecial, filter);
+	}
+
+	@Override
+	public <T> T runAs(Producer<T> producer, PrismObject<UserType> user) throws SchemaException {
+		return securityEnforcer.runAs(producer, user);
+	}
+
+	@Override
+	public <T> T runPrivileged(Producer<T> producer) {
+		return securityEnforcer.runPrivileged(producer);
+	}
+
+	@Override
+	public <O extends ObjectType, R extends AbstractRoleType> ItemSecurityDecisions getAllowedRequestAssignmentItems(
+			MidPointPrincipal midPointPrincipal, String actionUri, PrismObject<O> object, PrismObject<R> target,
+			OwnerResolver ownerResolver) throws SchemaException {
+		return securityEnforcer.getAllowedRequestAssignmentItems(midPointPrincipal, actionUri, object, target, ownerResolver);
+	}
+
+	@Override
+	public void storeConnectionInformation(HttpConnectionInformation value) {
+		securityEnforcer.storeConnectionInformation(value);
+	}
+
+	@Override
+	public HttpConnectionInformation getStoredConnectionInformation() {
+		return securityEnforcer.getStoredConnectionInformation();
+	}
 }

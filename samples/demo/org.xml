@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@
 			<construction>
 		    		<resourceRef oid="ebd0bf7b-7e80-4175-ba5e-4fd5de2ecd62" type="c:ResourceType"/>
 					<kind>account</kind>
-				<attribute>
+						<attribute>
 		                    <ref>ri:ou</ref>
 		                    <outbound>
 		                    	<expression>

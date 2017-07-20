@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Evolveum
+ * Copyright (c) 2013-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.schema.util.ShadowUtil;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
@@ -55,14 +56,14 @@ public class AccessChecker {
 	private static final Trace LOGGER = TraceManager.getTrace(AccessChecker.class);
 
 	public void checkAdd(ProvisioningContext ctx, PrismObject<ShadowType> shadow, OperationResult parentResult) 
-			throws SchemaException, SecurityViolationException, ConfigurationException, ObjectNotFoundException, CommunicationException {
+			throws SchemaException, SecurityViolationException, ConfigurationException, ObjectNotFoundException, CommunicationException, ExpressionEvaluationException {
 		OperationResult result = parentResult.createMinorSubresult(OPERATION_NAME);
 		ResourceAttributeContainer attributeCont = ShadowUtil.getAttributesContainer(shadow);
-		
+
 		for (ResourceAttribute<?> attribute: attributeCont.getAttributes()) {
 			RefinedAttributeDefinition attrDef = ctx.getObjectClassDefinition().findAttributeDefinition(attribute.getElementName());
 			// Need to check model layer, not schema. Model means IDM logic which can be overridden in schemaHandling,
-			// schema layer is the original one. 
+			// schema layer is the original one.
 			if (attrDef == null) {
 				String msg = "No definition for attribute "+attribute.getElementName()+" in "+ctx.getObjectClassDefinition();
 				result.recordFatalError(msg);
@@ -142,13 +143,18 @@ public class AccessChecker {
 		
 	}
 
-	public void filterGetAttributes(ResourceAttributeContainer attributeContainer, RefinedObjectClassDefinition objectClassDefinition, OperationResult parentResult) {
+	public void filterGetAttributes(ResourceAttributeContainer attributeContainer, RefinedObjectClassDefinition objectClassDefinition, OperationResult parentResult) throws SchemaException {
 		OperationResult result = parentResult.createMinorSubresult(OPERATION_NAME);
 		
 		
 		for (ResourceAttribute<?> attribute: attributeContainer.getAttributes()) {
 			QName attrName = attribute.getElementName();
 			RefinedAttributeDefinition attrDef = objectClassDefinition.findAttributeDefinition(attrName);
+			if (attrDef == null) {
+				String message = "Unknown attribute " + attrName + " in objectclass " + objectClassDefinition;
+				result.recordFatalError(message);
+				throw new SchemaException(message);
+			}
 			// Need to check model layer, not schema. Model means IDM logic which can be overridden in schemaHandling,
 			// schema layer is the original one. 
 			PropertyLimitations limitations = attrDef.getLimitations(LayerType.MODEL);

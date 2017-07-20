@@ -18,14 +18,15 @@ package com.evolveum.midpoint.wf.impl;
 
 import com.evolveum.midpoint.model.api.ProgressInformation;
 import com.evolveum.midpoint.model.api.context.ModelContext;
-import com.evolveum.midpoint.model.api.context.ModelProjectionContext;
 import com.evolveum.midpoint.model.api.hooks.ChangeHook;
 import com.evolveum.midpoint.model.api.hooks.HookOperationMode;
 import com.evolveum.midpoint.model.api.hooks.HookRegistry;
 import com.evolveum.midpoint.model.impl.lens.LensContext;
-import com.evolveum.midpoint.prism.delta.ObjectDelta;
+import com.evolveum.midpoint.model.impl.lens.LensUtil;
+import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.Task;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
@@ -33,10 +34,11 @@ import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.wf.impl.processors.BaseConfigurationHelper;
 import com.evolveum.midpoint.wf.impl.processors.ChangeProcessor;
-
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.PartialProcessingTypeType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.WfConfigurationType;
 import org.apache.commons.lang.Validate;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -56,7 +58,7 @@ public class WfHook implements ChangeHook {
 
     private static final Trace LOGGER = TraceManager.getTrace(WfHook.class);
 
-    public static final String WORKFLOW_HOOK_URI = "http://midpoint.evolveum.com/model/workflow-hook-1";        // todo
+    private static final String WORKFLOW_HOOK_URI = "http://midpoint.evolveum.com/model/workflow-hook-1";        // todo
 
     @Autowired
     private WfConfiguration wfConfiguration;
@@ -81,91 +83,91 @@ public class WfHook implements ChangeHook {
     }
 
     @Override
-    public HookOperationMode invoke(ModelContext context, Task task, OperationResult parentResult) {
+    public <O extends ObjectType> HookOperationMode invoke(@NotNull ModelContext<O> context, @NotNull Task taskFromModel,
+            @NotNull OperationResult parentResult) {
 
         Validate.notNull(context);
-        Validate.notNull(task);
+        Validate.notNull(taskFromModel);
         Validate.notNull(parentResult);
 
+	    // Generally this cannot be minor as we need the "task switched to background" flag.
+	    // But if the hook does nothing (returns FOREGROUND flag), we mark the result
+	    // as minor afterwards.
         OperationResult result = parentResult.createSubresult(OPERATION_INVOKE);
-        result.addParam("taskFromModel", task.toString());
+        result.addParam("taskFromModel", taskFromModel.toString());
         result.addContext("model state", context.getState());
-
-        WfConfigurationType wfConfigurationType = baseConfigurationHelper.getWorkflowConfiguration(context, result);
-        if (wfConfigurationType != null && Boolean.FALSE.equals(wfConfigurationType.isModelHookEnabled())) {
-            LOGGER.info("Workflow model hook is disabled. Proceeding with operation execution as if everything is approved.");
-            result.recordSuccess();
-            return HookOperationMode.FOREGROUND;
-        }
-
-        logOperationInformation(context);
-
         try {
-            HookOperationMode retval = processModelInvocation(context, wfConfigurationType, task, result);
-            result.recordSuccessIfUnknown();
+            WfConfigurationType wfConfigurationType = baseConfigurationHelper.getWorkflowConfiguration(context, result);
+            // TODO consider this if it's secure enough
+            if (wfConfigurationType != null && Boolean.FALSE.equals(wfConfigurationType.isModelHookEnabled())) {
+                LOGGER.info("Workflow model hook is disabled. Proceeding with operation execution as if everything is approved.");
+                result.recordSuccess();
+                return HookOperationMode.FOREGROUND;
+            }
+
+            if (context.getPartialProcessingOptions().getApprovals() == PartialProcessingTypeType.SKIP) {
+                LOGGER.debug("Skipping workflow processing because of the partial processing option set to SKIP");
+                result.recordSuccess();
+                return HookOperationMode.FOREGROUND;
+            }
+
+            // It would be also possible to set 'skip' partial processing option for initial import; however,
+            // e.g. for tests, initialization is scattered through many places, so that would be too much work.
+            if (SchemaConstants.CHANNEL_GUI_INIT_URI.equals(context.getChannel())) {
+                LOGGER.debug("Skipping workflow processing because the channel is '" + SchemaConstants.CHANNEL_GUI_INIT_URI + "'.");
+                result.recordSuccess();
+                return HookOperationMode.FOREGROUND;
+            }
+
+            logOperationInformation(context);
+
+            HookOperationMode retval = processModelInvocation(context, wfConfigurationType, taskFromModel, result);
+            result.computeStatus();
+            if (retval == HookOperationMode.FOREGROUND) {
+	            result.setMinor(true);
+            }
             return retval;
         } catch (RuntimeException e) {
-            if (result.isUnknown()) {
-                result.recordFatalError("Couldn't process model invocation in workflow module: " + e.getMessage(), e);
-            }
+            result.recordFatalError("Couldn't process model invocation in workflow module: " + e.getMessage(), e);
             throw e;
         }
     }
 
     @Override
-    public void invokeOnException(ModelContext context, Throwable throwable, Task task, OperationResult result) {
+    public void invokeOnException(@NotNull ModelContext context, @NotNull Throwable throwable, @NotNull Task task, @NotNull OperationResult result) {
         // do nothing
     }
 
     private void logOperationInformation(ModelContext context) {
 
         if (LOGGER.isTraceEnabled()) {
-
-            LensContext lensContext = (LensContext) context;
-
-            LOGGER.trace("=====================================================================");
-            LOGGER.trace("WfHook invoked in state " + context.getState() + " (wave " + lensContext.getProjectionWave() + ", max " + lensContext.getMaxWave() + "):");
-
-            ObjectDelta pdelta = context.getFocusContext() != null ? context.getFocusContext().getPrimaryDelta() : null;
-            ObjectDelta sdelta = context.getFocusContext() != null ? context.getFocusContext().getSecondaryDelta() : null;
-
-            LOGGER.trace("Primary delta: " + (pdelta == null ? "(null)" : pdelta.debugDump()));
-            LOGGER.trace("Secondary delta: " + (sdelta == null ? "(null)" : sdelta.debugDump()));
-            LOGGER.trace("Projection contexts: " + context.getProjectionContexts().size());
-
-            for (Object o : context.getProjectionContexts()) {
-                ModelProjectionContext mpc = (ModelProjectionContext) o;
-                ObjectDelta ppdelta = mpc.getPrimaryDelta();
-                ObjectDelta psdelta = mpc.getSecondaryDelta();
-                LOGGER.trace(" - Primary delta: " + (ppdelta == null ? "(null)" : ppdelta.debugDump()));
-                LOGGER.trace(" - Secondary delta: " + (psdelta == null ? "(null)" : psdelta.debugDump()));
-                LOGGER.trace(" - Sync delta:" + (mpc.getSyncDelta() == null ? "(null)" : mpc.getSyncDelta().debugDump()));
-            }
+        	@SuppressWarnings({"unchecked", "raw"})
+            LensContext<?> lensContext = (LensContext<?>) context;
+			try {
+				LensUtil.traceContext(LOGGER, "WORKFLOW (" + context.getState() + ")", "workflow processing", true, lensContext, false);
+			} catch (SchemaException e) {
+				throw new IllegalStateException("SchemaException when tracing model context: " + e.getMessage(), e);
+			}
         }
     }
 
-    HookOperationMode processModelInvocation(ModelContext<? extends ObjectType> context, WfConfigurationType wfConfigurationType, Task taskFromModel, OperationResult result) {
+    private HookOperationMode processModelInvocation(@NotNull ModelContext<? extends ObjectType> modelContext,
+            WfConfigurationType wfConfigurationType, @NotNull Task taskFromModel, @NotNull OperationResult result) {
 
         try {
 
-            context.reportProgress(new ProgressInformation(WORKFLOWS, ENTERING));
+            modelContext.reportProgress(new ProgressInformation(WORKFLOWS, ENTERING));
 
             for (ChangeProcessor changeProcessor : wfConfiguration.getChangeProcessors()) {
-                if (LOGGER.isTraceEnabled()) {
-                    LOGGER.trace("Trying change processor: " + changeProcessor.getClass().getName());
-                }
+                LOGGER.trace("Trying change processor: {}", changeProcessor.getClass().getName());
                 try {
-                    HookOperationMode hookOperationMode = changeProcessor.processModelInvocation(context, wfConfigurationType, taskFromModel, result);
+                    HookOperationMode hookOperationMode = changeProcessor.processModelInvocation(modelContext, wfConfigurationType, taskFromModel, result);
                     if (hookOperationMode != null) {
                         return hookOperationMode;
                     }
-                } catch (SchemaException e) {
-                    LoggingUtils.logException(LOGGER, "Schema exception while running change processor {}", e, changeProcessor.getClass().getName());   // todo message
-                    result.recordFatalError("Schema exception while running change processor " + changeProcessor.getClass(), e);
-                    return HookOperationMode.ERROR;
-                } catch (ObjectNotFoundException|RuntimeException e) {
-                    LoggingUtils.logException(LOGGER, "Unexpected exception while running change processor {}", e, changeProcessor.getClass().getName());   // todo message
-                    result.recordFatalError("Unexpected exception while running change processor " + changeProcessor.getClass(), e);
+                } catch (ObjectNotFoundException|SchemaException|RuntimeException|ExpressionEvaluationException e) {
+                    LoggingUtils.logUnexpectedException(LOGGER, "Exception while running change processor {}", e, changeProcessor.getClass().getName());
+                    result.recordFatalError("Exception while running change processor " + changeProcessor.getClass(), e);
                     return HookOperationMode.ERROR;
                 }
             }
@@ -174,14 +176,13 @@ public class WfHook implements ChangeHook {
                 // a bit of hack: IN_PROGRESS for workflows actually means "success"
                 OperationResult r = result.clone();
                 r.recordSuccess();
-                context.reportProgress(new ProgressInformation(WORKFLOWS, r));
+                modelContext.reportProgress(new ProgressInformation(WORKFLOWS, r));
             } else {
-                context.reportProgress(new ProgressInformation(WORKFLOWS, result));
+                modelContext.reportProgress(new ProgressInformation(WORKFLOWS, result));
             }
         }
 
         LOGGER.trace("No change processor caught this request, returning the FOREGROUND flag.");
-        result.recordSuccess();
         return HookOperationMode.FOREGROUND;
     }
 

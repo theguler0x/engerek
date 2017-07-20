@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2014 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,26 +16,15 @@
 
 package com.evolveum.midpoint.prism.query;
 
-import javax.xml.namespace.QName;
-
-import com.evolveum.midpoint.prism.Containerable;
-import com.evolveum.midpoint.prism.ItemDefinition;
-import com.evolveum.midpoint.prism.Objectable;
 import com.evolveum.midpoint.prism.PrismContainerValue;
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.match.MatchingRuleRegistry;
-import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.util.DebugUtil;
 import com.evolveum.midpoint.util.exception.SchemaException;
 
 
 public class NotFilter extends UnaryLogicalFilter {
 
-//	private ObjectFilter filter;
-
 	public NotFilter() {
-
 	}
 
 	public NotFilter(ObjectFilter filter) {
@@ -46,6 +35,7 @@ public class NotFilter extends UnaryLogicalFilter {
 		return new NotFilter(filter);
 	}
 	
+	@SuppressWarnings("CloneDoesntCallSuperClone")
 	@Override
 	public NotFilter clone() {
 		return new NotFilter(getFilter().clone());
@@ -57,37 +47,18 @@ public class NotFilter extends UnaryLogicalFilter {
 	}
 
 	@Override
-	public String debugDump() {
-		return debugDump(0);
-	}
-
-	@Override
-	public String debugDump(int indent) {
-		StringBuilder sb = new StringBuilder();
-		DebugUtil.indentDebugDump(sb, indent);
-		sb.append("NOT:");
-		if (getFilter() != null) {
-			sb.append("\n");
-			sb.append(getFilter().debugDump(indent + 1));
-		}
-
-		return sb.toString();
-
-	}
-	
-	@Override
-	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		sb.append("NOT(");
-		if (getFilter() != null){
-			sb.append(getFilter().toString());
-		}
-		sb.append(")");
-		return sb.toString();
-	}
-
-	@Override
 	public boolean match(PrismContainerValue value, MatchingRuleRegistry matchingRuleRegistry) throws SchemaException {
 		return !getFilter().match(value, matchingRuleRegistry);
 	}
+
+	@Override
+	public boolean equals(Object obj, boolean exact) {
+		return super.equals(obj, exact) && obj instanceof NotFilter;
+	}
+	
+	@Override
+	protected String getDebugDumpOperationName() {
+		return "NOT";
+	}
+
 }

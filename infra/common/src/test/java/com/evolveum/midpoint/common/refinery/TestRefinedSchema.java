@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import static com.evolveum.midpoint.prism.util.PrismTestUtil.*;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -34,15 +33,17 @@ import javax.xml.namespace.QName;
 import com.evolveum.midpoint.prism.ConsistencyCheckScope;
 import com.evolveum.midpoint.prism.util.PrismTestUtil;
 
+import com.evolveum.midpoint.schema.processor.*;
 import org.testng.Assert;
 import org.testng.AssertJUnit;
 import org.testng.annotations.BeforeSuite;
+import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
-import org.w3c.dom.Element;
 import org.xml.sax.SAXException;
 
 import com.evolveum.midpoint.common.ResourceObjectPattern;
 import com.evolveum.midpoint.prism.Containerable;
+import com.evolveum.midpoint.prism.Definition;
 import com.evolveum.midpoint.prism.ItemDefinition;
 import com.evolveum.midpoint.prism.PrismContainer;
 import com.evolveum.midpoint.prism.PrismContainerDefinition;
@@ -53,11 +54,6 @@ import com.evolveum.midpoint.prism.util.PrismAsserts;
 import com.evolveum.midpoint.schema.MidPointPrismContextFactory;
 import com.evolveum.midpoint.schema.constants.MidPointConstants;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
-import com.evolveum.midpoint.schema.processor.ObjectClassComplexTypeDefinition;
-import com.evolveum.midpoint.schema.processor.ResourceAttribute;
-import com.evolveum.midpoint.schema.processor.ResourceAttributeContainer;
-import com.evolveum.midpoint.schema.processor.ResourceAttributeContainerDefinition;
-import com.evolveum.midpoint.schema.processor.ResourceAttributeDefinition;
 import com.evolveum.midpoint.schema.util.ResourceTypeUtil;
 import com.evolveum.midpoint.schema.util.SchemaTestConstants;
 import com.evolveum.midpoint.schema.util.ShadowUtil;
@@ -66,6 +62,7 @@ import com.evolveum.midpoint.util.DOMUtil;
 import com.evolveum.midpoint.util.PrettyPrinter;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.LayerType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowAttributesType;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
@@ -74,13 +71,19 @@ import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowType;
 /**
  * @author semancik
  */
+@Listeners({com.evolveum.midpoint.tools.testng.AlphabeticalMethodInterceptor.class})
 public class TestRefinedSchema {
 
     public static final String TEST_DIR_NAME = "src/test/resources/refinery";
 	private static final File RESOURCE_COMPLEX_FILE = new File(TEST_DIR_NAME, "resource-complex.xml");
 	private static final File RESOURCE_SIMPLE_FILE = new File(TEST_DIR_NAME, "resource-simple.xml");
+	private static final File RESOURCE_POSIX_FILE = new File(TEST_DIR_NAME, "resource-ldap-posix.xml");
 	
 	private static final String ENTITLEMENT_GROUP_INTENT = "group";
+	private static final String ENTITLEMENT_LDAP_GROUP_INTENT = "ldapGroup";
+	private static final String ENTITLEMENT_UNIX_GROUP_INTENT = "unixGroup";
+	
+	private static final QName OBJECT_CLASS_INETORGPERSON_QNAME = new QName(MidPointConstants.NS_RI, "inetOrgPerson");
     
     @BeforeSuite
 	public void setup() throws SchemaException, SAXException, IOException {
@@ -89,8 +92,9 @@ public class TestRefinedSchema {
 	}
 
     @Test
-    public void testParseFromResourceComplex() throws JAXBException, SchemaException, SAXException, IOException {
-    	System.out.println("\n===[ testParseFromResourceComplex ]===\n");
+    public void test010ParseFromResourceComplex() throws Exception {
+    	final String TEST_NAME = "test010ParseFromResourceComplex";
+    	TestUtil.displayTestTile(TEST_NAME);
     	
         // GIVEN
     	PrismContext prismContext = createInitializedPrismContext();
@@ -99,17 +103,19 @@ public class TestRefinedSchema {
         ResourceType resourceType = resource.asObjectable();
 
         // WHEN
-        RefinedResourceSchema rSchema = RefinedResourceSchema.parse(resourceType, prismContext);
+        TestUtil.displayWhen(TEST_NAME);
+        RefinedResourceSchema rSchema = RefinedResourceSchemaImpl.parse(resourceType, prismContext);
 
         // THEN
+        TestUtil.displayThen(TEST_NAME);
         assertNotNull("Refined schema is null", rSchema);
         System.out.println("Refined schema");
         System.out.println(rSchema.debugDump());
-        assertRefinedSchema(resourceType, rSchema, null, LayerType.MODEL, true);
+        assertRefinedSchema(resourceType, rSchema, null, LayerType.MODEL, true, true);
         
-        assertLayerRefinedSchema(resourceType, rSchema, LayerType.SCHEMA, LayerType.SCHEMA, true);
-        assertLayerRefinedSchema(resourceType, rSchema, LayerType.MODEL, LayerType.MODEL, true);
-        assertLayerRefinedSchema(resourceType, rSchema, LayerType.PRESENTATION, LayerType.PRESENTATION, true);
+        assertLayerRefinedSchema(resourceType, rSchema, LayerType.SCHEMA, LayerType.SCHEMA, true, true);
+        assertLayerRefinedSchema(resourceType, rSchema, LayerType.MODEL, LayerType.MODEL, true, true);
+        assertLayerRefinedSchema(resourceType, rSchema, LayerType.PRESENTATION, LayerType.PRESENTATION, true, true);
         
         RefinedObjectClassDefinition rAccount = rSchema.getRefinedDefinition(ShadowKindType.ACCOUNT, (String)null);
         RefinedAttributeDefinition userPasswordAttribute = rAccount.findAttributeDefinition("userPassword");
@@ -118,16 +124,17 @@ public class TestRefinedSchema {
     }
 
 	private void assertLayerRefinedSchema(ResourceType resourceType, RefinedResourceSchema rSchema, LayerType sourceLayer,
-			LayerType validationLayer, boolean assertEntitlements) {
+			LayerType validationLayer, boolean assertEntitlements, boolean assertPasswordPolicy) {
 		System.out.println("Refined schema: layer="+sourceLayer);
 		LayerRefinedResourceSchema lrSchema = rSchema.forLayer(sourceLayer);
         System.out.println(lrSchema.debugDump());
-        assertRefinedSchema(resourceType, lrSchema, sourceLayer, validationLayer, assertEntitlements);
+        assertRefinedSchema(resourceType, lrSchema, sourceLayer, validationLayer, assertEntitlements, assertPasswordPolicy);
 	}
 
 	@Test
-    public void testParseFromResourceSimple() throws JAXBException, SchemaException, SAXException, IOException {
-    	System.out.println("\n===[ testParseFromResourceSimple ]===\n");
+    public void test020ParseFromResourceSimple() throws Exception {
+		final String TEST_NAME = "test020ParseFromResourceSimple";
+    	TestUtil.displayTestTile(TEST_NAME);
     	
         // GIVEN
     	PrismContext prismContext = createInitializedPrismContext();
@@ -136,29 +143,38 @@ public class TestRefinedSchema {
         ResourceType resourceType = resource.asObjectable();
 
         // WHEN
-        RefinedResourceSchema rSchema = RefinedResourceSchema.parse(resourceType, prismContext);
+        RefinedResourceSchema rSchema = RefinedResourceSchemaImpl.parse(resourceType, prismContext);
 
         // THEN
         assertNotNull("Refined schema is null", rSchema);
         System.out.println("Refined schema");
         System.out.println(rSchema.debugDump());
         
-        assertRefinedSchema(resourceType, rSchema, null, LayerType.SCHEMA, false);
+        assertRefinedSchema(resourceType, rSchema, null, LayerType.SCHEMA, false, false);
 
     }
     
     private void assertRefinedSchema(ResourceType resourceType, RefinedResourceSchema rSchema, 
-    		LayerType sourceLayer, LayerType validationLayer, boolean assertEntitlements) {
+    		LayerType sourceLayer, LayerType validationLayer, boolean assertEntitlements, boolean assertPasswordPolicy) {
+    	
+    	assertEquals("Unexpected number of object classes in refined schema", 2, rSchema.getDefinitions().size());
+    	
+    	for (Definition def: rSchema.getDefinitions()) {
+			if (!(def instanceof RefinedObjectClassDefinition)) {
+				AssertJUnit.fail("Non-refined definition sneaked into resource schema: "+def);
+			}
+		}
+    	
         assertFalse("No account definitions", rSchema.getRefinedDefinitions(ShadowKindType.ACCOUNT).isEmpty());
         
         RefinedObjectClassDefinition rAccountDef = rSchema.getRefinedDefinition(ShadowKindType.ACCOUNT, (String)null);
         
         RefinedObjectClassDefinition accountDefByNullObjectclass = rSchema.findRefinedDefinitionByObjectClassQName(ShadowKindType.ACCOUNT, null);
-        assertTrue("findAccountDefinitionByObjectClass(null) returned wrong value", rAccountDef.equals(accountDefByNullObjectclass));
+        assertEquals("findAccountDefinitionByObjectClass(null) returned wrong value", rAccountDef, accountDefByNullObjectclass);
         
         RefinedObjectClassDefinition accountDefByIcfAccountObjectclass = rSchema.findRefinedDefinitionByObjectClassQName(ShadowKindType.ACCOUNT, 
         		new QName(resourceType.getNamespace(), SchemaTestConstants.ICF_ACCOUNT_OBJECT_CLASS_LOCAL_NAME));
-        assertTrue("findAccountDefinitionByObjectClass(ICF account) returned wrong value", rAccountDef.equals(accountDefByIcfAccountObjectclass));
+        assertEquals("findAccountDefinitionByObjectClass(ICF account) returned wrong value", rAccountDef, accountDefByIcfAccountObjectclass);
 
         assertRObjectClassDef(rAccountDef, resourceType, sourceLayer, validationLayer);
         System.out.println("Refined account definitionn:");
@@ -185,6 +201,11 @@ public class TestRefinedSchema {
         assertFalse("Empty propertyDefinitions", propertyDefinitions.isEmpty());
         assertEquals("Unexpected number of propertyDefinitions", 55, propertyDefinitions.size());
         
+        if (assertPasswordPolicy) {
+	        ObjectReferenceType passwordPolicyRef = rAccountDef.getPasswordPolicy();
+	        assertNotNull("Expected password policy for account definition not found", passwordPolicyRef);
+        }
+        
         if (assertEntitlements) {        	
 	        assertFalse("No entitlement definitions", rSchema.getRefinedDefinitions(ShadowKindType.ENTITLEMENT).isEmpty());
 	        RefinedObjectClassDefinition rEntDef = rSchema.getRefinedDefinition(ShadowKindType.ENTITLEMENT, (String)null);
@@ -204,7 +225,7 @@ public class TestRefinedSchema {
 	        assertNotNull("No entitlement displayNameAttribute", entDisplayNameAttributeDef);
 	        assertEquals("Wrong entitlement displayNameAttribute", new QName(resourceType.getNamespace(), "cn"), entDisplayNameAttributeDef.getName());
 	        
-	        assertEquals("Unexpected number of entitlement associations", 1, rAccountDef.getEntitlementAssociations().size());
+	        assertEquals("Unexpected number of entitlement associations", 1, rAccountDef.getAssociationDefinitions().size());
         }
         
         assertRefinedToLayer(rAccountDef, sourceLayer);
@@ -267,8 +288,9 @@ public class TestRefinedSchema {
 	}
 
 	@Test
-    public void testParseAccount() throws JAXBException, SchemaException, SAXException, IOException {
-    	System.out.println("\n===[ testParseAccount ]===\n");
+    public void test100ParseAccount() throws Exception {
+		final String TEST_NAME = "test100ParseAccount";
+    	TestUtil.displayTestTile(TEST_NAME);
 
         // GIVEN
     	PrismContext prismContext = createInitializedPrismContext();
@@ -276,9 +298,10 @@ public class TestRefinedSchema {
         PrismObject<ResourceType> resource = prismContext.parseObject(RESOURCE_COMPLEX_FILE);
         ResourceType resourceType = resource.asObjectable();
 
-        RefinedResourceSchema rSchema = RefinedResourceSchema.parse(resourceType, prismContext);
+        RefinedResourceSchema rSchema = RefinedResourceSchemaImpl.parse(resourceType, prismContext);
         RefinedObjectClassDefinition defaultAccountDefinition = rSchema.getDefaultRefinedDefinition(ShadowKindType.ACCOUNT);
         assertNotNull("No refined default account definition in "+rSchema, defaultAccountDefinition);
+        
 
         PrismObject<ShadowType> accObject = prismContext.parseObject(new File(TEST_DIR_NAME, "account-jack.xml"));
 
@@ -300,31 +323,34 @@ public class TestRefinedSchema {
     }
     
     @Test
-    public void testApplyAttributeDefinition() throws JAXBException, SchemaException, SAXException, IOException {
-    	System.out.println("\n===[ testApplyAttributeDefinition ]===\n");
+    public void test110ApplyAttributeDefinition() throws Exception {
+    	final String TEST_NAME = "test110ApplyAttributeDefinition";
+    	TestUtil.displayTestTile(TEST_NAME);
 
         // GIVEN
     	PrismContext prismContext = createInitializedPrismContext();
 
         PrismObject<ResourceType> resource = prismContext.parseObject(RESOURCE_COMPLEX_FILE);
         
-        RefinedResourceSchema rSchema = RefinedResourceSchema.parse(resource, prismContext);
+        RefinedResourceSchema rSchema = RefinedResourceSchemaImpl.parse(resource, prismContext);
+        System.out.println("Refined schema:");
+        System.out.println(rSchema.debugDump(1));
         RefinedObjectClassDefinition defaultAccountDefinition = rSchema.getDefaultRefinedDefinition(ShadowKindType.ACCOUNT);
         assertNotNull("No refined default account definition in "+rSchema, defaultAccountDefinition);
         System.out.println("Refined account definition:");
-        System.out.println(defaultAccountDefinition.debugDump());
+        System.out.println(defaultAccountDefinition.debugDump(1));
 
         PrismObject<ShadowType> accObject = prismContext.parseObject(new File(TEST_DIR_NAME, "account-jack.xml"));
         PrismContainer<Containerable> attributesContainer = accObject.findContainer(ShadowType.F_ATTRIBUTES);
         System.out.println("Attributes container:");
-        System.out.println(attributesContainer.debugDump());
+        System.out.println(attributesContainer.debugDump(1));
         
         // WHEN
         attributesContainer.applyDefinition((PrismContainerDefinition)defaultAccountDefinition.toResourceAttributeContainerDefinition(), true);
 
         // THEN
         System.out.println("Parsed account:");
-        System.out.println(accObject.debugDump());
+        System.out.println(accObject.debugDump(1));
 
         assertAccountShadow(accObject, resource, prismContext);
     }
@@ -337,7 +363,7 @@ public class TestRefinedSchema {
         PrismAsserts.assertPropertyValue(accObject, ShadowType.F_INTENT, SchemaConstants.INTENT_DEFAULT);
 
         PrismContainer<?> attributes = accObject.findOrCreateContainer(SchemaConstants.C_ATTRIBUTES);
-        assertEquals("Wrong type of <attributes> definition in account", ResourceAttributeContainerDefinition.class, attributes.getDefinition().getClass());
+        assertEquals("Wrong type of <attributes> definition in account", ResourceAttributeContainerDefinitionImpl.class, attributes.getDefinition().getClass());
         ResourceAttributeContainerDefinition attrDef = (ResourceAttributeContainerDefinition)attributes.getDefinition();
         assertAttributeDefs(attrDef, resourceType, null, LayerType.MODEL);
 
@@ -374,8 +400,9 @@ public class TestRefinedSchema {
 	}
 
 	@Test
-    public void testCreateShadow() throws JAXBException, SchemaException, SAXException, IOException {
-    	System.out.println("\n===[ testCreateShadow ]===\n");
+    public void test120CreateShadow() throws Exception {
+		final String TEST_NAME = "test120CreateShadow";
+    	TestUtil.displayTestTile(TEST_NAME);
 
         // GIVEN
     	PrismContext prismContext = createInitializedPrismContext();
@@ -383,7 +410,7 @@ public class TestRefinedSchema {
         PrismObject<ResourceType> resource = prismContext.parseObject(RESOURCE_COMPLEX_FILE);
         ResourceType resourceType = resource.asObjectable();
 
-        RefinedResourceSchema rSchema = RefinedResourceSchema.parse(resourceType, prismContext);
+        RefinedResourceSchema rSchema = RefinedResourceSchemaImpl.parse(resourceType, prismContext);
         assertNotNull("Refined schema is null", rSchema);
         assertFalse("No account definitions", rSchema.getRefinedDefinitions(ShadowKindType.ACCOUNT).isEmpty());
         RefinedObjectClassDefinition rAccount = rSchema.getRefinedDefinition(ShadowKindType.ACCOUNT, (String)null);
@@ -403,14 +430,15 @@ public class TestRefinedSchema {
     }
     
     @Test
-    public void testProtectedAccount() throws JAXBException, SchemaException, SAXException, IOException {
-    	System.out.println("\n===[ testProtectedAccount ]===\n");
+    public void test130ProtectedAccount() throws Exception {
+    	final String TEST_NAME = "test130ProtectedAccount";
+    	TestUtil.displayTestTile(TEST_NAME);
 
         // GIVEN
     	PrismContext prismContext = createInitializedPrismContext();
         PrismObject<ResourceType> resource = prismContext.parseObject(RESOURCE_COMPLEX_FILE);
         ResourceType resourceType = resource.asObjectable();
-        RefinedResourceSchema rSchema = RefinedResourceSchema.parse(resourceType, prismContext);
+        RefinedResourceSchema rSchema = RefinedResourceSchemaImpl.parse(resourceType, prismContext);
         assertNotNull("Refined schema is null", rSchema);
         assertFalse("No account definitions", rSchema.getRefinedDefinitions(ShadowKindType.ACCOUNT).isEmpty());
         RefinedObjectClassDefinition rAccount = rSchema.getRefinedDefinition(ShadowKindType.ACCOUNT, (String)null);
@@ -431,7 +459,7 @@ public class TestRefinedSchema {
         assertNotNull("Null account definition", attrsDef);
         assertEquals(SchemaConstants.INTENT_DEFAULT, attrsDef.getIntent());
         assertEquals("AccountObjectClass", attrsDef.getComplexTypeDefinition().getTypeName().getLocalPart());
-        assertEquals("Wrong objectclass in the definition of <attributes> definition in account", RefinedObjectClassDefinition.class, attrsDef.getComplexTypeDefinition().getClass());
+        assertEquals("Wrong objectclass in the definition of <attributes> definition in account", RefinedObjectClassDefinitionImpl.class, attrsDef.getComplexTypeDefinition().getClass());
         RefinedObjectClassDefinition rAccount = (RefinedObjectClassDefinition) attrsDef.getComplexTypeDefinition();
         assertRObjectClassDef(rAccount, resourceType, sourceLayer, validationLayer);
     }
@@ -522,10 +550,139 @@ public class TestRefinedSchema {
 	}
 
 	private ResourceAttribute<String> createStringAttribute(QName attrName, String value) {
-		ResourceAttributeDefinition testAttrDef = new ResourceAttributeDefinition(attrName, DOMUtil.XSD_STRING, getPrismContext());
+		ResourceAttributeDefinition testAttrDef = new ResourceAttributeDefinitionImpl(attrName, DOMUtil.XSD_STRING, getPrismContext());
 		ResourceAttribute<String> testAttr = testAttrDef.instantiate();
 		testAttr.setRealValue(value);
 		return testAttr;
 	}
 
+	@Test
+    public void test140ParseFromResourcePosix() throws Exception {
+    	final String TEST_NAME = "test140ParseFromResourcePosix";
+    	TestUtil.displayTestTile(TEST_NAME);
+    	
+        // GIVEN
+    	PrismContext prismContext = createInitializedPrismContext();
+
+        PrismObject<ResourceType> resource = prismContext.parseObject(RESOURCE_POSIX_FILE);
+        ResourceType resourceType = resource.asObjectable();
+
+        // WHEN
+        TestUtil.displayWhen(TEST_NAME);
+        RefinedResourceSchema rSchema = RefinedResourceSchemaImpl.parse(resourceType, prismContext);
+
+        // THEN
+        TestUtil.displayThen(TEST_NAME);
+        assertNotNull("Refined schema is null", rSchema);
+        System.out.println("Refined schema");
+        System.out.println(rSchema.debugDump());
+        
+        assertFalse("No account definitions", rSchema.getRefinedDefinitions(ShadowKindType.ACCOUNT).isEmpty());
+        
+        // ### default account objectType
+        
+        RefinedObjectClassDefinition rAccountDef = rSchema.getRefinedDefinition(ShadowKindType.ACCOUNT, (String)null);
+        assertNotNull("No default account definition", rAccountDef);
+        
+        RefinedObjectClassDefinition accountDefByIcfAccountObjectclass = rSchema.findRefinedDefinitionByObjectClassQName(ShadowKindType.ACCOUNT,
+        		OBJECT_CLASS_INETORGPERSON_QNAME);
+        assertTrue("findAccountDefinitionByObjectClass("+OBJECT_CLASS_INETORGPERSON_QNAME+") returned wrong value", rAccountDef.equals(accountDefByIcfAccountObjectclass));
+        
+        assertTrue(rAccountDef.isDefault());
+
+        Collection<? extends RefinedAttributeDefinition> rAccountAttrs = rAccountDef.getAttributeDefinitions();
+        assertFalse(rAccountAttrs.isEmpty());
+
+        assertAttributeDef(rAccountAttrs, new QName(ResourceTypeUtil.getResourceNamespace(resourceType), "dn"), 
+        		DOMUtil.XSD_STRING, 1, 1, "Distinguished Name", 110,
+        		true, false, 
+        		true, true, true, // Access: create, read, update
+        		LayerType.SCHEMA, LayerType.PRESENTATION);
+        
+        assertAttributeDef(rAccountAttrs, new QName(ResourceTypeUtil.getResourceNamespace(resourceType), "entryUUID"), 
+        		DOMUtil.XSD_STRING, 0, 1, null, 100,
+        		false, false,
+        		false, true, false, // Access: create, read, update
+        		LayerType.SCHEMA, LayerType.PRESENTATION);
+        
+        assertAttributeDef(rAccountAttrs, new QName(ResourceTypeUtil.getResourceNamespace(resourceType), "cn"), 
+        		DOMUtil.XSD_STRING, 1, -1, "Common Name", 590, 
+        		true, false, 
+        		true, true, true, // Access: create, read, update
+        		LayerType.SCHEMA, LayerType.PRESENTATION);
+        
+        assertAttributeDef(rAccountAttrs, new QName(ResourceTypeUtil.getResourceNamespace(resourceType), "uid"), 
+        		DOMUtil.XSD_STRING, 0, -1, "Login Name", 300,
+        		true, false,
+        		true, true, true, // Access: create, read, update
+        		LayerType.SCHEMA, LayerType.PRESENTATION);
+        
+        assertAttributeDef(rAccountAttrs, new QName(ResourceTypeUtil.getResourceNamespace(resourceType), "employeeNumber"), 
+        		DOMUtil.XSD_STRING, 0, 1, null, 140,
+        		false, false,
+        		true, true, true, // Access: create, read, update
+        		LayerType.SCHEMA, LayerType.PRESENTATION);
+        
+        System.out.println("Refined account definitionn:");
+        System.out.println(rAccountDef.debugDump());
+        
+        assertEquals("Wrong kind", ShadowKindType.ACCOUNT, rAccountDef.getKind());
+        
+        Collection<? extends RefinedAttributeDefinition> accAttrsDef = rAccountDef.getAttributeDefinitions();
+        assertNotNull("Null attributeDefinitions", accAttrsDef);
+        assertFalse("Empty attributeDefinitions", accAttrsDef.isEmpty());
+        assertEquals("Unexpected number of attributeDefinitions", 53, accAttrsDef.size());
+        
+        RefinedAttributeDefinition disabledAttribute = rAccountDef.findAttributeDefinition("ds-pwp-account-disabled");
+        assertNotNull("No ds-pwp-account-disabled attribute", disabledAttribute);
+        assertTrue("ds-pwp-account-disabled not ignored", disabledAttribute.isIgnored());
+        
+        RefinedAttributeDefinition<?> displayNameAttributeDef = rAccountDef.getDisplayNameAttribute();
+        assertNotNull("No account displayNameAttribute", displayNameAttributeDef);
+        assertEquals("Wrong account displayNameAttribute", new QName(ResourceTypeUtil.getResourceNamespace(resourceType), "dn"), 
+        		displayNameAttributeDef.getName());
+        
+        // This is compatibility with PrismContainerDefinition, it should work well
+        Collection<? extends ItemDefinition> propertyDefinitions = rAccountDef.getDefinitions();
+        assertNotNull("Null propertyDefinitions", propertyDefinitions);
+        assertFalse("Empty propertyDefinitions", propertyDefinitions.isEmpty());
+        assertEquals("Unexpected number of propertyDefinitions", 53, propertyDefinitions.size());
+                	
+        assertFalse("No entitlement definitions", rSchema.getRefinedDefinitions(ShadowKindType.ENTITLEMENT).isEmpty());
+        RefinedObjectClassDefinition rEntDef = rSchema.getRefinedDefinition(ShadowKindType.ENTITLEMENT, (String)null);
+        assertNotNull("No entitlement definition for null intent", rEntDef);
+        RefinedObjectClassDefinition rEntDefGroup = rSchema.getRefinedDefinition(ShadowKindType.ENTITLEMENT, ENTITLEMENT_LDAP_GROUP_INTENT);
+        assertNotNull("No entitlement for intent '"+ENTITLEMENT_LDAP_GROUP_INTENT+"'", rEntDefGroup);
+        
+        assertEquals("Wrong kind", ShadowKindType.ENTITLEMENT, rEntDef.getKind());
+        
+        Collection<? extends RefinedAttributeDefinition> entAttrDefs = rEntDef.getAttributeDefinitions();
+        assertNotNull("Null attributeDefinitions", entAttrDefs);
+        assertFalse("Empty attributeDefinitions", entAttrDefs.isEmpty());
+        assertEquals("Unexpected number of attributeDefinitions", 12, entAttrDefs.size());
+
+        
+        RefinedAttributeDefinition<?> entDisplayNameAttributeDef = rEntDef.getDisplayNameAttribute();
+        assertNotNull("No entitlement displayNameAttribute", entDisplayNameAttributeDef);
+        assertEquals("Wrong entitlement displayNameAttribute", new QName(ResourceTypeUtil.getResourceNamespace(resourceType), "dn"),
+        		entDisplayNameAttributeDef.getName());
+        
+        assertEquals("Unexpected number of entitlement associations", 1, rAccountDef.getAssociationDefinitions().size());
+        
+        ResourceAttributeContainerDefinition resAttrContainerDef = rAccountDef.toResourceAttributeContainerDefinition();
+        assertNotNull("No ResourceAttributeContainerDefinition", resAttrContainerDef);
+        System.out.println("\nResourceAttributeContainerDefinition");
+        System.out.println(resAttrContainerDef.debugDump());
+        
+        ObjectClassComplexTypeDefinition rComplexTypeDefinition = resAttrContainerDef.getComplexTypeDefinition();
+        System.out.println("\nResourceAttributeContainerDefinition ComplexTypeDefinition");
+        System.out.println(rComplexTypeDefinition.debugDump());
+
+        ResourceAttributeDefinition<String> riUidAttrDef = resAttrContainerDef.findAttributeDefinition(new QName(resourceType.getNamespace(), "uid"));
+        assertNotNull("No ri:uid def in ResourceAttributeContainerDefinition", riUidAttrDef);
+        System.out.println("\nri:uid def "+riUidAttrDef.getClass());
+        System.out.println(riUidAttrDef.debugDump());
+        
+    }
+	
 }

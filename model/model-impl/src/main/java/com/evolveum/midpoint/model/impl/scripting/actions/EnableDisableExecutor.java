@@ -16,12 +16,14 @@
 
 package com.evolveum.midpoint.model.impl.scripting.actions;
 
-import com.evolveum.midpoint.model.impl.scripting.Data;
+import com.evolveum.midpoint.model.impl.scripting.PipelineData;
 import com.evolveum.midpoint.model.impl.scripting.ExecutionContext;
 import com.evolveum.midpoint.model.api.ScriptExecutionException;
+import com.evolveum.midpoint.model.api.PipelineItem;
 import com.evolveum.midpoint.model.impl.scripting.helpers.OperationsHelper;
-import com.evolveum.midpoint.prism.Item;
 import com.evolveum.midpoint.prism.PrismObject;
+import com.evolveum.midpoint.prism.PrismObjectValue;
+import com.evolveum.midpoint.prism.PrismValue;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.path.ItemPath;
 import com.evolveum.midpoint.schema.result.OperationResult;
@@ -60,35 +62,44 @@ public class EnableDisableExecutor extends BaseActionExecutor {
     }
 
     @Override
-    public Data execute(ActionExpressionType expression, Data input, ExecutionContext context, OperationResult result) throws ScriptExecutionException {
+    public PipelineData execute(ActionExpressionType expression, PipelineData input, ExecutionContext context, OperationResult globalResult) throws ScriptExecutionException {
 
         boolean isEnable = NAME_ENABLE.equals(expression.getType());
+        boolean raw = getParamRaw(expression, input, context, globalResult);
+        boolean dryRun = getParamDryRun(expression, input, context, globalResult);
 
-        for (Item item : input.getData()) {
-            if (item instanceof PrismObject) {
-                PrismObject<? extends ObjectType> prismObject = (PrismObject) item;
+        for (PipelineItem item: input.getData()) {
+            PrismValue value = item.getValue();
+            OperationResult result = operationsHelper.createActionResult(item, this, context, globalResult);
+            result.addParam("operation", expression.getType());
+            context.checkTaskStop();
+            if (value instanceof PrismObjectValue) {
+                PrismObject<? extends ObjectType> prismObject = ((PrismObjectValue) value).asPrismObject();
                 ObjectType objectType = prismObject.asObjectable();
                 long started = operationsHelper.recordStart(context, objectType);
+                Throwable exception = null;
                 try {
                     if (objectType instanceof FocusType) {
-                        operationsHelper.applyDelta(createEnableDisableDelta((FocusType) objectType, isEnable), context, result);
-                        context.println((isEnable ? "Enabled " : "Disabled ") + item.toString());
+                        operationsHelper.applyDelta(createEnableDisableDelta((FocusType) objectType, isEnable), operationsHelper.createExecutionOptions(raw), dryRun, context, result);
                     } else if (objectType instanceof ShadowType) {
                         operationsHelper.applyDelta(createEnableDisableDelta((ShadowType) objectType, isEnable), context, result);
-                        context.println((isEnable ? "Enabled " : "Disabled ") + item.toString());
                     } else {
-                        throw new ScriptExecutionException("Item could not be enabled/disabled, because it is not a FocusType nor ShadowType: " + item.toString());
+                        throw new ScriptExecutionException("Item is not a FocusType nor ShadowType: " + value.toString());
                     }
                     operationsHelper.recordEnd(context, objectType, started, null);
                 } catch (Throwable ex) {
                     operationsHelper.recordEnd(context, objectType, started, ex);
-                    throw ex;
+					exception = processActionException(ex, expression.getType(), value, context);
                 }
-            } else {
-                throw new ScriptExecutionException("Item could not be enabled/disabled, because it is not a PrismObject: " + item.toString());
+				context.println((exception != null ? "Attempted to " + expression.getType() : (isEnable ? "Enabled " : "Disabled "))
+						+ prismObject.toString() + rawDrySuffix(raw, dryRun) + exceptionSuffix(exception));
+			} else {
+				//noinspection ThrowableNotThrown
+				processActionException(new ScriptExecutionException("Item is not a PrismObject"), expression.getType(), value, context);
             }
+            operationsHelper.trimAndCloneResult(result, globalResult, context);
         }
-        return Data.createEmpty();
+        return input;
     }
 
     private ObjectDelta createEnableDisableDelta(FocusType focus, boolean isEnable) {

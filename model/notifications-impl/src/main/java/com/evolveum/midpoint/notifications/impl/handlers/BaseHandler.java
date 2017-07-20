@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,18 @@
 
 package com.evolveum.midpoint.notifications.impl.handlers;
 
-import com.evolveum.midpoint.model.common.expression.Expression;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluationContext;
-import com.evolveum.midpoint.model.common.expression.ExpressionFactory;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
+import com.evolveum.midpoint.repo.common.expression.Expression;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluationContext;
+import com.evolveum.midpoint.repo.common.expression.ExpressionFactory;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
+import com.evolveum.midpoint.model.impl.expr.ModelExpressionThreadLocalHolder;
 import com.evolveum.midpoint.notifications.api.EventHandler;
 import com.evolveum.midpoint.notifications.api.events.Event;
 import com.evolveum.midpoint.notifications.impl.NotificationManagerImpl;
-import com.evolveum.midpoint.notifications.impl.NotificationsUtil;
+import com.evolveum.midpoint.notifications.impl.NotificationFunctionsImpl;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.prism.PrismPropertyDefinition;
+import com.evolveum.midpoint.prism.PrismPropertyDefinitionImpl;
 import com.evolveum.midpoint.prism.PrismPropertyValue;
 import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
@@ -50,6 +52,8 @@ import javax.xml.namespace.QName;
 import java.util.*;
 
 /**
+ * TODO remove duplicate code
+ *
  * @author mederly
  */
 @Component
@@ -61,7 +65,7 @@ public abstract class BaseHandler implements EventHandler {
     protected NotificationManagerImpl notificationManager;
 
     @Autowired
-    protected NotificationsUtil notificationsUtil;
+    protected NotificationFunctionsImpl notificationsUtil;
 
     @Autowired
     protected PrismContext prismContext;
@@ -79,15 +83,31 @@ public abstract class BaseHandler implements EventHandler {
 
     protected void logStart(Trace LOGGER, Event event, EventHandlerType eventHandlerType, Object additionalData) {
         if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("Starting processing event " + event + " with handler " +
-                    eventHandlerType.getClass() + " (name: " + eventHandlerType.getName() +
-                    (additionalData != null ? (", parameters: " + additionalData) :
-                                             (", configuration: " + eventHandlerType)) +
-                    ")");
+            LOGGER.trace("Starting processing event " + event.shortDump() + " with handler " +
+            		getHumanReadableHandlerDescription(eventHandlerType) + "\n  parameters: " +
+            		(additionalData != null ? ("\n  parameters: " + additionalData) :
+                        ("\n  configuration: " + eventHandlerType)));
+                    
         }
     }
+    
+    protected void logNotApplicable(Event event, String reason) {
+		if (LOGGER.isTraceEnabled()) {
+			LOGGER.trace(
+				"{} is not applicable for event {}, continuing in the handler chain; reason: {}",
+				this.getClass().getSimpleName(), event.shortDump(), reason);
+		}
+	}
 
-    public static void staticLogStart(Trace LOGGER, Event event, String description, Object additionalData) {
+    protected String getHumanReadableHandlerDescription(EventHandlerType eventHandlerType) {
+    	if (eventHandlerType.getName() != null) {
+    		return eventHandlerType.getName();
+    	} else {
+    		return eventHandlerType.getClass().getSimpleName();
+    	}
+	}
+
+	public static void staticLogStart(Trace LOGGER, Event event, String description, Object additionalData) {
         if (LOGGER.isTraceEnabled()) {
             LOGGER.trace("Starting processing event " + event + " with handler " +
                     description +
@@ -127,10 +147,10 @@ public abstract class BaseHandler implements EventHandler {
     		Task task, OperationResult result) throws ObjectNotFoundException, SchemaException, ExpressionEvaluationException {
 
         QName resultName = new QName(SchemaConstants.NS_C, "result");
-        PrismPropertyDefinition<Boolean> resultDef = new PrismPropertyDefinition<>(resultName, DOMUtil.XSD_BOOLEAN, prismContext);
+        PrismPropertyDefinition<Boolean> resultDef = new PrismPropertyDefinitionImpl<>(resultName, DOMUtil.XSD_BOOLEAN, prismContext);
         Expression<PrismPropertyValue<Boolean>,PrismPropertyDefinition<Boolean>> expression = expressionFactory.makeExpression(expressionType, resultDef, shortDesc, task, result);
         ExpressionEvaluationContext params = new ExpressionEvaluationContext(null, expressionVariables, shortDesc, task, result);
-        PrismValueDeltaSetTriple<PrismPropertyValue<Boolean>> exprResultTriple = expression.evaluate(params);
+        PrismValueDeltaSetTriple<PrismPropertyValue<Boolean>> exprResultTriple = ModelExpressionThreadLocalHolder.evaluateExpressionInContext(expression, params, task, result);
 
         Collection<PrismPropertyValue<Boolean>> exprResult = exprResultTriple.getZeroSet();
         if (exprResult.size() == 0) {
@@ -142,7 +162,7 @@ public abstract class BaseHandler implements EventHandler {
         return boolResult != null ? boolResult : false;
     }
 
-    protected List<String> evaluateExpressionChecked(ExpressionType expressionType, ExpressionVariables expressionVariables, 
+    protected List<String> evaluateExpressionChecked(ExpressionType expressionType, ExpressionVariables expressionVariables,
     		String shortDesc, Task task, OperationResult result) {
 
         Throwable failReason;
@@ -165,13 +185,14 @@ public abstract class BaseHandler implements EventHandler {
     		String shortDesc, Task task, OperationResult result) throws ObjectNotFoundException, SchemaException, ExpressionEvaluationException {
 
         QName resultName = new QName(SchemaConstants.NS_C, "result");
-        PrismPropertyDefinition<String> resultDef = new PrismPropertyDefinition<>(resultName, DOMUtil.XSD_STRING, prismContext);
+        PrismPropertyDefinition<String> resultDef = new PrismPropertyDefinitionImpl<>(resultName, DOMUtil.XSD_STRING, prismContext);
 
         Expression<PrismPropertyValue<String>,PrismPropertyDefinition<String>> expression = expressionFactory.makeExpression(expressionType, resultDef, shortDesc, task, result);
         ExpressionEvaluationContext params = new ExpressionEvaluationContext(null, expressionVariables, shortDesc, task, result);
-        PrismValueDeltaSetTriple<PrismPropertyValue<String>> exprResult = expression.evaluate(params);
+        PrismValueDeltaSetTriple<PrismPropertyValue<String>> exprResult = ModelExpressionThreadLocalHolder
+				.evaluateExpressionInContext(expression, params, task, result);
 
-        List<String> retval = new ArrayList<String>();
+        List<String> retval = new ArrayList<>();
         for (PrismPropertyValue<String> item : exprResult.getZeroSet()) {
             retval.add(item.getValue());
         }
@@ -179,7 +200,6 @@ public abstract class BaseHandler implements EventHandler {
     }
 
     protected ExpressionVariables getDefaultVariables(Event event, OperationResult result) {
-
     	ExpressionVariables expressionVariables = new ExpressionVariables();
         Map<QName, Object> variables = new HashMap<QName, Object>();
 		event.createExpressionVariables(variables, result);

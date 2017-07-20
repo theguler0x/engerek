@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.evolveum.midpoint.model.impl.sync;
 
 import com.evolveum.midpoint.common.refinery.RefinedResourceSchema;
+import com.evolveum.midpoint.common.refinery.RefinedResourceSchemaImpl;
 import com.evolveum.midpoint.model.impl.ModelConstants;
 import com.evolveum.midpoint.model.impl.util.Utils;
 import com.evolveum.midpoint.prism.PrismContext;
@@ -33,6 +34,7 @@ import com.evolveum.midpoint.task.api.TaskRunResult;
 import com.evolveum.midpoint.task.api.TaskRunResult.TaskRunResultStatus;
 import com.evolveum.midpoint.util.exception.CommunicationException;
 import com.evolveum.midpoint.util.exception.ConfigurationException;
+import com.evolveum.midpoint.util.exception.ExpressionEvaluationException;
 import com.evolveum.midpoint.util.exception.ObjectNotFoundException;
 import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.exception.SecurityViolationException;
@@ -142,6 +144,11 @@ public class LiveSyncTaskHandler implements TaskHandler {
 	            opResult.recordFatalError("Error getting resource " + resourceOid+": "+ex.getMessage(), ex);
 	            runResult.setRunResultStatus(TaskRunResultStatus.PERMANENT_ERROR);
 	            return runResult;
+			} catch (ExpressionEvaluationException ex) {
+				LOGGER.error("Live Sync: Error getting resource {}: {}", new Object[]{resourceOid, ex.getMessage(), ex});
+	            opResult.recordFatalError("Error getting resource " + resourceOid+": "+ex.getMessage(), ex);
+	            runResult.setRunResultStatus(TaskRunResultStatus.PERMANENT_ERROR);
+	            return runResult;
 			}
 
         if (resource == null) {
@@ -153,7 +160,7 @@ public class LiveSyncTaskHandler implements TaskHandler {
         
 		RefinedResourceSchema refinedSchema;
         try {
-            refinedSchema = RefinedResourceSchema.getRefinedSchema(resource, LayerType.MODEL, prismContext);
+            refinedSchema = RefinedResourceSchemaImpl.getRefinedSchema(resource, LayerType.MODEL, prismContext);
         } catch (SchemaException e) {
             LOGGER.error("Live Sync: Schema error during processing account definition: {}",e.getMessage());
             opResult.recordFatalError("Schema error during processing account definition: "+e.getMessage(),e);
@@ -238,6 +245,12 @@ public class LiveSyncTaskHandler implements TaskHandler {
 		} catch (SecurityViolationException ex) {
 			LOGGER.error("Recompute: Security violation: {}",ex.getMessage(),ex);
 			opResult.recordFatalError("Security violation: "+ex.getMessage(),ex);
+			runResult.setRunResultStatus(TaskRunResultStatus.PERMANENT_ERROR);
+			runResult.setProgress(progress);
+			return runResult;
+		} catch (ExpressionEvaluationException ex) {
+			LOGGER.error("Recompute: Expression error: {}",ex.getMessage(),ex);
+			opResult.recordFatalError("Expression error: "+ex.getMessage(),ex);
 			runResult.setRunResultStatus(TaskRunResultStatus.PERMANENT_ERROR);
 			runResult.setProgress(progress);
 			return runResult;

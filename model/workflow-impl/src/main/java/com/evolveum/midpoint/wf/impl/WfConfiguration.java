@@ -24,12 +24,9 @@ import com.evolveum.midpoint.util.exception.SystemException;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.wf.impl.processors.BaseChangeProcessor;
 import com.evolveum.midpoint.wf.impl.processors.ChangeProcessor;
-
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.Validate;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
@@ -39,7 +36,6 @@ import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
-
 import java.util.*;
 
 /**
@@ -68,10 +64,9 @@ public class WfConfiguration implements BeanFactoryAware {
     public static final String KEY_ALLOW_APPROVE_OTHERS_ITEMS = "allowApproveOthersItems";
 
     public static final List<String> KNOWN_KEYS = Arrays.asList("midpoint.home", KEY_ENABLED, KEY_JDBC_DRIVER, KEY_JDBC_URL,
-            KEY_JDBC_USERNAME, KEY_JDBC_PASSWORD, KEY_DATA_SOURCE, KEY_ACTIVITI_SCHEMA_UPDATE, KEY_PROCESS_CHECK_INTERVAL,
-            KEY_AUTO_DEPLOYMENT_FROM, KEY_ALLOW_APPROVE_OTHERS_ITEMS);
+            KEY_JDBC_USERNAME, KEY_JDBC_PASSWORD, KEY_DATA_SOURCE, KEY_ACTIVITI_SCHEMA_UPDATE, KEY_AUTO_DEPLOYMENT_FROM);
 
-    public static final List<String> DEPRECATED_KEYS = Arrays.asList(CHANGE_PROCESSORS_SECTION);
+    public static final List<String> DEPRECATED_KEYS = Arrays.asList(CHANGE_PROCESSORS_SECTION, KEY_PROCESS_CHECK_INTERVAL, KEY_ALLOW_APPROVE_OTHERS_ITEMS);
 
     @Autowired
     private MidpointConfiguration midpointConfiguration;
@@ -85,7 +80,7 @@ public class WfConfiguration implements BeanFactoryAware {
 
     private static final String AUTO_DEPLOYMENT_FROM_DEFAULT = "classpath*:processes/*.bpmn20.xml";
 
-    private Boolean enabled = null;
+    private boolean enabled;
 
     private boolean activitiSchemaUpdate;
 
@@ -96,12 +91,11 @@ public class WfConfiguration implements BeanFactoryAware {
 
     private String dataSource;
 
-    private boolean allowApproveOthersItems;
-
     private List<ChangeProcessor> changeProcessors = new ArrayList<>();
 
-    private int processCheckInterval;
     private String[] autoDeploymentFrom;
+
+    private boolean dropDatabase;
 
     @PostConstruct
     void initialize() {
@@ -119,6 +113,7 @@ public class WfConfiguration implements BeanFactoryAware {
         // activiti properties related to database connection will be taken from SQL repository
         SqlRepositoryConfiguration sqlConfig = null;
         String defaultJdbcUrlPrefix = null;
+        dropDatabase = false;
         try {
             RepositoryFactory repositoryFactory = (RepositoryFactory) beanFactory.getBean("repositoryFactory");
             if (!(repositoryFactory.getFactory() instanceof SqlRepositoryFactory)) {    // it may be null as well
@@ -132,18 +127,19 @@ public class WfConfiguration implements BeanFactoryAware {
                 if (sqlConfig.isEmbedded()) {
                     defaultJdbcUrlPrefix = sqlRepositoryFactory.prepareJdbcUrlPrefix(sqlConfig);
                 }
+                dropDatabase = sqlConfig.isDropIfExists();
             }
         } catch(NoSuchBeanDefinitionException e) {
             LOGGER.debug("SqlRepositoryFactory is not available, Activiti database configuration (if any) will be taken from 'workflow' configuration section only.");
             LOGGER.trace("Reason is", e);
         } catch (RepositoryServiceFactoryException e) {
-            LoggingUtils.logException(LOGGER, "Cannot determine default JDBC URL for embedded database", e);
+            LoggingUtils.logUnexpectedException(LOGGER, "Cannot determine default JDBC URL for embedded database", e);
         }
 
         String explicitJdbcUrl = c.getString(KEY_JDBC_URL, null);
         if (explicitJdbcUrl == null) {
-            if (sqlConfig.isEmbedded()) {
-                jdbcUrl = defaultJdbcUrlPrefix + "-activiti;DB_CLOSE_ON_EXIT=FALSE";
+            if (sqlConfig == null || sqlConfig.isEmbedded()) {
+                jdbcUrl = defaultJdbcUrlPrefix + "-activiti;DB_CLOSE_ON_EXIT=FALSE;MVCC=FALSE";
             } else {
                 jdbcUrl = sqlConfig.getJdbcUrl();
             }
@@ -152,7 +148,7 @@ public class WfConfiguration implements BeanFactoryAware {
         }
 
         dataSource = c.getString(KEY_DATA_SOURCE, null);
-        if (dataSource == null && explicitJdbcUrl == null) {
+        if (dataSource == null && explicitJdbcUrl == null && sqlConfig != null) {
             dataSource = sqlConfig.getDataSource();             // we want to use wf-specific JDBC if there is one (i.e. we do not want to inherit data source from repo in such a case)
         }
 
@@ -162,20 +158,17 @@ public class WfConfiguration implements BeanFactoryAware {
             LOGGER.info("Activiti database is at " + jdbcUrl + " (a JDBC URL)");
         }
 
-        activitiSchemaUpdate = c.getBoolean(KEY_ACTIVITI_SCHEMA_UPDATE, true);
+		boolean defaultSchemaUpdate = sqlConfig == null || "update".equals(sqlConfig.getHibernateHbm2ddl());
+        activitiSchemaUpdate = c.getBoolean(KEY_ACTIVITI_SCHEMA_UPDATE, defaultSchemaUpdate);
+		LOGGER.info("Activiti automatic schema update: {}", activitiSchemaUpdate);
+
         jdbcDriver = c.getString(KEY_JDBC_DRIVER, sqlConfig != null ? sqlConfig.getDriverClassName() : null);
         jdbcUser = c.getString(KEY_JDBC_USERNAME, sqlConfig != null ? sqlConfig.getJdbcUsername() : null);
         jdbcPassword = c.getString(KEY_JDBC_PASSWORD, sqlConfig != null ? sqlConfig.getJdbcPassword() : null);
 
-        processCheckInterval = c.getInt(KEY_PROCESS_CHECK_INTERVAL, 10);    // todo set to bigger default for production use
         autoDeploymentFrom = c.getStringArray(KEY_AUTO_DEPLOYMENT_FROM);
         if (autoDeploymentFrom.length == 0) {
             autoDeploymentFrom = new String[] { AUTO_DEPLOYMENT_FROM_DEFAULT };
-        }
-        allowApproveOthersItems = c.getBoolean(KEY_ALLOW_APPROVE_OTHERS_ITEMS, false);
-
-        if (allowApproveOthersItems) {
-            LOGGER.info("allowApproveOthersItems parameter is set to true, therefore authorized users CAN approve/reject work items assigned to other users.");
         }
 
 //        hibernateDialect = sqlConfig != null ? sqlConfig.getHibernateDialect() : "";
@@ -205,10 +198,10 @@ public class WfConfiguration implements BeanFactoryAware {
         }
     }
 
-    public Configuration getChangeProcessorsConfig() {
-        Validate.notNull(midpointConfiguration, "midpointConfiguration was not initialized correctly (check spring beans initialization order)");
-        return midpointConfiguration.getConfiguration(WF_CONFIG_SECTION).subset(CHANGE_PROCESSORS_SECTION); // via subset, because getConfiguration puts 'midpoint.home' property to the result
-    }
+//    public Configuration getChangeProcessorsConfig() {
+//        Validate.notNull(midpointConfiguration, "midpointConfiguration was not initialized correctly (check spring beans initialization order)");
+//        return midpointConfiguration.getConfiguration(WF_CONFIG_SECTION).subset(CHANGE_PROCESSORS_SECTION); // via subset, because getConfiguration puts 'midpoint.home' property to the result
+//    }
 
     void validate() {
 
@@ -238,7 +231,7 @@ public class WfConfiguration implements BeanFactoryAware {
         return activitiSchemaUpdate;
     }
 
-    public Boolean isEnabled() {
+    public boolean isEnabled() {
         return enabled;
     }
 
@@ -262,21 +255,17 @@ public class WfConfiguration implements BeanFactoryAware {
         return dataSource;
     }
 
-    public int getProcessCheckInterval() {
-        return processCheckInterval;
-    }
-
     public String[] getAutoDeploymentFrom() {
         return autoDeploymentFrom;
     }
 
-    public boolean isAllowApproveOthersItems() {
-        return allowApproveOthersItems;
+    public boolean isDropDatabase() {
+        return dropDatabase;
     }
 
     public ChangeProcessor findChangeProcessor(String processorClassName) {
         for (ChangeProcessor cp : changeProcessors) {
-            if (processorClassName.equals(cp.getClass().getName())) {
+            if (cp.getClass().getName().equals(processorClassName)) {
                 return cp;
             }
         }

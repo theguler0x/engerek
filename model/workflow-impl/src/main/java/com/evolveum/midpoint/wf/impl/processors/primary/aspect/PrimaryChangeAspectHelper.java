@@ -16,23 +16,17 @@
 
 package com.evolveum.midpoint.wf.impl.processors.primary.aspect;
 
+import com.evolveum.midpoint.repo.common.expression.Expression;
+import com.evolveum.midpoint.repo.common.expression.ExpressionEvaluationContext;
+import com.evolveum.midpoint.repo.common.expression.ExpressionFactory;
+import com.evolveum.midpoint.repo.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.model.api.context.ModelContext;
-import com.evolveum.midpoint.model.api.context.ModelElementContext;
-import com.evolveum.midpoint.model.common.expression.Expression;
-import com.evolveum.midpoint.model.common.expression.ExpressionEvaluationContext;
-import com.evolveum.midpoint.model.common.expression.ExpressionFactory;
-import com.evolveum.midpoint.model.common.expression.ExpressionVariables;
 import com.evolveum.midpoint.model.impl.expr.ModelExpressionThreadLocalHolder;
-import com.evolveum.midpoint.prism.Objectable;
-import com.evolveum.midpoint.prism.PrismContext;
-import com.evolveum.midpoint.prism.PrismObject;
-import com.evolveum.midpoint.prism.PrismPropertyDefinition;
-import com.evolveum.midpoint.prism.PrismPropertyValue;
+import com.evolveum.midpoint.prism.*;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
 import com.evolveum.midpoint.prism.delta.PrismValueDeltaSetTriple;
 import com.evolveum.midpoint.repo.api.RepositoryService;
 import com.evolveum.midpoint.schema.GetOperationOptions;
-import com.evolveum.midpoint.schema.SchemaConstantsGenerated;
 import com.evolveum.midpoint.schema.SelectorOptions;
 import com.evolveum.midpoint.schema.constants.SchemaConstants;
 import com.evolveum.midpoint.schema.result.OperationResult;
@@ -45,15 +39,12 @@ import com.evolveum.midpoint.util.exception.SystemException;
 import com.evolveum.midpoint.util.logging.LoggingUtils;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.wf.impl.jobs.WfTaskUtil;
+import com.evolveum.midpoint.wf.impl.tasks.WfTaskUtil;
 import com.evolveum.midpoint.wf.impl.messages.ProcessEvent;
-import com.evolveum.midpoint.wf.impl.processes.common.SpringApplicationContextHolder;
-import com.evolveum.midpoint.wf.impl.processors.primary.ObjectTreeDeltas;
-import com.evolveum.midpoint.wf.impl.processors.primary.PcpJob;
-import com.evolveum.midpoint.wf.impl.processors.primary.entitlements.AddAssociationAspect;
+import com.evolveum.midpoint.schema.ObjectTreeDeltas;
+import com.evolveum.midpoint.wf.impl.processors.primary.PcpWfTask;
 import com.evolveum.midpoint.wf.util.ApprovalUtils;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
-import org.activiti.engine.delegate.DelegateExecution;
 import org.apache.velocity.util.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -63,9 +54,7 @@ import javax.xml.namespace.QName;
 import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 
 /**
  * @author mederly
@@ -100,9 +89,9 @@ public class PrimaryChangeAspectHelper {
      * DeltaIn contains a delta that has to be approved. Workflow answers simply yes/no.
      * Therefore, we either copy DeltaIn to DeltaOut, or generate an empty list of modifications.
      */
-    public ObjectTreeDeltas prepareDeltaOut(ProcessEvent event, PcpJob pcpJob, OperationResult result) throws SchemaException {
+    public ObjectTreeDeltas prepareDeltaOut(ProcessEvent event, PcpWfTask pcpJob, OperationResult result) throws SchemaException {
         ObjectTreeDeltas deltaIn = pcpJob.retrieveDeltasToProcess();
-        if (ApprovalUtils.isApproved(event.getAnswer())) {
+        if (ApprovalUtils.isApprovedFromUri(event.getOutcome())) {
             return deltaIn;
         } else {
             return null;
@@ -110,39 +99,6 @@ public class PrimaryChangeAspectHelper {
     }
 
     //endregion
-
-    //region ========================================================================== Miscellaneous
-    public String getObjectOid(ModelContext<?> modelContext) {
-        ModelElementContext<UserType> fc = (ModelElementContext<UserType>) modelContext.getFocusContext();
-        String objectOid = null;
-        if (fc.getObjectNew() != null && fc.getObjectNew().getOid() != null) {
-            return fc.getObjectNew().getOid();
-        } else if (fc.getObjectOld() != null && fc.getObjectOld().getOid() != null) {
-            return fc.getObjectOld().getOid();
-        } else {
-            return null;
-        }
-    }
-
-    public PrismObject<UserType> getRequester(Task task, OperationResult result) {
-        // let's get fresh data (not the ones read on user login)
-        PrismObject<UserType> requester = null;
-        try {
-            requester = ((PrismObject<UserType>) repositoryService.getObject(UserType.class, task.getOwner().getOid(), null, result));
-        } catch (ObjectNotFoundException e) {
-            LoggingUtils.logException(LOGGER, "Couldn't get data about task requester (" + task.getOwner() + "), because it does not exist in repository anymore. Using cached data.", e);
-            requester = task.getOwner().clone();
-        } catch (SchemaException e) {
-            LoggingUtils.logException(LOGGER, "Couldn't get data about task requester (" + task.getOwner() + "), due to schema exception. Using cached data.", e);
-            requester = task.getOwner().clone();
-        }
-
-        if (requester != null) {
-            resolveRolesAndOrgUnits(requester, result);
-        }
-
-        return requester;
-    }
 
     public ShadowType resolveTargetUnchecked(ShadowAssociationType association, OperationResult result) throws SchemaException, ObjectNotFoundException {
 
@@ -250,7 +206,7 @@ public class PrimaryChangeAspectHelper {
                     } catch (ObjectNotFoundException e) {
                         LoggingUtils.logException(LOGGER, "Couldn't resolve reference to {} in {}", e, oid, user);
                     } catch (SchemaException e) {
-                        LoggingUtils.logException(LOGGER, "Couldn't resolve reference to {} in {}", e, oid, user);
+                        LoggingUtils.logUnexpectedException(LOGGER, "Couldn't resolve reference to {} in {}", e, oid, user);
                     }
                 }
             }
@@ -360,7 +316,7 @@ public class PrimaryChangeAspectHelper {
         ExpressionType expressionType = config.getApplicabilityCondition();
 
         QName resultName = new QName(SchemaConstants.NS_C, "result");
-        PrismPropertyDefinition<Boolean> resultDef = new PrismPropertyDefinition(resultName, DOMUtil.XSD_BOOLEAN, prismContext);
+        PrismPropertyDefinition<Boolean> resultDef = new PrismPropertyDefinitionImpl(resultName, DOMUtil.XSD_BOOLEAN, prismContext);
 
         ExpressionVariables expressionVariables = new ExpressionVariables();
         expressionVariables.addVariableDefinition(SchemaConstants.C_MODEL_CONTEXT, modelContext);
@@ -377,14 +333,7 @@ public class PrimaryChangeAspectHelper {
             ExpressionEvaluationContext params = new ExpressionEvaluationContext(null, expressionVariables,
                     "applicability condition expression", task, result);
 
-            ModelExpressionThreadLocalHolder.pushCurrentResult(result);
-            ModelExpressionThreadLocalHolder.pushCurrentTask(task);
-            try {
-                exprResultTriple = expression.evaluate(params);
-            } finally {
-                ModelExpressionThreadLocalHolder.popCurrentResult();
-                ModelExpressionThreadLocalHolder.popCurrentTask();
-            }
+			exprResultTriple = ModelExpressionThreadLocalHolder.evaluateExpressionInContext(expression, params, task, result);
         } catch (SchemaException|ExpressionEvaluationException|ObjectNotFoundException|RuntimeException e) {
             // TODO report as a specific exception?
             throw new SystemException("Couldn't evaluate applicability condition in aspect "

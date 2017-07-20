@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,24 @@
 
 package com.evolveum.midpoint.web.component.data;
 
-import com.evolveum.midpoint.model.api.ModelInteractionService;
-import com.evolveum.midpoint.model.api.ModelService;
-import com.evolveum.midpoint.model.api.TaskService;
-import com.evolveum.midpoint.model.api.WorkflowService;
+import com.evolveum.midpoint.gui.api.page.PageBase;
+import com.evolveum.midpoint.model.api.*;
+import com.evolveum.midpoint.prism.PrismContext;
+import com.evolveum.midpoint.prism.path.ItemPath;
+import com.evolveum.midpoint.prism.query.ObjectOrdering;
 import com.evolveum.midpoint.prism.query.ObjectPaging;
 import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.prism.query.OrderDirection;
+import com.evolveum.midpoint.repo.api.RepositoryService;
 import com.evolveum.midpoint.schema.SchemaConstantsGenerated;
+import com.evolveum.midpoint.schema.result.OperationResult;
 import com.evolveum.midpoint.task.api.TaskManager;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
-import com.evolveum.midpoint.web.page.PageBase;
 import com.evolveum.midpoint.web.page.PageDialog;
 import com.evolveum.midpoint.web.security.MidPointApplication;
-import com.evolveum.midpoint.web.util.WebMiscUtil;
+import com.evolveum.midpoint.wf.api.WorkflowManager;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.AdminGuiConfigurationType;
 import org.apache.commons.lang.Validate;
 import org.apache.wicket.Component;
 import org.apache.wicket.extensions.markup.html.repeater.data.sort.SortOrder;
@@ -39,9 +42,13 @@ import org.apache.wicket.extensions.markup.html.repeater.util.SortableDataProvid
 import org.apache.wicket.model.AbstractReadOnlyModel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
+import org.jetbrains.annotations.NotNull;
 
+import javax.xml.namespace.QName;
 import java.io.Serializable;
 import java.util.*;
+
+import static com.evolveum.midpoint.gui.api.util.WebComponentUtil.safeLongToInteger;
 
 /**
  * @author lazyman
@@ -49,6 +56,9 @@ import java.util.*;
 public abstract class BaseSortableDataProvider<T extends Serializable> extends SortableDataProvider<T, String> {
 
     private static final Trace LOGGER = TraceManager.getTrace(BaseSortableDataProvider.class);
+    private static final String DOT_CLASS = BaseSortableDataProvider.class.getName() + ".";
+    private static final String OPERATION_GET_EXPORT_SIZE_LIMIT = DOT_CLASS + "getDefaultExportSizeLimit";
+
     private Component component;
     private List<T> availableData;
     private ObjectQuery query;
@@ -58,6 +68,8 @@ public abstract class BaseSortableDataProvider<T extends Serializable> extends S
     private Map<Serializable, CachedSize> cache = new HashMap<Serializable, CachedSize>();
     private int cacheCleanupThreshold = 60;
     private boolean useCache;
+    private boolean exportSize = false;
+    private long exportLimit = -1;
 
     public BaseSortableDataProvider(Component component) {
         this(component, false, true);
@@ -75,6 +87,7 @@ public abstract class BaseSortableDataProvider<T extends Serializable> extends S
         if (useDefaultSortingField) {
             setSort("name", SortOrder.ASCENDING);
         }
+        setExportLimitValue();
     }
 
     protected ModelService getModel() {
@@ -82,9 +95,19 @@ public abstract class BaseSortableDataProvider<T extends Serializable> extends S
         return application.getModel();
     }
 
+    protected RepositoryService getRepositoryService() {
+        MidPointApplication application = (MidPointApplication) MidPointApplication.get();
+        return application.getRepositoryService();
+    }
+
     protected TaskManager getTaskManager() {
         MidPointApplication application = (MidPointApplication) MidPointApplication.get();
         return application.getTaskManager();
+    }
+
+    protected PrismContext getPrismContext() {
+        MidPointApplication application = (MidPointApplication) MidPointApplication.get();
+        return application.getPrismContext();
     }
 
     protected TaskService getTaskService() {
@@ -101,6 +124,16 @@ public abstract class BaseSortableDataProvider<T extends Serializable> extends S
         MidPointApplication application = (MidPointApplication) MidPointApplication.get();
         return application.getWorkflowService();
     }
+
+    protected ModelAuditService getAuditService() {
+        MidPointApplication application = (MidPointApplication) MidPointApplication.get();
+        return application.getAuditService();
+    }
+
+	protected WorkflowManager getWorkflowManager() {
+		MidPointApplication application = (MidPointApplication) MidPointApplication.get();
+		return application.getWorkflowManager();
+	}
 
     public List<T> getAvailableData() {
         if (availableData == null) {
@@ -154,24 +187,26 @@ public abstract class BaseSortableDataProvider<T extends Serializable> extends S
         };
     }
 
-    protected ObjectPaging createPaging(long first, long count) {
-        SortParam sortParam = getSort();
-        if (sortParam != null) {
-            OrderDirection order;
-            if (sortParam.isAscending()) {
-                order = OrderDirection.ASCENDING;
-            } else {
-                order = OrderDirection.DESCENDING;
-            }
+	protected ObjectPaging createPaging(long offset, long pageSize) {
+		return ObjectPaging.createPaging(safeLongToInteger(offset), safeLongToInteger(pageSize), createObjectOrderings(getSort()));
+	}
 
-            return ObjectPaging.createPaging(WebMiscUtil.safeLongToInteger(first), WebMiscUtil.safeLongToInteger(count),
-                    (String) sortParam.getProperty(), SchemaConstantsGenerated.NS_COMMON, order);
-        } else {
-            return ObjectPaging.createPaging(WebMiscUtil.safeLongToInteger(first), WebMiscUtil.safeLongToInteger(count));
-        }
-    }
+	/**
+	 * Could be overridden in subclasses.
+	 */
+	@NotNull
+	protected List<ObjectOrdering> createObjectOrderings(SortParam<String> sortParam) {
+		if (sortParam != null && sortParam.getProperty() != null) {
+			OrderDirection order = sortParam.isAscending() ? OrderDirection.ASCENDING : OrderDirection.DESCENDING;
+			return Collections.singletonList(
+					ObjectOrdering.createOrdering(
+							new ItemPath(new QName(SchemaConstantsGenerated.NS_COMMON, sortParam.getProperty())), order));
+		} else {
+			return Collections.emptyList();
+		}
+	}
 
-    public void clearCache() {
+	public void clearCache() {
         cache.clear();
         getAvailableData().clear();
     }
@@ -202,7 +237,8 @@ public abstract class BaseSortableDataProvider<T extends Serializable> extends S
     public long size() {
         LOGGER.trace("begin::size()");
         if (!useCache) {
-            return internalSize();
+            int internalSize = internalSize();
+            return exportSize && exportLimit >= 0 && exportLimit < internalSize ? exportLimit : internalSize;
         }
 
         long size;
@@ -224,7 +260,7 @@ public abstract class BaseSortableDataProvider<T extends Serializable> extends S
         }
 
         LOGGER.trace("end::size(): {}", size);
-        return size;
+        return exportSize && exportLimit >= 0 && exportLimit < size ? exportLimit : size;
     }
 
     protected abstract int internalSize();
@@ -279,5 +315,26 @@ public abstract class BaseSortableDataProvider<T extends Serializable> extends S
         public String toString() {
             return "CachedSize(size=" + size + ", timestamp=" + timestamp + ")";
         }
+    }
+
+    private void setExportLimitValue(){
+        OperationResult result = new OperationResult(OPERATION_GET_EXPORT_SIZE_LIMIT);
+        try {
+            AdminGuiConfigurationType adminGui = getModelInteractionService().getAdminGuiConfiguration(null, result);
+            if (adminGui != null && adminGui.getDefaultExportSettings() != null &&
+                    adminGui.getDefaultExportSettings().getSizeLimit() != null){
+                exportLimit = adminGui.getDefaultExportSettings().getSizeLimit();
+            }
+        } catch (Exception ex){
+            LOGGER.error("Unable to get default export size limit, ", ex);
+        }
+    }
+
+    public boolean isExportSize() {
+        return exportSize;
+    }
+
+    public void setExportSize(boolean exportSize) {
+        this.exportSize = exportSize;
     }
 }

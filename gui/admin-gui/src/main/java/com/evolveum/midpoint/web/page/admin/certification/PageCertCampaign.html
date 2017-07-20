@@ -55,6 +55,10 @@
                                 <td><wicket:message key="PageCertCampaign.stageTime"/></td>
                                 <td><div wicket:id="stageTime"/></td>
                             </tr>
+                            <tr wicket:id="escalationLevelInfoContainer">
+                                <td><wicket:message key="PageCertCampaign.escalationLevel"/></td>
+                                <td><div wicket:id="escalationLevelInfo"/></td>
+                            </tr>
                         </table>
                     </div>
                 </div>
@@ -87,11 +91,6 @@
                                 <td><span wicket:id="statReduceRemedied" /></td>
                             </tr>
                             <tr>
-                                <td><wicket:message key="PageCertCampaign.statistics.delegate" /></td>
-                                <td><span wicket:id="statDelegate" /></td>
-                                <td/>
-                            </tr>
-                            <tr>
                                 <td><wicket:message key="PageCertCampaign.statistics.noDecision" /></td>
                                 <td><span wicket:id="statNoDecision" /></td>
                                 <td/>
@@ -106,9 +105,9 @@
                 </div>
             </div>
         </div>
-        <div wicket:id="decisionsTable"/>
+        <div wicket:id="outcomesTable"/>
 
-        <div class="main-button-bar">
+        <div class="main-button-bar" style="padding-top: 15px">     <!-- TODO some implicit way of inserting the padding? -->
             <a class="btn btn-default" wicket:id="backButton" />
             <a class="btn btn-primary" wicket:id="startCampaignButton"/>
             <a class="btn btn-primary" wicket:id="closeStageButton"/>

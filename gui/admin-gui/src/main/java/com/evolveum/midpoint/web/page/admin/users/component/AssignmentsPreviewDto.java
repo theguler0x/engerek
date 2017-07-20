@@ -16,17 +16,17 @@
 
 package com.evolveum.midpoint.web.page.admin.users.component;
 
-import com.evolveum.midpoint.xml.ns._public.common.common_3.OrgType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.RoleType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ShadowKindType;
+import com.evolveum.midpoint.web.component.util.SelectableBean;
+import com.evolveum.midpoint.web.page.admin.dto.ObjectViewDto;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 
+import javax.xml.namespace.QName;
 import java.io.Serializable;
 
 /**
  * @author mederly
  */
-public class AssignmentsPreviewDto implements Serializable, Comparable {
+public class AssignmentsPreviewDto extends SelectableBean implements Serializable, Comparable {
 
     public static final String F_TARGET_OID = "targetOid";
     public static final String F_TARGET_NAME = "targetName";
@@ -38,6 +38,7 @@ public class AssignmentsPreviewDto implements Serializable, Comparable {
     public static final String F_TENANT_NAME = "tenantName";
     public static final String F_ORG_REF_NAME = "orgRefName";
     public static final String F_REMARK = "remark";
+    public static final String F_RELATION = "relation";
 
     // target = role, org or resource
     private String targetOid;
@@ -45,14 +46,18 @@ public class AssignmentsPreviewDto implements Serializable, Comparable {
     private String targetDescription;
     private Class targetClass;
     private boolean direct;                     // directly assigned?
+    private QName targetType;
     // for resource assignments
     private ShadowKindType kind;
     private String intent;
     // for role/org assignments
     private String tenantName;
     private String orgRefName;
+    private ObjectReferenceType tenantRef;
+    private ObjectReferenceType orgRef;
     // generic
     private String remark;
+    private QName relation;
 
     public String getTargetOid() {
         return targetOid;
@@ -134,6 +139,38 @@ public class AssignmentsPreviewDto implements Serializable, Comparable {
         this.remark = remark;
     }
 
+    public ObjectReferenceType getTenantRef() {
+        return tenantRef;
+    }
+
+    public void setTenantRef(ObjectReferenceType tenantRef) {
+        this.tenantRef = tenantRef;
+    }
+
+    public ObjectReferenceType getOrgRef() {
+        return orgRef;
+    }
+
+    public void setOrgRef(ObjectReferenceType orgRef) {
+        this.orgRef = orgRef;
+    }
+
+    public QName getTargetType() {
+        return targetType;
+    }
+
+    public void setTargetType(QName targetType) {
+        this.targetType = targetType;
+    }
+
+    public QName getRelation() {
+        return relation;
+    }
+
+    public void setRelation(QName relation) {
+        this.relation = relation;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -149,6 +186,7 @@ public class AssignmentsPreviewDto implements Serializable, Comparable {
         if (intent != null ? !intent.equals(that.intent) : that.intent != null) return false;
         if (tenantName != null ? !tenantName.equals(that.tenantName) : that.tenantName != null) return false;
         if (orgRefName != null ? !orgRefName.equals(that.orgRefName) : that.orgRefName != null) return false;
+        if (relation != null ? !relation.equals(that.relation) : that.relation != null) return false;
         return !(remark != null ? !remark.equals(that.remark) : that.remark != null);
 
     }
@@ -164,6 +202,7 @@ public class AssignmentsPreviewDto implements Serializable, Comparable {
         result = 31 * result + (tenantName != null ? tenantName.hashCode() : 0);
         result = 31 * result + (orgRefName != null ? orgRefName.hashCode() : 0);
         result = 31 * result + (remark != null ? remark.hashCode() : 0);
+        result = 31 * result + (relation != null ? relation.hashCode() : 0);
         return result;
     }
 

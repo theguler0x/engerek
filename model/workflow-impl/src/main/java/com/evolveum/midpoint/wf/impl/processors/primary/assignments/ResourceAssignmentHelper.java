@@ -19,19 +19,15 @@ package com.evolveum.midpoint.wf.impl.processors.primary.assignments;
 import com.evolveum.midpoint.prism.PrismContainerValue;
 import com.evolveum.midpoint.prism.PrismContext;
 import com.evolveum.midpoint.schema.result.OperationResult;
-import com.evolveum.midpoint.wf.impl.processes.itemApproval.ApprovalRequest;
-import com.evolveum.midpoint.wf.impl.processes.itemApproval.ApprovalRequestImpl;
+import com.evolveum.midpoint.wf.impl.processes.itemApproval.*;
 import com.evolveum.midpoint.wf.impl.processes.modifyAssignment.AssignmentModification;
 import com.evolveum.midpoint.wf.impl.processors.primary.aspect.PrimaryChangeAspectHelper;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.AssignmentType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ConstructionType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectReferenceType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.PcpAspectConfigurationType;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ResourceType;
+import com.evolveum.midpoint.xml.ns._public.common.common_3.*;
 import com.evolveum.prism.xml.ns._public.types_3.ItemDeltaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -48,25 +44,37 @@ public class ResourceAssignmentHelper {
     @Autowired
     private PrismContext prismContext;
 
-    public boolean isResourceAssignment(AssignmentType assignmentType) {
+    @Autowired
+    private ApprovalSchemaHelper approvalSchemaHelper;
+
+    boolean isResourceAssignment(AssignmentType assignmentType) {
         return assignmentType.getConstruction() != null;
     }
 
-    public boolean shouldAssignmentBeApproved(PcpAspectConfigurationType config, ResourceType resourceType) {
+    boolean shouldAssignmentBeApproved(PcpAspectConfigurationType config, ResourceType resourceType) {
         return primaryChangeAspectHelper.hasApproverInformation(config) ||
                 (resourceType.getBusiness() != null && !resourceType.getBusiness().getApproverRef().isEmpty());
     }
 
-    public ApprovalRequest<AssignmentType> createApprovalRequest(PcpAspectConfigurationType config, AssignmentType assignmentType, ResourceType resourceType) {
-        return new ApprovalRequestImpl<>(assignmentType, config, null, resourceType.getBusiness().getApproverRef(), null, null, prismContext);
+    ApprovalRequest<AssignmentType> createApprovalRequest(PcpAspectConfigurationType config, AssignmentType assignmentType,
+            ResourceType resourceType, RelationResolver relationResolver, ReferenceResolver referenceResolver) {
+        ApprovalRequest<AssignmentType> request = new ApprovalRequestImpl<>(assignmentType, config, null, resourceType.getBusiness().getApproverRef(),
+				Collections.emptyList(), null, prismContext);
+        approvalSchemaHelper.prepareSchema(request.getApprovalSchemaType(), relationResolver, referenceResolver);
+        return request;
     }
 
-    public ApprovalRequest<AssignmentModification> createApprovalRequestForModification(PcpAspectConfigurationType config, AssignmentType assignmentType, ResourceType resourceType, List<ItemDeltaType> modifications) {
+    ApprovalRequest<AssignmentModification> createApprovalRequestForModification(PcpAspectConfigurationType config,
+			AssignmentType assignmentType, ResourceType resourceType, List<ItemDeltaType> modifications,
+			RelationResolver relationResolver, ReferenceResolver referenceResolver) {
         AssignmentModification itemToApprove = new AssignmentModification(assignmentType, resourceType, modifications);
-        return new ApprovalRequestImpl<AssignmentModification>(itemToApprove.wrap(prismContext), config, null, resourceType.getBusiness().getApproverRef(), null, null, prismContext);
+		ApprovalRequest<AssignmentModification> request = new ApprovalRequestImpl<>(itemToApprove, config, null,
+                resourceType.getBusiness().getApproverRef(), Collections.emptyList(), null, prismContext);
+		approvalSchemaHelper.prepareSchema(request.getApprovalSchemaType(), relationResolver, referenceResolver);
+		return request;
     }
 
-    protected ResourceType getAssignmentApprovalTarget(AssignmentType assignmentType, OperationResult result) {
+    ResourceType getAssignmentApprovalTarget(AssignmentType assignmentType, OperationResult result) {
         if (assignmentType.getConstruction() == null) {
             return null;
         }
@@ -77,9 +85,9 @@ public class ResourceAssignmentHelper {
         return primaryChangeAspectHelper.resolveTargetRef(resourceRef, ResourceType.class, result);
     }
 
-    protected AssignmentType cloneAndCanonicalizeAssignment(AssignmentType assignmentType) {
+    AssignmentType cloneAndCanonicalizeAssignment(AssignmentType assignmentType) {
         AssignmentType assignmentClone = assignmentType.clone();
-        PrismContainerValue.copyDefinition(assignmentClone, assignmentType);
+        PrismContainerValue.copyDefinition(assignmentClone, assignmentType, prismContext);
         ConstructionType constructionType = assignmentClone.getConstruction();
         if (constructionType != null) {     // it should always be non-null
             constructionType.setResource(null);

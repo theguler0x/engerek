@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@
 <!--                      xmlns:ds="http://www.w3.org/2000/09/xmldsig#" -->
 <!--                      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" -->
 <!--                      xmlns:enc="http://www.w3.org/2001/04/xmlenc#" -->
-<!--                      xsi:type="c:ProtectedStringType"> -->
+<!--                      xsi:type="t:ProtectedStringType"> -->
 <!--                 <enc:EncryptedData Type="http://www.w3.org/2001/04/xmlenc#Element"> -->
 <!--                     <enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/> -->
 <!--                     <ds:KeyInfo> -->

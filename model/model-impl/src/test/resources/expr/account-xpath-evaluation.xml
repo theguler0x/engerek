@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-  ~ Copyright (c) 2010-2013 Evolveum
+  ~ Copyright (c) 2010-2017 Evolveum
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -334,6 +334,7 @@
 		<ri:cn>jan prvy</ri:cn>
 		<icfs:name>uid=janko nemenny,ou=people,dc=example,dc=com</icfs:name>
 		<ri:sn>prvy</ri:sn>
+		<!--<icfs:password><clearValue>janco</clearValue></icfs:password>-->
 		<icfs:password>janco</icfs:password>
 		<ri:givenName>James Jr. unchanged</ri:givenName>
 		<dj:givenName xmlns:dj="http://midpoint.evolveum.com/xml/ns/samples/localhostOpenDJ">James Jr.</dj:givenName>

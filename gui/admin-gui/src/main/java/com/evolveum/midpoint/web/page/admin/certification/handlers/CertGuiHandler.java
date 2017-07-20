@@ -16,15 +16,14 @@
 
 package com.evolveum.midpoint.web.page.admin.certification.handlers;
 
-import com.evolveum.midpoint.web.page.PageBase;
-import com.evolveum.midpoint.web.page.admin.certification.PageCertDecisions;
-import com.evolveum.midpoint.web.page.admin.certification.dto.CertCaseOrDecisionDto;
-import com.evolveum.midpoint.web.page.admin.certification.dto.CertDecisionDto;
+import com.evolveum.midpoint.gui.api.page.PageBase;
+import com.evolveum.midpoint.web.page.admin.certification.dto.CertCaseOrWorkItemDto;
 import org.apache.wicket.model.IModel;
 
 /**
  * @author mederly
  */
+@FunctionalInterface
 public interface CertGuiHandler {
-    String getCaseInfoButtonTitle(IModel<? extends CertCaseOrDecisionDto> rowModel, PageBase page);
+    String getCaseInfoButtonTitle(IModel<? extends CertCaseOrWorkItemDto> rowModel, PageBase page);
 }

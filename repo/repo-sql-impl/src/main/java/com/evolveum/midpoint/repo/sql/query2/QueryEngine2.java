@@ -22,16 +22,10 @@ import com.evolveum.midpoint.prism.query.ObjectQuery;
 import com.evolveum.midpoint.repo.sql.SqlRepositoryConfiguration;
 import com.evolveum.midpoint.repo.sql.query.QueryException;
 import com.evolveum.midpoint.repo.sql.query.RQuery;
-import com.evolveum.midpoint.repo.sql.query2.hqm.HibernateQuery;
-import com.evolveum.midpoint.repo.sql.query2.hqm.ProjectionElement;
 import com.evolveum.midpoint.repo.sql.query2.hqm.RootHibernateQuery;
-import com.evolveum.midpoint.repo.sql.util.GetObjectResult;
 import com.evolveum.midpoint.schema.GetOperationOptions;
 import com.evolveum.midpoint.schema.SelectorOptions;
-import com.evolveum.midpoint.xml.ns._public.common.common_3.ObjectType;
-import org.hibernate.Criteria;
 import org.hibernate.Session;
-import org.hibernate.criterion.Projections;
 
 import java.util.Collection;
 
@@ -49,12 +43,12 @@ public class QueryEngine2 {
     }
 
     public RQuery interpret(ObjectQuery query, Class<? extends Containerable> type,
-                            Collection<SelectorOptions<GetOperationOptions>> options,
-                            boolean countingObjects, Session session) throws QueryException {
+            Collection<SelectorOptions<GetOperationOptions>> options,
+            boolean countingObjects, Session session) throws QueryException {
 
         QueryInterpreter2 interpreter = new QueryInterpreter2(repoConfiguration);
         RootHibernateQuery hibernateQuery = interpreter.interpret(query, type, options, prismContext, countingObjects, session);
 
-        return new RQueryImpl(hibernateQuery.getAsHqlQuery(session));
+        return new RQueryImpl(hibernateQuery.getAsHqlQuery(session), hibernateQuery);
     }
 }

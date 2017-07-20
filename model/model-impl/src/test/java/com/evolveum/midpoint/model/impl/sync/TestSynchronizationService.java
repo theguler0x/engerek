@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2015 Evolveum
+ * Copyright (c) 2010-2017 Evolveum
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,6 @@ import static org.testng.AssertJUnit.assertFalse;
 
 import java.io.File;
 
-import javax.xml.bind.JAXBException;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
@@ -37,7 +35,6 @@ import com.evolveum.midpoint.model.impl.AbstractInternalModelIntegrationTest;
 import com.evolveum.midpoint.model.impl.lens.Clockwork;
 import com.evolveum.midpoint.model.impl.lens.LensContext;
 import com.evolveum.midpoint.model.impl.lens.LensProjectionContext;
-import com.evolveum.midpoint.model.impl.sync.SynchronizationService;
 import com.evolveum.midpoint.model.impl.util.mock.MockLensDebugListener;
 import com.evolveum.midpoint.prism.PrismObject;
 import com.evolveum.midpoint.prism.delta.ObjectDelta;
@@ -72,10 +69,10 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
 
 	private static final String INTENT_GROUP = "group";
 		
-	@Autowired(required = true)
+	@Autowired
 	SynchronizationService synchronizationService;
 	
-	@Autowired(required = true)
+	@Autowired
 	Clockwork clockwork;
 	
 	private String accountShadowJackDummyOid = null;
@@ -93,20 +90,20 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         MockLensDebugListener mockListener = new MockLensDebugListener();
         clockwork.setDebugListener(mockListener);
         
-        PrismObject<ShadowType> accountShadowJack = repoAddObjectFromFile(ACCOUNT_SHADOW_JACK_DUMMY_FILE, ShadowType.class, result);
+        PrismObject<ShadowType> accountShadowJack = repoAddObjectFromFile(ACCOUNT_SHADOW_JACK_DUMMY_FILE, result);
         accountShadowJackDummyOid = accountShadowJack.getOid();
-        provisioningService.applyDefinition(accountShadowJack, result);
+        provisioningService.applyDefinition(accountShadowJack, task, result);
         assertNotNull("No oid in shadow", accountShadowJack.getOid());
         DummyAccount dummyAccount = new DummyAccount();
         dummyAccount.setName(ACCOUNT_JACK_DUMMY_USERNAME);
         dummyAccount.setPassword("deadMenTellNoTales");
         dummyAccount.setEnabled(true);
         dummyAccount.addAttributeValues(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME, "Jack Sparrow");
-		dummyResource.addAccount(dummyAccount);
+		getDummyResource().addAccount(dummyAccount);
         
         ResourceObjectShadowChangeDescription change = new ResourceObjectShadowChangeDescription();
         change.setCurrentShadow(accountShadowJack);
-        change.setResource(resourceDummy);
+        change.setResource(getDummyResourceObject());
         
 		// WHEN
         synchronizationService.notifyChange(change, task, result);
@@ -121,7 +118,7 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         assertSideEffectiveDeltasOnly(context.getFocusContext().getSecondaryDelta(), "user secondary delta",
         		ActivationStatusType.ENABLED);
         
-        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(resourceDummy.getOid(), ShadowKindType.ACCOUNT, null);
+        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(getDummyResourceObject().getOid(), ShadowKindType.ACCOUNT, null);
 		LensProjectionContext accCtx = context.findProjectionContext(rat);
 		assertNotNull("No account sync context for "+rat, accCtx);
 		assertEquals("Wrong detected situation in context", SynchronizationSituationType.UNLINKED, accCtx.getSynchronizationSituationDetected());
@@ -154,13 +151,13 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         MockLensDebugListener mockListener = new MockLensDebugListener();
         clockwork.setDebugListener(mockListener);
         
-        DummyAccount dummyAccount = dummyResource.getAccountByUsername(ACCOUNT_JACK_DUMMY_USERNAME);
+        DummyAccount dummyAccount = getDummyResource().getAccountByUsername(ACCOUNT_JACK_DUMMY_USERNAME);
         dummyAccount.addAttributeValues(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOOT_NAME, "999");
         
         ResourceObjectShadowChangeDescription change = new ResourceObjectShadowChangeDescription();
         PrismObject<ShadowType> accountShadowJack = provisioningService.getObject(ShadowType.class, accountShadowJackDummyOid, null, task, result);
         change.setCurrentShadow(accountShadowJack);
-        change.setResource(resourceDummy);
+        change.setResource(getDummyResourceObject());
         change.setSourceChannel(SchemaConstants.CHANGE_CHANNEL_LIVE_SYNC_URI);
         
 		// WHEN
@@ -176,12 +173,12 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         
         assertNull("Unexpected user primary delta", context.getFocusContext().getPrimaryDelta());
         assertEquals("Unexpected number of executed deltas", 1, context.getFocusContext().getExecutedDeltas().size());
-        ObjectDelta<UserType> userSecondaryDelta = (ObjectDelta<UserType>) context.getFocusContext().getExecutedDeltas().iterator().next().getObjectDelta();
+        ObjectDelta<UserType> userSecondaryDelta = context.getFocusContext().getExecutedDeltas().iterator().next().getObjectDelta();
         assertNotNull("No user secondary delta", userSecondaryDelta);
         assertEquals("Unexpected number of modifications in user secondary delta", 3, userSecondaryDelta.getModifications().size());
         PrismAsserts.assertPropertyAdd(userSecondaryDelta, UserType.F_COST_CENTER, "999");
         
-        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(resourceDummy.getOid(), ShadowKindType.ACCOUNT, null);
+        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(getDummyResourceObject().getOid(), ShadowKindType.ACCOUNT, null);
 		LensProjectionContext accCtx = context.findProjectionContext(rat);
 		assertNotNull("No account sync context for "+rat, accCtx);
 		
@@ -215,13 +212,13 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         MockLensDebugListener mockListener = new MockLensDebugListener();
         clockwork.setDebugListener(mockListener);
         
-        DummyAccount dummyAccount = dummyResource.getAccountByUsername(ACCOUNT_JACK_DUMMY_USERNAME);
+        DummyAccount dummyAccount = getDummyResource().getAccountByUsername(ACCOUNT_JACK_DUMMY_USERNAME);
         dummyAccount.replaceAttributeValues(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_LOOT_NAME);
         
         ResourceObjectShadowChangeDescription change = new ResourceObjectShadowChangeDescription();
         PrismObject<ShadowType> accountShadowJack = provisioningService.getObject(ShadowType.class, accountShadowJackDummyOid, null, task, result);
         change.setCurrentShadow(accountShadowJack);
-        change.setResource(resourceDummy);
+        change.setResource(getDummyResourceObject());
         change.setSourceChannel(SchemaConstants.CHANGE_CHANNEL_LIVE_SYNC_URI);
         
         display("SENDING CHANGE NOTIFICATION", change);
@@ -237,13 +234,13 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         
         assertNull("Unexpected user primary delta", context.getFocusContext().getPrimaryDelta());
         assertEquals("Unexpected number of executed deltas", 1, context.getFocusContext().getExecutedDeltas().size());
-        ObjectDelta<UserType> userSecondaryDelta = (ObjectDelta<UserType>) context.getFocusContext().getExecutedDeltas().iterator().next().getObjectDelta();
+        ObjectDelta<UserType> userSecondaryDelta = context.getFocusContext().getExecutedDeltas().iterator().next().getObjectDelta();
 //        ObjectDelta<UserType> userSecondaryDelta = context.getFocusContext().getSecondaryDelta();
         assertNotNull("No user secondary delta", userSecondaryDelta);
         assertEquals("Unexpected number of modifications in user secondary delta", 3, userSecondaryDelta.getModifications().size());
         PrismAsserts.assertPropertyReplace(userSecondaryDelta, UserType.F_COST_CENTER);
         
-        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(resourceDummy.getOid(), ShadowKindType.ACCOUNT, null);
+        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(getDummyResourceObject().getOid(), ShadowKindType.ACCOUNT, null);
 		LensProjectionContext accCtx = context.findProjectionContext(rat);
 		assertNotNull("No account sync context for "+rat, accCtx);
 		
@@ -283,7 +280,7 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         ResourceObjectShadowChangeDescription change = new ResourceObjectShadowChangeDescription();
         PrismObject<ShadowType> accountShadowJack = provisioningService.getObject(ShadowType.class, accountShadowJackDummyOid, null, task, result);
         change.setCurrentShadow(accountShadowJack);
-        change.setResource(resourceDummy);
+        change.setResource(getDummyResourceObject());
         change.setSourceChannel(SchemaConstants.CHANGE_CHANNEL_DISCOVERY_URI);
         
 		// WHEN
@@ -298,7 +295,7 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         assertNull("Unexpected user primary delta", context.getFocusContext().getPrimaryDelta());
         assertSideEffectiveDeltasOnly("user secondary delta", context.getFocusContext().getSecondaryDelta());
         
-        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(resourceDummy.getOid(), 
+        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(getDummyResourceObject().getOid(), 
         		ShadowKindType.ACCOUNT, null);
 		LensProjectionContext accCtx = context.findProjectionContext(rat);
 		assertNotNull("No account sync context for "+rat, accCtx);
@@ -326,23 +323,34 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         // GIVEN
         Task task = taskManager.createTaskInstance(TestSynchronizationService.class.getName() + "." + TEST_NAME);
         OperationResult result = task.getResult();
+
+        PrismObject<ShadowType> shadowRepo = repositoryService.getObject(ShadowType.class, accountShadowJackDummyOid, null, result);
+        assertIteration(shadowRepo, 0, "");
+        assertSituation(shadowRepo, SynchronizationSituationType.LINKED);
         
         MockLensDebugListener mockListener = new MockLensDebugListener();
         clockwork.setDebugListener(mockListener);
 
-        dummyResource.deleteAccountByName(ACCOUNT_JACK_DUMMY_USERNAME);
+        getDummyResource().deleteAccountByName(ACCOUNT_JACK_DUMMY_USERNAME);
+        
         PrismObject<ShadowType> shadow = getShadowModelNoFetch(accountShadowJackDummyOid);
+        
+        shadowRepo = repositoryService.getObject(ShadowType.class, accountShadowJackDummyOid, null, result);
+        assertIteration(shadowRepo, 0, "");
+        assertSituation(shadowRepo, SynchronizationSituationType.LINKED);
         
         ResourceObjectShadowChangeDescription change = new ResourceObjectShadowChangeDescription();
         change.setCurrentShadow(shadow);
-        change.setResource(resourceDummy);
+        change.setResource(getDummyResourceObject());
         ObjectDelta<ShadowType> syncDelta = ObjectDelta.createDeleteDelta(ShadowType.class, accountShadowJackDummyOid, prismContext);
 		change.setObjectDelta(syncDelta);
         
 		// WHEN
+		TestUtil.displayWhen(TEST_NAME);
         synchronizationService.notifyChange(change, task, result);
         
         // THEN
+        TestUtil.displayThen(TEST_NAME);
         LensContext<UserType> context = mockListener.getLastSyncContext();
 
         display("Resulting context (as seen by debug listener)", context);
@@ -351,7 +359,7 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         assertNull("Unexpected user primary delta", context.getFocusContext().getPrimaryDelta());
         assertSideEffectiveDeltasOnly("user secondary delta", context.getFocusContext().getSecondaryDelta());
         
-        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(resourceDummy.getOid(), 
+        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(getDummyResourceObject().getOid(), 
         		ShadowKindType.ACCOUNT, null, true);
 		LensProjectionContext accCtx = context.findProjectionContext(rat);
 		assertNotNull("No account sync context for "+rat, accCtx);
@@ -361,9 +369,9 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
 		
 		assertNotLinked(context.getFocusContext().getObjectOld().getOid(), accountShadowJackDummyOid);
 		
-		shadow = getShadowModelNoFetch(accountShadowJackDummyOid);
-        assertIteration(shadow, 0, "");
-        assertSituation(shadow, SynchronizationSituationType.DELETED);
+		shadowRepo = repositoryService.getObject(ShadowType.class, accountShadowJackDummyOid, null, result);
+        assertIteration(shadowRepo, 0, "");
+        assertSituation(shadowRepo, SynchronizationSituationType.DELETED);
         
         result.computeStatus();
         TestUtil.assertSuccess(result);
@@ -389,9 +397,9 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         MockLensDebugListener mockListener = new MockLensDebugListener();
         clockwork.setDebugListener(mockListener);
         
-        PrismObject<ShadowType> accountShadowCalypso = repoAddObjectFromFile(ACCOUNT_SHADOW_CALYPSO_DUMMY_FILENAME, ShadowType.class, result);
+        PrismObject<ShadowType> accountShadowCalypso = repoAddObjectFromFile(ACCOUNT_SHADOW_CALYPSO_DUMMY_FILE, result);
         accountShadowCalypsoDummyOid = accountShadowCalypso.getOid();
-        provisioningService.applyDefinition(accountShadowCalypso, result);
+        provisioningService.applyDefinition(accountShadowCalypso, task, result);
         assertNotNull("No oid in shadow", accountShadowCalypso.getOid());
         // Make sure that it is properly marked as protected. This is what provisioning would normally do
         accountShadowCalypso.asObjectable().setProtectedObject(true);
@@ -401,11 +409,11 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         dummyAccount.setPassword("h1ghS3AS");
         dummyAccount.setEnabled(true);
         dummyAccount.addAttributeValues(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME, "Calypso");
-		dummyResource.addAccount(dummyAccount);
+        getDummyResource().addAccount(dummyAccount);
         
         ResourceObjectShadowChangeDescription change = new ResourceObjectShadowChangeDescription();
         change.setCurrentShadow(accountShadowCalypso);
-        change.setResource(resourceDummy);
+        change.setResource(getDummyResourceObject());
         
 		// WHEN
         synchronizationService.notifyChange(change, task, result);
@@ -443,7 +451,7 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         
         // Lets make this a bit more interesting by setting up a fake situation in the shadow
         ObjectDelta<ShadowType> objectDelta = createModifyAccountShadowReplaceDelta(accountShadowCalypsoDummyOid, 
-        		resourceDummy, new ItemPath(ShadowType.F_SYNCHRONIZATION_SITUATION), SynchronizationSituationType.DISPUTED);
+        		getDummyResourceObject(), new ItemPath(ShadowType.F_SYNCHRONIZATION_SITUATION), SynchronizationSituationType.DISPUTED);
         repositoryService.modifyObject(ShadowType.class, accountShadowCalypsoDummyOid, objectDelta.getModifications(), result);
         
         PrismObject<ShadowType> accountShadowCalypso = getShadowModelNoFetch(accountShadowCalypsoDummyOid);
@@ -452,7 +460,7 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         
         ResourceObjectShadowChangeDescription change = new ResourceObjectShadowChangeDescription();
         change.setCurrentShadow(accountShadowCalypso);
-        change.setResource(resourceDummy);
+        change.setResource(getDummyResourceObject());
         
         display("Change notification", change);
         
@@ -471,7 +479,7 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
 		assertNull("Unexpected user "+userCalypso, userCalypso);
 		
 		PrismObject<ShadowType> shadow = getShadowModelNoFetch(accountShadowCalypsoDummyOid);
-        assertSituation(shadow, null);
+        assertSituation(shadow, SynchronizationSituationType.DISPUTED);
         
         result.computeStatus();
         TestUtil.assertSuccess(result);
@@ -492,22 +500,22 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         MockLensDebugListener mockListener = new MockLensDebugListener();
         clockwork.setDebugListener(mockListener);
         
-        PrismObject<ShadowType> accountShadowJack = repoAddObjectFromFile(ACCOUNT_SHADOW_JACK_DUMMY_FILE, ShadowType.class, result);
+        PrismObject<ShadowType> accountShadowJack = repoAddObjectFromFile(ACCOUNT_SHADOW_JACK_DUMMY_FILE, result);
         accountShadowJackDummyOid = accountShadowJack.getOid();
-        provisioningService.applyDefinition(accountShadowJack, result);
+        provisioningService.applyDefinition(accountShadowJack, task, result);
         assertNotNull("No oid in shadow", accountShadowJack.getOid());
         DummyAccount dummyAccount = new DummyAccount();
         dummyAccount.setName(ACCOUNT_JACK_DUMMY_USERNAME);
         dummyAccount.setPassword("deadMenTellNoTales");
         dummyAccount.setEnabled(true);
         dummyAccount.addAttributeValues(DummyResourceContoller.DUMMY_ACCOUNT_ATTRIBUTE_FULLNAME_NAME, "Jack Sparrow");
-		dummyResource.addAccount(dummyAccount);
+        getDummyResource().addAccount(dummyAccount);
 		
-		display("Dummy resource before", dummyResource);
+		display("Dummy resource before", getDummyResource());
         
         ResourceObjectShadowChangeDescription change = new ResourceObjectShadowChangeDescription();
         change.setCurrentShadow(accountShadowJack);
-        change.setResource(resourceDummy);
+        change.setResource(getDummyResourceObject());
         
 		// WHEN
         synchronizationService.notifyChange(change, task, result);
@@ -522,7 +530,7 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         assertSideEffectiveDeltasOnly(context.getFocusContext().getSecondaryDelta(), "user secondary delta",
         		ActivationStatusType.ENABLED);
         
-        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(resourceDummy.getOid(), ShadowKindType.ACCOUNT, null);
+        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(getDummyResourceObject().getOid(), ShadowKindType.ACCOUNT, null);
 		LensProjectionContext accCtx = context.findProjectionContext(rat);
 		assertNotNull("No account sync context for "+rat, accCtx);
 		assertEquals("Wrong detected situation in context", SynchronizationSituationType.UNLINKED, accCtx.getSynchronizationSituationDetected());
@@ -562,12 +570,12 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         MockLensDebugListener mockListener = new MockLensDebugListener();
         clockwork.setDebugListener(mockListener);
 
-        dummyResource.deleteAccountByName(ACCOUNT_JACK_DUMMY_USERNAME);
+        getDummyResource().deleteAccountByName(ACCOUNT_JACK_DUMMY_USERNAME);
         PrismObject<ShadowType> shadow = getShadowModelNoFetch(accountShadowJackDummyOid);
         
         ResourceObjectShadowChangeDescription change = new ResourceObjectShadowChangeDescription();
         change.setCurrentShadow(shadow);
-        change.setResource(resourceDummy);
+        change.setResource(getDummyResourceObject());
         ObjectDelta<ShadowType> syncDelta = ObjectDelta.createDeleteDelta(ShadowType.class, accountShadowJackDummyOid, prismContext);
 		change.setObjectDelta(syncDelta);
 		
@@ -586,7 +594,7 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         assertNull("Unexpected user primary delta", context.getFocusContext().getPrimaryDelta());
         assertSideEffectiveDeltasOnly("user secondary delta", context.getFocusContext().getSecondaryDelta());
         
-        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(resourceDummy.getOid(), 
+        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(getDummyResourceObject().getOid(), 
         		ShadowKindType.ACCOUNT, null, true);
 		LensProjectionContext accCtx = context.findProjectionContext(rat);
 		assertNotNull("No account sync context for "+rat, accCtx);
@@ -618,18 +626,18 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         MockLensDebugListener mockListener = new MockLensDebugListener();
         clockwork.setDebugListener(mockListener);
         
-        PrismObject<ShadowType> shadowPirates = repoAddObjectFromFile(SHADOW_PIRATES_DUMMY_FILE, ShadowType.class, result);
-        provisioningService.applyDefinition(shadowPirates, result);
+        PrismObject<ShadowType> shadowPirates = repoAddObjectFromFile(SHADOW_PIRATES_DUMMY_FILE, result);
+        provisioningService.applyDefinition(shadowPirates, task, result);
         assertNotNull("No oid in shadow", shadowPirates.getOid());
         DummyGroup dummyGroup = new DummyGroup();
         dummyGroup.setName(GROUP_PIRATES_DUMMY_NAME);
         dummyGroup.setEnabled(true);
         dummyGroup.addAttributeValues(DummyResourceContoller.DUMMY_GROUP_ATTRIBUTE_DESCRIPTION, "Scurvy Pirates");
-		dummyResource.addGroup(dummyGroup);
+        getDummyResource().addGroup(dummyGroup);
         
         ResourceObjectShadowChangeDescription change = new ResourceObjectShadowChangeDescription();
         change.setCurrentShadow(shadowPirates);
-        change.setResource(resourceDummy);
+        change.setResource(getDummyResourceObject());
         
 		// WHEN
         TestUtil.displayWhen(TEST_NAME);
@@ -649,7 +657,7 @@ public class TestSynchronizationService extends AbstractInternalModelIntegration
         assertFalse("No executed focus deltas", context.getFocusContext().getExecutedDeltas().isEmpty());
         ObjectDelta<UserType> userSecondaryDelta = (ObjectDelta<UserType>) context.getFocusContext().getExecutedDeltas().iterator().next().getObjectDelta();
         
-        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(resourceDummy.getOid(), 
+        ResourceShadowDiscriminator rat = new ResourceShadowDiscriminator(getDummyResourceObject().getOid(), 
         		ShadowKindType.ENTITLEMENT, INTENT_GROUP);
 		LensProjectionContext projCtx = context.findProjectionContext(rat);
 		assertNotNull("No projection sync context for "+rat, projCtx);

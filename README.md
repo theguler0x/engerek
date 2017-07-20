@@ -33,17 +33,7 @@ Engerek yazılımının başlıca özellikleri:
 
 Daha fazla bilgi için:
 
-http://midpoint.evolveum.com/
-
-Hata izleme sistemi için:
-
-  http://jira.evolveum.com/
-
- Ayrıca Engerek (MidPoint) aşağıdaki git depolarından alınabilir.
- 
-  https://github.com/Evolveum/midpoint.git
-  
-  git@github.com:Evolveum/midpoint.git
+http://www.pardus.org.tr/projeler/engerek/
 
 Bu proje Apache lisansı (versiyon 2.0) dahilindedir. LICENSE dosyasında bir kopyasını bulabilrsiniz. 
 Ayrıca NOTICE dosyasında ek telif hakkı hükümleri görülebilir.

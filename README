@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-Engerek 3.3 "Lincoln"
+Engerek 3.6 
 -------------------------------
 
 Genel bilgi:
@@ -33,45 +32,8 @@ Engerek yazılımının başlıca özellikleri:
    - Gözden geçirme
 
 Daha fazla bilgi için:
-=======
-midPoint 3.6 "Comenius"
-------------------------------------
 
-General information:
-
-MidPoint is a comprehensive identity management and governance system.
-MidPoint can synchronize several identity repositories, manage and
-transform data in these repostories to keep them synchronized. MidPoint can
-make the data available in unified form, apply and manage policies,
-manage object lifecycle, maitain audit trails and many other things.
-
-The most important features of midPoint are:
-   - User provisioning and deprovisioning
-   - Identity governance
-   - Administration GUI
-   - Identity repository implemention (SQL)
-   - Custom schema extensibility
-   - Identity synchronization (liveSync, reconciliation, discovery, import)
-   - Support for expressions in synchronization mappings (Groovy, JavaScript, Python)
-   - Advanced RBAC support with temporal constraints
-   - Identity management process automation (workflow, notifications)
-   - Password policies
-   - Password reset
-   - Organizational structure management
-   - Entitlements
-   - Support for ConnId and OpenICF connectors
-   - Provisioning consistency and error handling
-   - Support for security auditing and reporting
-   - Workflow
-   - Reporting
-   - Notifications
-   - Local Java APIs, Remote web service interface (SOAP), REST API
-   - High availablity (HA) support
-
-For more information please go to:
->>>>>>> midpoint/master
-
-  http://midpoint.evolveum.com/
+http://midpoint.evolveum.com/
 
 Hata izleme sistemi için:
 

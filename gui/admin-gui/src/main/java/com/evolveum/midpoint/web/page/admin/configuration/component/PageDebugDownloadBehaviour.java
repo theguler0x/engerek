@@ -120,15 +120,9 @@ public class PageDebugDownloadBehaviour extends AjaxDownloadBehaviorFromFile {
             }
         }
 
-<<<<<<< HEAD
-        if (!WebMiscUtil.isSuccessOrHandledError(result)) {
-            page.showResultInSession(result);
-            page.getSession().error(page.getString("PageOrgDiff.message.createFileException"));
-=======
         if (!WebComponentUtil.isSuccessOrHandledError(result)) {
             page.showResult(result);
             page.getSession().error(page.getString("pageDebugList.message.createFileException"));
->>>>>>> midpoint/master
             LOGGER.debug("Removing file '{}'.", new Object[]{file.getAbsolutePath()});
             Files.remove(file);
 

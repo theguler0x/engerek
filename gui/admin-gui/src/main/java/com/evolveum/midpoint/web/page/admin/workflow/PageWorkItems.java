@@ -172,13 +172,8 @@ public abstract class PageWorkItems extends PageAdminWorkItems {
             try {
                 workflowService.claimWorkItem(workItemDto.getWorkItemId(), result);
                 result.computeStatusIfUnknown();
-<<<<<<< HEAD
-            } catch (RuntimeException e) {
-                result.recordPartialError("Beklenmeyen hata yüzünden iş akışı öğesi talep edilemedi.", e);
-=======
             } catch (ObjectNotFoundException | SecurityViolationException | RuntimeException e) {
-                result.recordPartialError("Couldn't claim work item due to an unexpected exception.", e);
->>>>>>> midpoint/master
+                result.recordPartialError("Beklenmeyen hata yüzünden iş akışı öğesi talep edilemedi.", e);
             }
         }
         if (mainResult.isUnknown()) {
@@ -208,13 +203,8 @@ public abstract class PageWorkItems extends PageAdminWorkItems {
             try {
                 workflowService.releaseWorkItem(workItemDto.getWorkItemId(), result);
                 result.computeStatusIfUnknown();
-<<<<<<< HEAD
-            } catch (RuntimeException e) {
-                result.recordPartialError("İş akışı öğesi beklenmeyen hata sonucu serbest bırakılamadı.", e);
-=======
             } catch (ObjectNotFoundException | SecurityViolationException | RuntimeException e) {
-                result.recordPartialError("Couldn't release work item due to an unexpected exception.", e);
->>>>>>> midpoint/master
+                result.recordPartialError("İş akışı öğesi beklenmeyen hata sonucu serbest bırakılamadı.", e);
             }
         }
         if (mainResult.isUnknown()) {

@@ -24,16 +24,8 @@ import com.evolveum.midpoint.util.exception.SchemaException;
 import com.evolveum.midpoint.util.logging.Trace;
 import com.evolveum.midpoint.util.logging.TraceManager;
 import com.evolveum.midpoint.web.application.PageDescriptor;
-<<<<<<< HEAD
-import com.evolveum.midpoint.web.page.PageBase;
-import com.evolveum.midpoint.web.page.admin.home.PageDashboard;
-import com.evolveum.midpoint.web.page.forgetpassword.PageForgetPassword;
-import com.evolveum.midpoint.web.page.self.PageSelfDashboard;
-import com.evolveum.midpoint.web.page.selfregistration.PageSelfRegistration;
-=======
 import com.evolveum.midpoint.web.component.util.VisibleEnableBehaviour;
 import com.evolveum.midpoint.web.page.forgetpassword.PageForgotPassword;
->>>>>>> midpoint/master
 import com.evolveum.midpoint.web.security.MidPointApplication;
 import com.evolveum.midpoint.web.security.SecurityUtils;
 import com.evolveum.midpoint.xml.ns._public.common.common_3.CredentialsPolicyType;
@@ -44,23 +36,12 @@ import org.apache.wicket.RestartResponseException;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.markup.html.AjaxLink;
 import org.apache.wicket.markup.html.link.BookmarkablePageLink;
-<<<<<<< HEAD
-import org.apache.wicket.model.Model;
-import org.apache.wicket.extensions.markup.html.captcha.CaptchaImageResource;
-import org.apache.wicket.markup.ComponentTag;
-import org.apache.wicket.model.PropertyModel;
-import org.apache.wicket.util.value.ValueMap;
-import org.apache.wicket.markup.html.image.Image;
-import org.apache.wicket.markup.html.image.NonCachingImage;
-import org.apache.wicket.markup.html.link.Link;
-=======
 import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
 import org.apache.wicket.request.cycle.RequestCycle;
 import org.springframework.security.web.WebAttributes;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
->>>>>>> midpoint/master
 
 /**
  * @author mserbak
@@ -70,19 +51,6 @@ public class PageLogin extends PageBase {
 	private static final long serialVersionUID = 1L;
 
 	private static final Trace LOGGER = TraceManager.getTrace(PageLogin.class);
-<<<<<<< HEAD
-	
-    PageBase page = getPageBase();
-    private static final String ID_LOGIN_FORM = "loginForm";
-
-    private static final String ID_USERNAME = "username";
-    private static final String ID_PASSWORD = "password";
-    private static final String ID_CAPTCHA = "captchatextfield";
-    private final CaptchaImageResource captchaImageResource;
-
-    protected static final String OPERATION_LOAD_RESET_PASSWORD_POLICY = "LOAD PASSWORD RESET POLICY";
-
-=======
 
     private static final String ID_FORGET_PASSWORD = "forgetpassword";
     private static final String ID_SELF_REGISTRATION = "selfRegistration";
@@ -90,7 +58,6 @@ public class PageLogin extends PageBase {
     private static final String DOT_CLASS = PageLogin.class.getName() + ".";
     protected static final String OPERATION_LOAD_RESET_PASSWORD_POLICY = DOT_CLASS + "loadPasswordResetPolicy";
     private static final String OPERATION_LOAD_REGISTRATION_POLICY = DOT_CLASS + "loadRegistrationPolicy";
->>>>>>> midpoint/master
     
     public PageLogin() {
         BookmarkablePageLink<String> link = new BookmarkablePageLink<>(ID_FORGET_PASSWORD, PageForgotPassword.class);
@@ -108,38 +75,6 @@ public class PageLogin extends PageBase {
                     LOGGER.warn("Cannot read credentials policy: " + e.getMessage(), e);
                 }
 
-<<<<<<< HEAD
-        Form form = new Form(ID_LOGIN_FORM) {
-        	
-        	
-            @Override
-            protected void onSubmit() {
-                MidPointAuthWebSession session = MidPointAuthWebSession.getSession();
-                
-                if (!imagePass.equals(getPassword()))
-                {
-                    //error("Captcha şifresi '" + getPassword() + "' yanlış.\n" +"Doğru şifre: " + imagePass);
-                    error("Karakter doğrulama yanlış!");
-					// force redrawing
-                    return;
-                }
-                else
-                {
-                    info("Başarılı!");
-                    // force redrawing                   
-                }
-				captchaImageResource.invalidate();
-               
-                RequiredTextField<String> username = (RequiredTextField) get(ID_USERNAME);
-                PasswordTextField password = (PasswordTextField) get(ID_PASSWORD);
-                if (session.authenticate(username.getModelObject(), password.getModelObject())) {
-                    if (WebMiscUtil.isAuthorized(AuthorizationConstants.AUTZ_UI_DASHBOARD_URL,
-                            AuthorizationConstants.AUTZ_UI_HOME_ALL_URL)) {
-                        setResponsePage(PageDashboard.class);
-                    } else {
-                        setResponsePage(PageSelfDashboard.class);
-                    }
-=======
                 if (securityPolicy == null) {
                 	return false;
                 }
@@ -185,7 +120,6 @@ public class PageLogin extends PageBase {
                 if (registrationPolicies != null
                         && registrationPolicies.getSelfRegistration() != null) {
                     linkIsVisible = true;
->>>>>>> midpoint/master
                 }
 
                 return linkIsVisible;
@@ -207,35 +141,8 @@ public class PageLogin extends PageBase {
             return;
         }
 
-<<<<<<< HEAD
-        form.add(new RequiredTextField(ID_USERNAME, new Model<String>()));
-        form.add(new PasswordTextField(ID_PASSWORD, new Model<String>()));
-        
-        captchaImageResource = new CaptchaImageResource(imagePass);
-		Image image = new NonCachingImage("captchaImage",captchaImageResource);
-		form.add(image);
-    	//form.add(new Image("captchaImage", captchaImageResource));
-    	form.add(new RequiredTextField<String>(ID_CAPTCHA, new PropertyModel<String>(properties,
-    			ID_CAPTCHA))
-            {
-                @Override
-                protected final void onComponentTag(final ComponentTag tag)
-                {
-                    super.onComponentTag(tag);
-                    // clear the field after each render
-                    tag.put("value", "");
-                }
-            });
-        form.add(new Link("btnselfregistration"){
-            @Override
-            public void onClick(){
-                setResponsePage(PageSelfRegistration.class);
-            }
-        });
-=======
         String key = ex.getMessage() != null ? ex.getMessage() : "web.security.provider.unavailable";
         error(getString(key));
->>>>>>> midpoint/master
 
         httpSession.removeAttribute(WebAttributes.AUTHENTICATION_EXCEPTION);
 

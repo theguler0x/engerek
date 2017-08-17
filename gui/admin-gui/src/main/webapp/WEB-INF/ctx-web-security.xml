@@ -83,82 +83,6 @@ http://www.springframework.org/schema/context
         <headers disabled="true"/>
     </http>
     
-<<<<<<< HEAD
-  
-<!-- 	<beans:bean class="com.evolveum.midpoint.web.page.login.CaptchaServiceSingleton" name="captchaService" id="captchaService" scope="singleton">
-		<beans:property name="instance" ref="imageService"/>	
-		<beans:property name="service" ref="genericCaptchaService"></beans:property>	
-	</beans:bean>
-	
-	<beans:bean id="genericCaptchaService"
-		class="com.octo.captcha.service.multitype.GenericManageableCaptchaService"
-		scope="singleton" name="genericCaptchaService">
-		<beans:constructor-arg index="0"><beans:ref bean="imageEngine" /></beans:constructor-arg>
-		<beans:constructor-arg index="1"><beans:value>180</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="2"><beans:value>180000</beans:value></beans:constructor-arg>
-		<beans:constructor-arg type="int" index="3" value="75000"/>
-	</beans:bean>
-
-	<beans:bean id="imageEngine" class="com.octo.captcha.engine.GenericCaptchaEngine">
-		<beans:constructor-arg index="0">
-			<beans:list> <beans:ref bean="CaptchaFactory" /></beans:list>
-		</beans:constructor-arg>
-	</beans:bean>
-	
-	<beans:bean id="CaptchaFactory" class="com.octo.captcha.image.gimpy.GimpyFactory">
-		<beans:constructor-arg> <beans:ref bean="wordgen" /></beans:constructor-arg>
-		<beans:constructor-arg> <beans:ref bean="wordtoimage" /></beans:constructor-arg>
-	</beans:bean>
-	
-	<beans:bean id="wordgen" class="com.octo.captcha.component.word.wordgenerator.DictionaryWordGenerator">
-		<beans:constructor-arg><beans:ref bean="filedict" /></beans:constructor-arg>
-	</beans:bean>
-	
-	 <beans:bean id="filedict" class="com.octo.captcha.component.word.FileDictionary">
-		<beans:constructor-arg index="0"><beans:value>toddlist</beans:value></beans:constructor-arg>
-	</beans:bean>
-	
-	<beans:bean id="wordtoimage" class="com.octo.captcha.component.image.wordtoimage.ComposedWordToImage">
-		<beans:constructor-arg index="0"><beans:ref bean="fontGenRandom" /></beans:constructor-arg>
-		<beans:constructor-arg index="1"><beans:ref bean="backGenUni" /></beans:constructor-arg>
-		<beans:constructor-arg index="2"><beans:ref bean="simpleWhitePaster" /></beans:constructor-arg>
-	</beans:bean>
-	
-	<beans:bean id="fontGenRandom" class="com.octo.captcha.component.image.fontgenerator.RandomFontGenerator">
-		<beans:constructor-arg index="0"> <beans:value>40</beans:value></beans:constructor-arg> 
-		<beans:constructor-arg index="1"> <beans:value>50</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="2">
-			<beans:list>
-				<beans:ref bean="fontArial" />
-			</beans:list>
-		</beans:constructor-arg>
-	</beans:bean>
-	
-	<beans:bean id="fontArial" class="java.awt.Font">
-		<beans:constructor-arg index="0"><beans:value>Arial</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="1"><beans:value>0</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="2"><beans:value>10</beans:value></beans:constructor-arg>
-	</beans:bean>
-	
-	<beans:bean id="backGenUni" class="com.octo.captcha.component.image.backgroundgenerator.UniColorBackgroundGenerator">
-		<beans:constructor-arg index="0"><beans:value>300</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="1"><beans:value>100</beans:value></beans:constructor-arg>
-	</beans:bean>
-	
-	<beans:bean id="simpleWhitePaster" class="com.octo.captcha.component.image.textpaster.SimpleTextPaster">
-		<beans:constructor-arg type="java.lang.Integer" index="0"><beans:value>6</beans:value></beans:constructor-arg>
-		<beans:constructor-arg type="java.lang.Integer" index="1"><beans:value>7</beans:value></beans:constructor-arg>
-		<beans:constructor-arg type="java.awt.Color" index="2"><beans:ref bean="colorGreen" /></beans:constructor-arg>
-	</beans:bean>
-	
-	<beans:bean id="colorGreen" class="java.awt.Color">
-		<beans:constructor-arg index="0"><beans:value>0</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="1"><beans:value>255</beans:value></beans:constructor-arg>
-		<beans:constructor-arg index="2"><beans:value>0</beans:value></beans:constructor-arg>
-	</beans:bean> -->
-	
-
-=======
     <beans:import resource="ctx-web-security-${auth.method.type:basic}.xml"/>
 
     <beans:bean id="authenticationSuccessHandler"
@@ -172,7 +96,6 @@ http://www.springframework.org/schema/context
         <beans:property name="defaultTargetUrl" value="/login"/>
     </beans:bean>
     
->>>>>>> midpoint/master
     <beans:bean id="accessDecisionManager" class="com.evolveum.midpoint.web.security.MidPointGuiAuthorizationEvaluator">
     	<beans:constructor-arg name="securityEnforcer" ref="securityEnforcer"/>
     </beans:bean>

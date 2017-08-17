@@ -99,15 +99,6 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
         }
     }
 
-<<<<<<< HEAD
-    // assuming the quick availability check was passed
-    private String getFocusTypeName(Event event) {
-        String simpleName = ((ModelEvent) event).getFocusContext().getObjectTypeClass().getSimpleName();
-        return StringUtils.substringBeforeLast(simpleName, "Tip");         // should usually work ;)
-    }
-
-=======
->>>>>>> midpoint/master
     @Override
     protected String getBody(Event event, GeneralNotifierType generalNotifierType, String transport, Task task, OperationResult result) throws SchemaException {
 
@@ -141,7 +132,6 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
 
         StringBuilder body = new StringBuilder();
 
-<<<<<<< HEAD
         String status;
         if (event.isSuccess()) {
             status = "BAŞARILI";
@@ -171,24 +161,6 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
             body.append("\n");
         } else if (delta.isDelete()) {
 		    body.append(typeNameLower).append(" kaydı " + attemptedTo + "silindi.\n\n");
-=======
-		String status = modelEvent.getStatusAsText();
-        String attemptedTo = event.isSuccess() ? "" : "(attempted to be) ";
-
-        body.append("Notification about ").append(typeNameLower).append("-related operation (status: ").append(status).append(")\n\n");
-        body.append(typeName).append(": ").append(fullName).append(" (").append(userType.getName()).append(", oid ").append(oid).append(")\n");
-        body.append("Notification created on: ").append(new Date()).append("\n\n");
-
-		final boolean watchAuxiliaryAttributes = isWatchAuxiliaryAttributes(generalNotifierType);
-		if (delta.isAdd()) {
-            body.append("The ").append(typeNameLower).append(" record was ").append(attemptedTo).append("created with the following data:\n");
-            body.append(modelEvent.getContentAsFormattedList(false, watchAuxiliaryAttributes));
-        } else if (delta.isModify()) {
-            body.append("The ").append(typeNameLower).append(" record was ").append(attemptedTo).append("modified. Modified attributes are:\n");
-			body.append(modelEvent.getContentAsFormattedList(false, watchAuxiliaryAttributes));
-        } else if (delta.isDelete()) {
-            body.append("The ").append(typeNameLower).append(" record was ").append(attemptedTo).append("removed.\n");
->>>>>>> midpoint/master
         }
 		body.append("\n");
 

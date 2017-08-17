@@ -40,18 +40,11 @@
             classpath*:ctx-workflow.xml,
             classpath*:ctx-notifications.xml,
             classpath:ctx-certification.xml,
-<<<<<<< HEAD
-		<!-- classpath:ctx-camel-imports.xml, -->
-            /WEB-INF/ctx-webapp.xml,
-            /WEB-INF/ctx-web-security.xml,
-            /WEB-INF/ctx-init.xml
-=======
             classpath:ctx-interceptor.xml,
             classpath*:ctx-overlay.xml,
             /WEB-INF/ctx-init.xml,
             /WEB-INF/ctx-webapp.xml  
             /WEB-INF/ctx-web-security.xml
->>>>>>> midpoint/master
         </param-value>
     </context-param>
 

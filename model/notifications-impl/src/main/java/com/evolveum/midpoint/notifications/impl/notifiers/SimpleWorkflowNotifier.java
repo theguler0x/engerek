@@ -92,8 +92,7 @@ public class SimpleWorkflowNotifier extends GeneralNotifier {
 		}
 	}
 
-<<<<<<< HEAD
-        if (event.isAdd()) {
+/*        if (event.isAdd()) {
             if (event instanceof WorkItemEvent) {
                 return "Yeni bir iş akışı görevi oluşturuldu.";
             } else {
@@ -107,7 +106,7 @@ public class SimpleWorkflowNotifier extends GeneralNotifier {
             }
         }
     }
-=======
+*/
 	private String getSubjectFromWorkItemEvent(WorkItemEvent event, GeneralNotifierType generalNotifierType, String transport,
 			Task task, OperationResult result) {
 		if (event instanceof WorkItemLifecycleEvent) {
@@ -144,7 +143,6 @@ public class SimpleWorkflowNotifier extends GeneralNotifier {
 			throw new UnsupportedOperationException("Unsupported event type for event=" + event);
 		}
 	}
->>>>>>> midpoint/master
 
 	@Override
     protected String getBody(Event event, GeneralNotifierType generalNotifierType, String transport, Task task, OperationResult result) throws SchemaException {
@@ -158,8 +156,8 @@ public class SimpleWorkflowNotifier extends GeneralNotifier {
         body.append(getSubject(event, generalNotifierType, transport, task, result));
         body.append("\n\n");
 
-<<<<<<< HEAD
-        body.append("Süreç örneği adı: " + workflowEvent.getProcessInstanceName() + "\n");
+/*
+body.append("Süreç örneği adı: " + workflowEvent.getProcessInstanceName() + "\n");
         if (workflowEvent instanceof WorkItemEvent) {
             WorkItemEvent workItemEvent = (WorkItemEvent) workflowEvent;
             body.append("İş akışı öğesi: ").append(workItemEvent.getWorkItemName()).append("\n");
@@ -178,7 +176,7 @@ public class SimpleWorkflowNotifier extends GeneralNotifier {
             body.append("----------------------------------------\n");
             body.append("Teknik bilgi:\n\n");
             body.append(workflowEvent.getProcessInstanceState().debugDump());
-=======
+*/
         appendGeneralInformation(body, workflowEvent);		// process instance name, work item name, stage, escalation level
 
 		if (workflowEvent instanceof WorkItemEvent) {
@@ -202,7 +200,6 @@ public class SimpleWorkflowNotifier extends GeneralNotifier {
 			}
 			body.append("Workflow context:\n")
 					.append(PrismUtil.serializeQuietly(prismContext, ((WorkflowEvent) event).getWorkflowContext()));
->>>>>>> midpoint/master
         }
         return body.toString();
     }

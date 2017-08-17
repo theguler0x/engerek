@@ -398,13 +398,8 @@
         <dependency>
             <groupId>com.evolveum.midpoint.model</groupId>
             <artifactId>model-impl</artifactId>
-<<<<<<< HEAD
-            <version>3.4-SNAPSHOT</version>
-            <scope>compile</scope>
-=======
             <version>3.7-SNAPSHOT</version>
             <scope>runtime</scope>
->>>>>>> midpoint/master
             <exclusions>
             	<exclusion>
             		<artifactId>jaxb-impl</artifactId>
@@ -795,11 +790,7 @@
 		
 		<!-- Uncomment following if you want midpoint to be a part of SSO using CAS server-->
 		<!-- SSO CAS Client dependencies -->
-<<<<<<< HEAD
-<!-- 		<dependency>
-=======
 		<!-- <dependency>
->>>>>>> midpoint/master
 			<groupId>org.jasig.cas.client</groupId>
 			<artifactId>cas-client-integration-tomcat-v7</artifactId>
 			<version>${cas.client.version}</version>
@@ -828,16 +819,11 @@
 		 <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-cas</artifactId>
-<<<<<<< HEAD
-			<version>3.2.5.RELEASE</version>
-        </dependency>   -->
-=======
+
 			<version>${spring.security.version}</version>
 			<scope>runtime</scope>
         </dependency>  
-         -->
->>>>>>> midpoint/master
-        
+         -->        
         <!-- testing dependencies -->
         <dependency>
             <groupId>com.evolveum.midpoint.model</groupId>

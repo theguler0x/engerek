@@ -248,16 +248,10 @@ public abstract class AddAssignmentAspect<T extends ObjectType, F extends FocusT
             instruction.setObjectRef(modelContext, result);
             instruction.setTargetRef(createObjectRef(target), result);
 
-<<<<<<< HEAD
-            // setup general item approval process
-			String approvalTaskName =  assigneeName + "'e eklenecek " + targetName + "'i onayla.";
-            itemApprovalProcessInterface.prepareStartInstruction(instruction, approvalRequest, approvalTaskName);
-=======
             String andExecuting = instruction.isExecuteApprovedChangeImmediately() ? "and execution " : "";
             instruction.setTaskName("Approval " + andExecuting + "of assigning " + targetName + " to " + assigneeName);
             instruction.setProcessInstanceName("Assigning " + targetName + " to " + assigneeName);
->>>>>>> midpoint/master
-
+		
             itemApprovalProcessInterface.prepareStartInstruction(instruction);
 
             instructions.add(instruction);

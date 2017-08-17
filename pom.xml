@@ -63,12 +63,17 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.5.1</version>
+				<version>3.0.5</version>
 				<configuration>
 					<source>${project.source.version}</source>
 					<target>${project.source.version}</target>
 				</configuration>
 			</plugin>
+            <plugin>
+                <groupId>com.rimerosolutions.maven.plugins</groupId>
+                <artifactId>wrapper-maven-plugin</artifactId>
+                <version>0.0.4</version>
+            </plugin>
 		</plugins>
 		<pluginManagement>
 			<plugins>
@@ -76,6 +81,11 @@
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-plugin-plugin</artifactId>
 					<version>3.3</version>		<!-- 3.2 does not work because of some internal error; 3.4+ probably because of some misconfiguration -->
+				</plugin>
+				<plugin>
+ 				   <inherited>true</inherited>
+ 				   <groupId>org.apache.maven.plugins</groupId>
+				   <artifactId>maven-compiler-plugin</artifactId>              
 				</plugin>
 				<plugin>
 					<groupId>org.eclipse.m2e</groupId>
@@ -135,7 +145,7 @@
 		<repository>
 			<id>evolveum</id>
 			<name>Evolveum Public Releases</name>
-			<url>https://nexus.evolveum.com/nexus/content/groups/public</url>
+			<url>https://nexus.evolveum.com/nexus/content/groups/public/</url>
 		</repository>
 		<repository>
 			<id>evolveum-snapshots</id>
@@ -161,7 +171,6 @@
 		<module>icf-connectors</module>
 		<module>samples</module>
 		<module>testing</module>
-		<module>cli</module>
 	</modules>
 	<profiles>
 		<profile>

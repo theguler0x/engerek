@@ -87,11 +87,11 @@
             <artifactId>task-api</artifactId>
             <version>3.7-SNAPSHOT</version>
         </dependency>
-		<dependency>
+		<!-- <dependency>
 			<groupId>com.evolveum.midpoint.model</groupId>
 			<artifactId>notifications-api</artifactId>
 			<version>3.7-SNAPSHOT</version>
-		</dependency>
+		</dependency> -->
 		<dependency>
 			<groupId>com.evolveum.midpoint.model</groupId>
 			<artifactId>workflow-api</artifactId>

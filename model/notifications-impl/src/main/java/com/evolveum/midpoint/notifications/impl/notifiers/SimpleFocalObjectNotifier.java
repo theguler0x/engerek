@@ -89,13 +89,13 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
         String typeName = modelEvent.getFocusTypeName();
 
         if (event.isAdd()) {
-            return typeName + " oluşturma bildirimi";
+            return typeName + " creation notification";
         } else if (event.isModify()) {
-            return typeName + " değişiklik bildirimi";
+            return typeName + " modification notification";
         } else if (event.isDelete()) {
-            return typeName + " silme bildirimi";
+            return typeName + " deletion notification";
         } else {
-            return "(bilinmeyen " + typeName.toLowerCase() + " işlemi)";
+            return "(unknown " + typeName.toLowerCase() + " operation)";
         }
     }
 
@@ -132,68 +132,34 @@ public class SimpleFocalObjectNotifier extends GeneralNotifier {
 
         StringBuilder body = new StringBuilder();
 
-        String status;
-        if (event.isSuccess()) {
-            status = "BAŞARILI";
-        } else if (event.isOnlyFailure()) {
-            status = "BAŞARISIZ";
-        } else if (event.isFailure()) {
-            status = "KISMEN BAŞARILI";
-        } else if (event.isInProgress()) {
-            status = "İLERLEME HALİNDE";
-        } else {
-            status = "BİLİNMİYOR";
-        }
-
+		String status = modelEvent.getStatusAsText();
         String attemptedTo = event.isSuccess() ? "" : "(attempted to be) ";
-        body.append(typeNameLower).append("-ilgili işlemin bildirimi (durum: " + status + ")\n\n") ;
-        body.append(typeName).append(": " + fullName + " (" + userType.getName() + ", oid " + oid + ")\n");
-        body.append("Bildirim oluşturulma tarihi: " + new Date() + "\n\n");
 
-        List<ItemPath> hiddenPaths = isWatchAuxiliaryAttributes(generalNotifierType) ? new ArrayList<ItemPath>() : auxiliaryPaths;
-        if (delta.isAdd()) {
-		    body.append(typeNameLower).append(" kaydı " + attemptedTo + "aşağıdaki verilerle oluşturuldu:\n");
-            body.append(textFormatter.formatObject(delta.getObjectToAdd(), hiddenPaths, isWatchAuxiliaryAttributes(generalNotifierType)));
-            body.append("\n");
+        body.append("Notification about ").append(typeNameLower).append("-related operation (status: ").append(status).append(")\n\n");
+        body.append(typeName).append(": ").append(fullName).append(" (").append(userType.getName()).append(", oid ").append(oid).append(")\n");
+        body.append("Notification created on: ").append(new Date()).append("\n\n");
+
+		final boolean watchAuxiliaryAttributes = isWatchAuxiliaryAttributes(generalNotifierType);
+		if (delta.isAdd()) {
+            body.append("The ").append(typeNameLower).append(" record was ").append(attemptedTo).append("created with the following data:\n");
+            body.append(modelEvent.getContentAsFormattedList(false, watchAuxiliaryAttributes));
         } else if (delta.isModify()) {
-		    body.append(typeNameLower).append(" kaydı" + attemptedTo + "değiştirildi. Değiştirilen öznitelikler:\n");
-            body.append(textFormatter.formatObjectModificationDelta(delta, hiddenPaths, isWatchAuxiliaryAttributes(generalNotifierType), focusContext.getObjectOld(), focusContext.getObjectNew()));
-            body.append("\n");
+            body.append("The ").append(typeNameLower).append(" record was ").append(attemptedTo).append("modified. Modified attributes are:\n");
+			body.append(modelEvent.getContentAsFormattedList(false, watchAuxiliaryAttributes));
         } else if (delta.isDelete()) {
-		    body.append(typeNameLower).append(" kaydı " + attemptedTo + "silindi.\n\n");
+            body.append("The ").append(typeNameLower).append(" record was ").append(attemptedTo).append("removed.\n");
         }
 		body.append("\n");
 
         if (!event.isSuccess()) {
-		    body.append("Yapılan istemin durumu hakkında daha fazla bilgisi gösterilmiştir ve/veya log dosyalarında mevcuttur.\n\n");
+            body.append("More information about the status of the request was displayed and/or is present in log files.\n\n");
         }
-
-        if (event.getRequester() != null) {
-        	body.append("Requester: ");
-        	try {
-        		ObjectType requester = event.getRequester().resolveObjectType(result);
-        		if (requester instanceof UserType) {
-        			UserType requesterUser = (UserType) requester;
-        			body.append(requesterUser.getFullName()).append(" (").append(requester.getName()).append(")");
-        		} else {
-        			body.append(ObjectTypeUtil.toShortString(requester));
-        		}
-        	} catch (RuntimeException e) {
-        		body.append("couldn't be determined: ").append(e.getMessage());
-        		LoggingUtils.logUnexpectedException(LOGGER, "Couldn't determine requester for a notification", e);
-        	}
-        	body.append("\n");
-        }
-        body.append("Channel: ").append(modelContext.getChannel()).append("\n\n");
-        
-
 
         functions.addRequesterAndChannelInformation(body, event, result);
 
-
         if (techInfo) {
             body.append("----------------------------------------\n");
-            body.append("Teknik bilgi:\n\n");
+            body.append("Technical information:\n\n");
             body.append(modelContext.debugDump(2));
         }
 

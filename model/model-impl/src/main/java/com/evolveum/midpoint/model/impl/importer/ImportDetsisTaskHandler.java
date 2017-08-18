@@ -24,7 +24,7 @@ import java.io.InputStreamReader;
 
 import com.evolveum.midpoint.model.api.ModelExecuteOptions;
 import com.evolveum.midpoint.model.api.ModelService;
-import com.evolveum.midpoint.model.api.PolicyViolationException;
+//import com.evolveum.midpoint.model.api.PolicyViolationException;
 import com.evolveum.midpoint.model.api.ProgressListener;
 import com.evolveum.midpoint.model.impl.ModelConstants;
 //import com.evolveum.midpoint.model.impl.ModelConstants;
@@ -103,8 +103,8 @@ public class ImportDetsisTaskHandler  implements TaskHandler{
     @PostConstruct
     private void initialize() {
     	LOGGER.info(": INITIALIZE IN DETSIS POST...");
-    	filenamePropertyDefinition = new PrismPropertyDefinition<>(ModelConstants.FILENAME_PROPERTY_NAME,
-                DOMUtil.XSD_STRING, prismContext);
+    	//filenamePropertyDefinition = new PrismPropertyDefinition<>(ModelConstants.FILENAME_PROPERTY_NAME,
+        //        DOMUtil.XSD_STRING, prismContext);
         taskManager.registerHandler(HANDLER_URI, this);
         
       
@@ -160,7 +160,7 @@ public class ImportDetsisTaskHandler  implements TaskHandler{
     		  RepositoryCache.enter();
     		  OperationResult result = parentResult.createSubresult(IMPORT_OBJECTS_FROM_STREAM);
     		  result.addParam("options", options);
-    		 objectImporter.importObjectsNotRaw(input, options, task, result);
+    	//	 objectImporter.importObjectsNotRaw(input, options, task, result);
     		  if (LOGGER.isTraceEnabled()) {
     		   LOGGER.trace("Import result:\n{}", result.debugDump());
     		  }

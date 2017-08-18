@@ -64,6 +64,7 @@ public class WfTimedActionTriggerHandler implements TriggerHandler {
 	@Autowired private WfTaskController wfTaskController;
 	@Autowired private TaskManager taskManager;
 	@Autowired private WfExpressionEvaluationHelper evaluationHelper;
+	@Autowired private WfStageComputeHelper stageComputeHelper;
 
 	@PostConstruct
 	private void initialize() {
@@ -122,8 +123,9 @@ public class WfTimedActionTriggerHandler implements TriggerHandler {
 			Task wfTask, OperationResult result) throws SchemaException {
 		WorkItemOperationKindType operationKind = WfContextUtil.getOperationKind(action);
 		WorkItemEventCauseInformationType cause = WfContextUtil.createCause(action);
+		List<ObjectReferenceType> assigneesAndDeputies = wfTaskController.getAssigneesAndDeputies(workItem, wfTask, result);
 		WorkItemAllocationChangeOperationInfo operationInfo =
-				new WorkItemAllocationChangeOperationInfo(operationKind, workItem.getAssigneeRef(), null);
+				new WorkItemAllocationChangeOperationInfo(operationKind, assigneesAndDeputies, null);
 		WorkItemOperationSourceInfo sourceInfo = new WorkItemOperationSourceInfo(null, cause, action);
 		wfTaskController.notifyWorkItemAllocationChangeCurrentActors(workItem, operationInfo, sourceInfo, timeBeforeAction, wfTask, result);
 	}
@@ -168,7 +170,7 @@ public class WfTimedActionTriggerHandler implements TriggerHandler {
 		List<ObjectReferenceType> rv = new ArrayList<>();
 		rv.addAll(CloneUtil.cloneCollectionMembers(delegateAction.getApproverRef()));
 		if (!delegateAction.getApproverExpression().isEmpty()) {
-			ExpressionVariables variables = evaluationHelper.getDefaultVariables(null, wfTask, result);
+			ExpressionVariables variables = stageComputeHelper.getDefaultVariables(null, wfTask, result);
 			variables.addVariableDefinition(SchemaConstants.C_WORK_ITEM, workItem);
 			rv.addAll(evaluationHelper.evaluateRefExpressions(delegateAction.getApproverExpression(),
 					variables, "computing delegates", triggerScannerTask, result));
@@ -183,8 +185,9 @@ public class WfTimedActionTriggerHandler implements TriggerHandler {
 			OperationResult result) throws SchemaException {
 		WorkItemEventCauseInformationType cause = WfContextUtil.createCause(notificationAction);
 		if (BooleanUtils.isNotFalse(notificationAction.isPerAssignee())) {
-			for (ObjectReferenceType assignee : workItem.getAssigneeRef()) {
-				wfTaskController.notifyWorkItemCustom(assignee, workItem, cause, wfTask, notificationAction, result);
+			List<ObjectReferenceType> assigneesAndDeputies = wfTaskController.getAssigneesAndDeputies(workItem, wfTask, result);
+			for (ObjectReferenceType assigneeOrDeputy : assigneesAndDeputies) {
+				wfTaskController.notifyWorkItemCustom(assigneeOrDeputy, workItem, cause, wfTask, notificationAction, result);
 			}
 		} else {
 			wfTaskController.notifyWorkItemCustom(null, workItem, cause, wfTask, notificationAction, result);

@@ -153,29 +153,6 @@ public class PageLogin extends PageBase {
     protected void createBreadcrumb() {
         //don't create breadcrumb for login page
     }
-    
-    private static int randomInt(int min, int max)
-    {
-        return (int)(Math.random() * (max - min) + min);
-    }
-    
-    private static String randomString(int min, int max)
-    {
-        int num = randomInt(min, max);
-        byte b[] = new byte[num];
-        for (int i = 0; i < num; i++)
-            b[i] = (byte)randomInt('a', 'z');
-        return new String(b);
-    }
-    
-    /** Random captcha password to match against. */
-    private final String imagePass = randomString(6, 8);
-    private final ValueMap properties = new ValueMap();
-    
-    private String getPassword()
-    {
-        return properties.getString(ID_CAPTCHA);
-    }
 
     @Override
     protected void onBeforeRender() {

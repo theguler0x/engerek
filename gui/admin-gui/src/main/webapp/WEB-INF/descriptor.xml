@@ -33,9 +33,4 @@
     <packagesToScan>com.evolveum.midpoint.web.page.error</packagesToScan>
     <packagesToScan>com.evolveum.midpoint.web.page.forgetpassword</packagesToScan>
     <packagesToScan>com.evolveum.midpoint.web.page.self</packagesToScan>
-<<<<<<< HEAD
-    <packagesToScan>com.evolveum.midpoint.web.page.selfregistration</packagesToScan>
 </descriptor>
-=======
-</descriptor>
->>>>>>> midpoint/master

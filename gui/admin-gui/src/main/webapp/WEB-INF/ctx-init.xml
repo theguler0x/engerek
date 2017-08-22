@@ -35,4 +35,8 @@
         <property name="model" ref="modelController"/>
         <property name="taskManager" ref="taskManager" />
     </bean>
+    
+    <bean name="modelInitialSetup" class="com.evolveum.midpoint.init.ModelInitialSetup" init-method="init">
+        <property name="model" ref="modelController"/>
+   </bean>
 </beans>

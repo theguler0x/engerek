@@ -159,7 +159,7 @@ public class ImportDetsisTaskHandler  implements TaskHandler{
     		   OperationResult parentResult) {
     		  RepositoryCache.enter();
     		  OperationResult result = parentResult.createSubresult(IMPORT_OBJECTS_FROM_STREAM);
-    		  result.addParam("options", options);
+    	//	  result.addParam("options", options);
     	//	 objectImporter.importObjectsNotRaw(input, options, task, result);
     		  if (LOGGER.isTraceEnabled()) {
     		   LOGGER.trace("Import result:\n{}", result.debugDump());

@@ -27,12 +27,11 @@
         <version>3.7-SNAPSHOT</version>
     </parent>
     <scm>
-        <connection>https://github.com/Evolveum/midpoint.git</connection>
-        <developerConnection>git@github.com:Evolveum/midpoint.git</developerConnection>
-        <url>https://fisheye.evolveum.com/browse/midPoint</url>
+        <connection>https://github.com/Pardus-Engerek/engerek.git</connection>
+        <developerConnection>git@github.com:Pardus-Engerek/engerek.git</developerConnection>
     </scm>
     <build>
-        <finalName>midpoint</finalName>
+        <finalName>engerek</finalName>
         <resources>
             <resource>
                 <filtering>false</filtering>
